@@ -237,7 +237,6 @@ table.swaps td{vertical-align:top}
   </div>
   <div class="sources" id="sources" aria-live="polite">
     <span class="pill" id="pBulk"><span class="dot"></span>Cards: not loaded</span>
-    <span class="pill" id="pCombo"><span class="dot"></span>Combos: not loaded</span>
   </div>
   <button id="themeBtn" class="small" type="button" title="Cycle theme: system / light / dark">Theme: system</button>
 </header>
@@ -248,13 +247,9 @@ table.swaps td{vertical-align:top}
 <details class="sec" id="secData"><summary>Data source <span class="hint" id="dataHint"></span></summary><div class="body">
   <div class="note">Runs offline from downloaded JSON files. Files are parsed in this browser; nothing is sent anywhere.</div>
   <label class="f">Scryfall bulk JSON (Oracle Cards or Default Cards)
-    <input type="file" id="bulkFile"></label>
+    <input type="file" id="bulkFile" accept=".json,application/json"></label>
   <div class="prog hidden" id="bulkProg"><i></i></div>
   <div class="note">Download from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a>. Default Cards gives full printing history for set/date filters and uses the lowest price across printings.</div>
-  <label class="f">Commander Spellbook variants JSON (optional, combo detection)
-    <input type="file" id="comboFile"></label>
-  <div class="prog hidden" id="comboProg"><i></i></div>
-  <div class="note">.json or .json.gz. Export: <a href="https://json.commanderspellbook.com/variants.json" target="_blank" rel="noopener">json.commanderspellbook.com/variants.json</a></div>
   <div class="row"><button type="button" class="small" id="forgetBtn">Forget stored bulk data</button><span class="note" id="idbNote"></span></div>
 </div></details>
 
@@ -1929,67 +1924,26 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   /* ---------- bulk file loading ---------- */
   /* ---------- streaming JSON: yields each object that sits directly in a top-level array or in an array under one of `keys` ----------
      Works on minified or pretty-printed files of any size, and on .gz files where DecompressionStream exists. */
-  // byte stream → text reader; gzip detected from the first two bytes (works for files and fetch bodies)
-  async function textReader(byteStream) {
-    const r = byteStream.getReader(); const first = await r.read();
-    const head = first.value || new Uint8Array(0);
-    const gz = head[0] === 0x1f && head[1] === 0x8b;
-    let s = new ReadableStream({ start(c) { if (head.length) c.enqueue(head); }, async pull(c) { const { done, value } = await r.read(); if (done) c.close(); else c.enqueue(value); } });
-    if (gz) {
-      if (typeof DecompressionStream === 'undefined') throw new Error('This browser cannot unzip .gz files. Unzip the file first.');
-      s = s.pipeThrough(new DecompressionStream('gzip'));
-    }
-    return { reader: s.pipeThrough(new TextDecoderStream()).getReader(), gz };
-  }
-  async function streamObjects(src, keys, onObj, onProgress) {
-    const { reader, gz } = await textReader(src.stream());
-    const want = new Set(keys);
-    let depth = 0, inStr = false, esc = false, capDepth = -1, cap = [], capStart = -1;
-    let strStart = -1, lastStr = '', key = '', partial = '';
-    const arrWanted = []; // per depth: is this an array whose items we capture
-    const ctx = [];       // stack of '{' or '['
-    let read = 0, total = (src.size || 1) * (gz ? 7 : 1);
-    for (; ;) {
-      const { done, value: chunk } = await reader.read(); if (done) break;
-      read += chunk.length; capStart = capDepth >= 0 ? 0 : -1;
-      for (let i = 0, n = chunk.length; i < n; i++) {
-        const ch = chunk.charCodeAt(i);
-        if (inStr) {
-          if (esc) esc = false;
-          else if (ch === 92) esc = true;
-          else if (ch === 34) { inStr = false; if (capDepth < 0 && strStart >= 0) lastStr = partial + chunk.slice(strStart, i); strStart = -1; partial = ''; }
-          continue;
-        }
-        if (ch === 34) { inStr = true; partial = ''; strStart = capDepth < 0 && ctx[ctx.length - 1] === '{' ? i + 1 : -1; continue; }
-        if (ch === 58) { key = lastStr; continue; } // ':'
-        if (ch === 123) { // '{'
-          if (capDepth < 0 && ctx[ctx.length - 1] === '[' && arrWanted[ctx.length - 1]) { capDepth = ctx.length; capStart = i; cap = []; }
-          ctx.push('{'); arrWanted.push(false); continue;
-        }
-        if (ch === 91) { // '['
-          const parent = ctx[ctx.length - 1];
-          const wanted = capDepth < 0 && (ctx.length === 0 || (parent === '{' && want.has(key)));
-          ctx.push('['); arrWanted.push(wanted); continue;
-        }
-        if (ch === 125 || ch === 93) { // '}' or ']'
-          ctx.pop(); arrWanted.pop();
-          if (ch === 125 && capDepth >= 0 && ctx.length === capDepth) {
-            cap.push(chunk.slice(capStart, i + 1)); const txt = cap.join(''); cap = []; capDepth = -1; capStart = -1;
-            try { onObj(JSON.parse(txt)); } catch (e) { }
-          }
-          continue;
-        }
-      }
-      if (capDepth >= 0 && capStart >= 0) cap.push(chunk.slice(capStart));
-      if (inStr && strStart >= 0) { partial += chunk.slice(strStart); strStart = 0; } // key split across chunks
-      onProgress && onProgress(Math.min(0.99, read / Math.max(1, total)));
-      await new Promise(r => setTimeout(r, 0));
-    }
-    onProgress && onProgress(1);
-  }
   async function parseBulkFile(file, onProgress) {
     const out = []; let parsed = 0;
-    await streamObjects(file, ['data', 'cards'], c => { parsed++; const n = Engine.norm(c); if (n) out.push(n); }, onProgress);
+    const handle = line => { let t = line.trim(); if (t.endsWith(',')) t = t.slice(0, -1); if (t[0] !== '{' || t[t.length - 1] !== '}') return; try { const c = JSON.parse(t); parsed++; const n = Engine.norm(c); if (n) out.push(n); } catch (e) { } };
+    if (file.stream && typeof TextDecoderStream !== 'undefined') {
+      const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+      let buf = '', read = 0;
+      for (; ;) {
+        const { done, value } = await reader.read(); if (done) break;
+        buf += value; read += value.length;
+        let i; while ((i = buf.indexOf('\n')) >= 0) { handle(buf.slice(0, i)); buf = buf.slice(i + 1); }
+        onProgress(Math.min(0.99, read / Math.max(1, file.size)));
+      }
+      handle(buf);
+    }
+    if (!parsed) {
+      const j = JSON.parse(await file.text());
+      const arr = Array.isArray(j) ? j : (j && Array.isArray(j.data) ? j.data : []);
+      for (const c of arr) { parsed++; const n = Engine.norm(c); if (n) out.push(n); }
+    }
+    onProgress(1);
     return { cards: out, parsed };
   }
   async function loadBulk(file, extra) {
@@ -2005,22 +1959,6 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     } catch (e) { setStatus('Bulk file error: ' + e.message); showMsgs([e.message], []); }
     prog.classList.add('hidden'); renderSources();
   }
-  async function loadCombos(file, extra) {
-    const prog = $('comboProg'); if (prog) prog.classList.remove('hidden');
-    setStatus('Reading ' + file.name + '…');
-    try {
-      const raw = [], slim = []; let parsed = 0;
-      await streamObjects(file, ['variants', 'results'], o => { parsed++; if (o && (o.uses || o.cards)) raw.push(o); if (raw.length >= 2000) { slim.push(...Engine.slimVariants(raw.splice(0))); } }, f => { if (prog) prog.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; setStatus('Reading ' + file.name + '… ' + Math.round(f * 100) + '%'); });
-      slim.push(...Engine.slimVariants(raw));
-      if (!slim.length) throw new Error(parsed ? parsed + ' objects read, none looked like a Spellbook variant (needs "uses" with card names).' : 'No JSON objects found. Use variants.json from json.commanderspellbook.com.');
-      const meta = { ...(extra || {}), file: file.name, fileModified: file.lastModified ? new Date(file.lastModified).toISOString() : null, loadedAt: new Date().toISOString(), read: parsed };
-      App.bulkCombos = Engine.localComboProvider(slim, meta);
-      IDB.put('combos', { v: slim, meta });
-      setStatus('Loaded ' + slim.length.toLocaleString() + ' combo variants from ' + file.name + '.');
-    } catch (e) { setStatus('Combo file error: ' + e.message); showMsgs([e.message], []); }
-    if (prog) prog.classList.add('hidden'); renderSources();
-  }
-
   /* ---------- data in the site's repo (GitHub Pages): data/cards.json[.gz], data/combos.json[.gz] ----------
      Reloads only when the file's ETag / Last-Modified changes; otherwise uses the copy stored in this browser. */
   async function repoFile(names) {
@@ -2032,16 +1970,19 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   }
   async function fromRepo(f, loader) {
     const res = await fetch(f.url, { cache: 'no-cache' }); if (!res.ok || !res.body) throw new Error(f.url + ': HTTP ' + res.status);
-    await loader({ name: f.url, size: f.size, stream: () => res.body }, { source: 'site data', tag: f.tag });
+    const gz = /\.gz$/.test(f.url);
+    if (gz && typeof DecompressionStream === 'undefined') throw new Error('this browser cannot unzip ' + f.url);
+    const body = gz ? res.body.pipeThrough(new DecompressionStream('gzip')) : res.body;
+    let used = false;
+    const src = { name: f.url, size: gz ? f.size * 7 : f.size, stream: () => { used = true; return body; }, text: () => used ? Promise.resolve('[]') : new Response(body).text() };
+    await loader(src, { source: 'site data', tag: f.tag });
   }
   async function autoload() {
-    const [bulk, combos] = await Promise.all([IDB.get('bulk'), IDB.get('combos')]);
-    const [rc, rv] = await Promise.all([repoFile(['data/cards.json.gz', 'data/cards.json']), repoFile(['data/combos.json.gz', 'data/combos.json', 'data/variants.json.gz', 'data/variants.json'])]);
+    const bulk = await IDB.get('bulk');
+    const rc = await repoFile(['data/cards.json.gz', 'data/cards.json']);
     const fresh = (stored, f) => stored && stored.meta && f && f.tag && stored.meta.tag === f.tag;
     if (rc && !fresh(bulk, rc)) { try { await fromRepo(rc, loadBulk); } catch (e) { setStatus('Site card data: ' + e.message); } }
     if (!App.bulk && bulk && bulk.cards && bulk.cards.length) { App.bulk = Engine.buildDB(bulk.cards, bulk.meta); $('idbNote').textContent = 'Using stored card data: ' + (bulk.meta.file || '') + '.'; }
-    if (rv && !fresh(combos, rv)) { try { await fromRepo(rv, loadCombos); } catch (e) { setStatus('Site combo data: ' + e.message); } }
-    if (!App.bulkCombos && combos && combos.v && combos.v.length) App.bulkCombos = Engine.localComboProvider(combos.v, combos.meta);
     renderSources(); renderView();
   }
 
@@ -2050,7 +1991,6 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   function renderSources() {
     const set = (id, cls, text) => { const el = $(id); el.innerHTML = '<span class="dot ' + cls + '"></span>' + esc(text); };
     set('pBulk', App.bulk ? 'ok' : '', 'Cards: ' + (App.bulk ? App.bulk.all.length.toLocaleString() + ' (' + (App.bulk.meta.file || 'stored') + ')' : 'not loaded'));
-    set('pCombo', App.bulkCombos ? 'ok' : '', 'Combos: ' + (App.bulkCombos ? App.bulkCombos.count.toLocaleString() + ' variants' : 'not loaded'));
     $('dataHint').textContent = App.bulk ? 'loaded' : 'load a file';
     if (!App.bulk) $('secData').open = true;
     $('genBtn').disabled = App.busy || !App.bulk;
@@ -2670,7 +2610,6 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     document.querySelector('.settings').addEventListener('input', onFormChange);
     document.querySelector('.settings').addEventListener('change', onFormChange);
     $('bulkFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadBulk(f); });
-    $('comboFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadCombos(f); });
     $('oFile').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; $('oList').value = await f.text(); App.S.owned.list = $('oList').value; persistSettings(); });
     $('forgetBtn').addEventListener('click', async () => { await IDB.del('bulk'); await IDB.del('combos'); $('idbNote').textContent = 'Stored data removed.'; });
     $('seedBtn').addEventListener('click', () => { const s = Math.random().toString(36).slice(2, 10); $('seed').value = s; App.S.seed = s; App.S.reroll = 0; persistSettings(); });

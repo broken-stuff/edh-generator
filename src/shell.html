@@ -231,7 +231,6 @@ table.swaps td{vertical-align:top}
   </div>
   <div class="sources" id="sources" aria-live="polite">
     <span class="pill" id="pBulk"><span class="dot"></span>Cards: not loaded</span>
-    <span class="pill" id="pCombo"><span class="dot"></span>Combos: not loaded</span>
   </div>
   <button id="themeBtn" class="small" type="button" title="Cycle theme: system / light / dark">Theme: system</button>
 </header>
@@ -242,13 +241,9 @@ table.swaps td{vertical-align:top}
 <details class="sec" id="secData"><summary>Data source <span class="hint" id="dataHint"></span></summary><div class="body">
   <div class="note">Runs offline from downloaded JSON files. Files are parsed in this browser; nothing is sent anywhere.</div>
   <label class="f">Scryfall bulk JSON (Oracle Cards or Default Cards)
-    <input type="file" id="bulkFile"></label>
+    <input type="file" id="bulkFile" accept=".json,application/json"></label>
   <div class="prog hidden" id="bulkProg"><i></i></div>
   <div class="note">Download from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a>. Default Cards gives full printing history for set/date filters and uses the lowest price across printings.</div>
-  <label class="f">Commander Spellbook variants JSON (optional, combo detection)
-    <input type="file" id="comboFile"></label>
-  <div class="prog hidden" id="comboProg"><i></i></div>
-  <div class="note">.json or .json.gz. Export: <a href="https://json.commanderspellbook.com/variants.json" target="_blank" rel="noopener">json.commanderspellbook.com/variants.json</a></div>
   <div class="row"><button type="button" class="small" id="forgetBtn">Forget stored bulk data</button><span class="note" id="idbNote"></span></div>
 </div></details>
 
