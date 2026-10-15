@@ -1,0 +1,1 @@
+{"timestamp": "synthetic", "variants": [{"id": "x", "status": "OK", "uses": [{"card": {"name": "Synth G 1-0"}}, {"card": {"name": "Synth G 1-3"}}], "requires": [], "produces": [{"feature": {"name": "Infinite mana"}}]}]}

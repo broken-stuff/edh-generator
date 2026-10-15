@@ -1,0 +1,422 @@
+<title>broken-stuff EDH generator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Commander (EDH) 100-card deck generator driven by Scryfall data.">
+<style>
+/* Layout: two-pane workbench on a soft gradient field. Frosted-glass settings column feeds a frosted results pane; stacks to one column under 960px. */
+:root{
+  --bg:#eef1f7;
+  --field:radial-gradient(1200px 700px at 8% -10%,#cfe0ff 0%,transparent 60%),radial-gradient(900px 600px at 105% 10%,#f3d9ff 0%,transparent 55%),radial-gradient(900px 700px at 50% 110%,#d2f4ea 0%,transparent 60%),linear-gradient(180deg,#f4f6fb,#eaeef6);
+  --glass:rgba(255,255,255,.58); --glass-strong:rgba(255,255,255,.78); --glass-edge:rgba(255,255,255,.75);
+  --hair:rgba(60,70,90,.12); --hair-strong:rgba(60,70,90,.2);
+  --shadow:0 1px 1px rgba(20,30,60,.04),0 10px 30px -8px rgba(20,30,60,.16);
+  --hi:inset 0 1px 0 rgba(255,255,255,.85);
+  --ink:#1d1d1f; --muted:#6e6e73; --line:rgba(60,70,90,.14);
+  --surface:rgba(255,255,255,.62); --surface-2:rgba(120,130,160,.10); --field-in:rgba(255,255,255,.7);
+  --accent:#007aff; --accent-2:#5e5ce6; --accent-ink:#ffffff; --accent-soft:rgba(0,122,255,.12);
+  --ok:#1f8a44; --ok-soft:rgba(52,199,89,.16); --bad:#d70015; --bad-soft:rgba(255,59,48,.13); --warn:#a05a00; --warn-soft:rgba(255,159,10,.16);
+  --pip-ink:#17130f; --mW:#f3ebc6; --mU:#aed0ee; --mB:#c0b7b2; --mR:#f0ad93; --mG:#a3d2ad; --mC:#d8d3cd;
+  --bar:#007aff;
+  --f-ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,"Segoe UI",Roboto,sans-serif;
+  --f-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --r:14px; --r-sm:9px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b0d14;
+    --field:radial-gradient(1100px 700px at 5% -10%,#1b2a55 0%,transparent 60%),radial-gradient(900px 600px at 105% 5%,#3a1f4f 0%,transparent 55%),radial-gradient(900px 700px at 50% 115%,#0f3a35 0%,transparent 60%),linear-gradient(180deg,#0c0e16,#090a10);
+    --glass:rgba(30,32,44,.55); --glass-strong:rgba(44,46,60,.72); --glass-edge:rgba(255,255,255,.10);
+    --hair:rgba(255,255,255,.08); --hair-strong:rgba(255,255,255,.16);
+    --shadow:0 1px 1px rgba(0,0,0,.3),0 14px 40px -10px rgba(0,0,0,.6);
+    --hi:inset 0 1px 0 rgba(255,255,255,.08);
+    --ink:#f5f5f7; --muted:#a1a1a6; --line:rgba(255,255,255,.10);
+    --surface:rgba(44,46,60,.55); --surface-2:rgba(255,255,255,.07); --field-in:rgba(0,0,0,.28);
+    --accent:#0a84ff; --accent-2:#7d7aff; --accent-ink:#ffffff; --accent-soft:rgba(10,132,255,.2);
+    --ok:#30d158; --ok-soft:rgba(48,209,88,.16); --bad:#ff6961; --bad-soft:rgba(255,69,58,.18); --warn:#ffd60a; --warn-soft:rgba(255,214,10,.13);
+    --bar:#0a84ff; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b0d14;
+  --field:radial-gradient(1100px 700px at 5% -10%,#1b2a55 0%,transparent 60%),radial-gradient(900px 600px at 105% 5%,#3a1f4f 0%,transparent 55%),radial-gradient(900px 700px at 50% 115%,#0f3a35 0%,transparent 60%),linear-gradient(180deg,#0c0e16,#090a10);
+  --glass:rgba(30,32,44,.55); --glass-strong:rgba(44,46,60,.72); --glass-edge:rgba(255,255,255,.10);
+  --hair:rgba(255,255,255,.08); --hair-strong:rgba(255,255,255,.16);
+  --shadow:0 1px 1px rgba(0,0,0,.3),0 14px 40px -10px rgba(0,0,0,.6);
+  --hi:inset 0 1px 0 rgba(255,255,255,.08);
+  --ink:#f5f5f7; --muted:#a1a1a6; --line:rgba(255,255,255,.10);
+  --surface:rgba(44,46,60,.55); --surface-2:rgba(255,255,255,.07); --field-in:rgba(0,0,0,.28);
+  --accent:#0a84ff; --accent-2:#7d7aff; --accent-ink:#ffffff; --accent-soft:rgba(10,132,255,.2);
+  --ok:#30d158; --ok-soft:rgba(48,209,88,.16); --bad:#ff6961; --bad-soft:rgba(255,69,58,.18); --warn:#ffd60a; --warn-soft:rgba(255,214,10,.13);
+  --bar:#0a84ff; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{background:var(--bg);background-image:var(--field);background-attachment:fixed;color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.42;letter-spacing:-.003em;-webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 40px;min-height:100%}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{margin:0;font-weight:600;text-wrap:balance;letter-spacing:-.015em}
+h1{font-size:19px}
+h2{font-size:16px}
+h3{font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+.num,td.n,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:12.5px}
+/* glass primitives */
+.bar,details.sec,.actions,.panel,.tabs,.ac ul{background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid var(--glass-edge);box-shadow:var(--shadow),var(--hi)}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 14px;margin:12px 0 16px;border-radius:18px}
+.bar .brand{display:flex;align-items:center;gap:10px;margin-right:auto}
+.bar .brand svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.15))}
+.sources{display:flex;flex-wrap:wrap;gap:6px}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--hair);border-radius:999px;padding:3px 10px;font-size:12px;background:var(--surface);white-space:nowrap;color:var(--ink)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+.dot.ok{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}.dot.bad{background:var(--bad);box-shadow:0 0 0 3px var(--bad-soft)}.dot.warn{background:var(--warn)}
+.wrap{display:grid;grid-template-columns:minmax(300px,370px) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:960px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.settings{display:flex;flex-direction:column;gap:10px;min-width:0}
+details.sec{border-radius:var(--r);overflow:visible}
+details.sec>summary{cursor:pointer;padding:11px 14px;font-weight:600;font-size:14px;list-style:none;display:flex;align-items:center;gap:8px;user-select:none;border-radius:var(--r)}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary::after{content:"";width:7px;height:7px;border-right:1.75px solid var(--muted);border-bottom:1.75px solid var(--muted);transform:rotate(-45deg);margin-left:6px;flex:none}
+details.sec[open]>summary::after{transform:rotate(45deg) translate(-2px,-2px)}
+@media (prefers-reduced-motion:no-preference){details.sec>summary::after{transition:transform .2s ease}}
+details.sec>summary .hint{font-weight:400;color:var(--muted);font-size:12px;margin-left:auto}
+.body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+label.c{display:flex;align-items:center;gap:8px;font-size:13px}
+input,select,textarea,button{font:inherit;color:inherit}
+input[type=text],input[type=number],input[type=date],input[type=search],select,textarea{width:100%;min-width:0;background:var(--field-in);border:1px solid var(--hair);border-radius:var(--r-sm);padding:7px 10px;font-size:13px;color:var(--ink);box-shadow:inset 0 1px 2px rgba(0,0,0,.04)}
+@media (prefers-reduced-motion:no-preference){input,select,textarea,button{transition:border-color .15s,box-shadow .15s,background-color .15s,transform .1s}}
+select{appearance:none;-webkit-appearance:none;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+textarea{font-family:var(--f-mono);font-size:12px;min-height:68px;resize:vertical}
+input[type=file]{font-size:12px;color:var(--muted);max-width:100%}
+input[type=file]::file-selector-button{font:inherit;border:1px solid var(--hair);background:var(--glass-strong);color:var(--ink);border-radius:999px;padding:4px 12px;margin-right:8px;cursor:pointer}
+input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+input[type=range]{accent-color:var(--accent);width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3.5px var(--accent-soft)}
+button:focus-visible,summary:focus-visible,a:focus-visible{outline:none;box-shadow:0 0 0 3.5px var(--accent-soft),0 0 0 1px var(--accent)}
+button{cursor:pointer;border:1px solid var(--hair);background:var(--glass-strong);border-radius:999px;padding:6px 14px;font-size:13px;font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.05),var(--hi)}
+button:hover{border-color:var(--hair-strong);background:var(--surface)}
+button:active{transform:scale(.98)}
+button.primary{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 82%,white),var(--accent));color:var(--accent-ink);border-color:transparent;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.08),0 6px 16px -4px color-mix(in srgb,var(--accent) 55%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+button.primary:hover{filter:brightness(1.05);background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 82%,white),var(--accent))}
+button.small{padding:3px 10px;font-size:12px}
+button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.note{font-size:12px;color:var(--muted)}
+.note code,.mono-inline,code{font-family:var(--f-mono);font-size:11.5px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ac{position:relative}
+.ac ul{position:absolute;z-index:30;left:0;right:0;top:100%;margin:6px 0 0;padding:4px;list-style:none;border-radius:12px;max-height:260px;overflow:auto;background:var(--glass-strong)}
+.ac li{padding:6px 10px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;gap:8px;border-radius:8px}
+.ac li[aria-selected="true"],.ac li:hover{background:var(--accent);color:var(--accent-ink)}
+table.t{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
+table.t th,table.t td{border-bottom:1px solid var(--hair);padding:6px 8px;text-align:left;vertical-align:top}
+table.t th{font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+table.t td.n,table.t th.n{text-align:right}
+table.t td.cost{white-space:nowrap}
+table.t tbody tr:not(.grp):hover td{background:var(--surface-2)}
+table.t tr.grp td{background:transparent;color:var(--muted);font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding-top:14px;border-bottom:1px solid var(--hair-strong)}
+.scroll{overflow-x:auto;min-width:0}
+.results{min-width:0;display:flex;flex-direction:column;gap:12px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-radius:var(--r);padding:10px 12px}
+#status{font-size:12px;color:var(--muted);margin-left:auto}
+.panel{border-radius:var(--r);padding:14px 16px;min-width:0}
+.tabs{display:flex;flex-wrap:wrap;gap:2px;padding:3px;border-radius:12px;align-self:flex-start;max-width:100%}
+.tabs button{border:none;border-radius:9px;background:transparent;box-shadow:none;padding:5px 13px;color:var(--muted);font-weight:500}
+.tabs button:hover{background:var(--surface-2);color:var(--ink)}
+.tabs button[aria-selected="true"]{color:var(--ink);background:var(--glass-strong);box-shadow:0 1px 3px rgba(0,0,0,.12),var(--hi);font-weight:600}
+.chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;background:var(--surface-2);margin:1px 3px 1px 0;white-space:nowrap}
+.chip.gc{background:var(--warn-soft);color:var(--warn)}
+.chip.flag{background:var(--bad-soft);color:var(--bad)}
+.st{display:inline-block;min-width:46px;text-align:center;font-family:var(--f-mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px}
+.st.pass{background:var(--ok-soft);color:var(--ok)}.st.fail{background:var(--bad-soft);color:var(--bad)}.st.na{background:var(--surface-2);color:var(--muted)}
+.msg{border-radius:12px;padding:10px 14px;font-size:13px;border:1px solid var(--hair);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.msg+.msg{margin-top:8px}
+.msg.err{background:var(--bad-soft);color:var(--bad)}
+.msg.warn{background:var(--warn-soft);color:var(--ink)}
+.msg.warn b{color:var(--warn)}
+.msg ul{margin:4px 0 0;padding-left:18px}
+.ms{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 3px;border-radius:9px;font-family:var(--f-mono);font-size:10px;font-weight:600;color:var(--pip-ink);background:var(--mC);margin-right:2px;vertical-align:1px;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 1px 1px rgba(0,0,0,.18)}
+.ms.W{background:var(--mW)}.ms.U{background:var(--mU)}.ms.B{background:var(--mB)}.ms.R{background:var(--mR)}.ms.G{background:var(--mG)}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px 16px}
+.kv{display:flex;flex-direction:column;gap:3px;min-width:0}
+.kv>span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+.kv b{font-weight:600;font-size:17px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.why{color:var(--muted);font-size:12px;min-width:180px}
+td.nm{min-width:150px}
+td.nm a{color:var(--ink);font-weight:500}
+tr.locked td.nm a{color:var(--accent)}
+tr.alt td{background:var(--accent-soft)}
+.lockbtn{width:24px;height:24px;padding:0;text-align:center;border-radius:7px;font-size:11px}
+.lockbtn[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.meter{display:grid;grid-template-columns:120px minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:13px}
+.meter .track{height:8px;background:var(--surface-2);border-radius:999px;position:relative;overflow:hidden}
+.meter .fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,var(--accent-2),var(--accent));border-radius:999px}
+.meter .fill.short{background:var(--warn)}
+.statsgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+svg text{fill:var(--muted);font-family:var(--f-mono);font-size:10px}
+svg .lbl{fill:var(--ink)}
+svg .b{fill:var(--bar)}
+svg .gl{stroke:var(--hair);stroke-width:1}
+.empty{display:flex;flex-direction:column;gap:10px;max-width:68ch}
+.empty ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.prog{height:3px;background:var(--surface-2);border-radius:2px;overflow:hidden}
+.prog i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-2),var(--accent));width:0}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:no-preference){.prog i{transition:width .2s}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.bar,details.sec,.actions,.panel,.tabs,.ac ul{background:var(--glass-strong)}}
+@media (max-width:720px){.bar{position:static}}
+@media (max-width:520px){.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}.meter{grid-template-columns:96px minmax(0,1fr) 56px}.bar{border-radius:14px}.sources{order:3;width:100%}}
+.acts{display:flex;flex-direction:column;gap:4px;align-items:stretch}
+.acts button{padding:2px 9px}
+.why{max-width:320px}
+.an-head{margin:12px 0}
+.big{font-size:28px;font-weight:700;letter-spacing:-.03em}
+.an-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:12px}
+.an-card .chip{white-space:normal}
+.an-card .why{min-width:0}
+.an-card{overflow-x:auto;background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:12px 14px;min-width:0;box-shadow:var(--hi)}
+.an-card.wide{margin-top:12px}
+.an-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.an-top h3{margin:0}
+.an-sec{margin:18px 0 0;font-size:15px;font-weight:600;color:var(--muted)}
+.meter-1{height:5px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin:8px 0 6px}
+.meter-1 span{display:block;height:100%;background:linear-gradient(90deg,var(--accent-2),var(--accent));border-radius:999px}
+table.t.compact td,table.t.compact th{padding:4px 6px;font-size:12.5px}
+td.nw{white-space:nowrap}
+td.sc{width:56px;vertical-align:middle}
+td.sc i{display:block;height:5px;border-radius:999px;background:var(--accent);min-width:2px;opacity:.75}
+.seg{display:inline-flex;padding:2px;border-radius:10px;background:var(--surface-2);gap:2px}
+.seg button{border:none;box-shadow:none;background:transparent;border-radius:8px;padding:4px 12px;font-size:12.5px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--glass-strong);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.an-src{gap:10px}
+svg .rg{fill:none;stroke:var(--hair-strong);stroke-width:1}
+svg .rv{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2}
+svg .rd{fill:var(--accent)}
+svg .rl{font-family:var(--f-ui);font-size:11px}
+svg .ln{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linejoin:round}
+svg .ref{fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+ol.recs{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.recc{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.chip.sev-high{background:var(--bad-soft);color:var(--bad)}.chip.sev-med{background:var(--warn-soft);color:var(--warn)}.chip.sev-low{background:var(--accent-soft);color:var(--accent)}
+.an-method{margin-top:12px}
+.sw-acts{display:flex;gap:6px;margin-top:6px}
+.accepted{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 8px}
+button.link{border:none;background:none;box-shadow:none;padding:0 2px;color:var(--accent);font-size:inherit;text-decoration:underline;cursor:pointer;min-height:0}
+.side-h{margin:14px 4px 6px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.seg.wide{display:flex;width:100%}.seg.wide button{flex:1;padding-left:4px;padding-right:4px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.chips button{font-size:12.5px;padding:5px 10px;border-radius:999px;min-height:32px}
+.seg.wide button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.chips button[aria-pressed=true]{background:var(--accent);color:#fff;border-color:transparent}
+button.block{width:100%;margin-top:10px;min-height:44px}
+div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);margin-top:10px}
+@media (max-width:720px){.seg.wide button,.chips button{min-height:38px}}
+label.f.inline{display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0 0 0 auto;font-size:13px}
+label.f.inline select{width:auto}
+.an-sub{margin:12px 0 4px;font-size:13px;font-weight:600;color:var(--muted)}
+table.swaps td{vertical-align:top}
+.sw{display:flex;flex-direction:column;gap:1px;font-weight:500}
+.sw .out{color:var(--bad)}.sw .in{color:var(--ok)}
+.eff{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12.5px;min-width:180px}
+.eff .up{color:var(--ok)}.eff .down{color:var(--bad)}.eff .warn-t{color:var(--warn)}
+.pup{color:var(--bad);font-weight:600}
+@media (max-width:560px){table.swaps thead{display:none}table.swaps tr{display:grid;grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--line);padding:6px 0}table.swaps td{display:block;border:0;padding:2px 4px}table.swaps td:last-child{grid-column:1/-1}}.pdown{color:var(--ok);font-weight:600}
+.an-method ul{padding-left:18px;display:flex;flex-direction:column;gap:4px}
+</style>
+
+<header class="bar">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="5" r="2" fill="var(--mW)"/><circle cx="16.7" cy="9.1" r="2" fill="var(--mU)"/><circle cx="14.5" cy="15.9" r="2" fill="var(--mB)"/><circle cx="7.5" cy="15.9" r="2" fill="var(--mR)"/><circle cx="5.3" cy="9.1" r="2" fill="var(--mG)"/></svg>
+    <h1>broken-stuff EDH generator</h1>
+  </div>
+  <div class="sources" id="sources" aria-live="polite">
+    <span class="pill" id="pBulk"><span class="dot"></span>Cards: not loaded</span>
+    <span class="pill" id="pCombo"><span class="dot"></span>Combos: not loaded</span>
+  </div>
+  <button id="themeBtn" class="small" type="button" title="Cycle theme: system / light / dark">Theme: system</button>
+</header>
+
+<div class="wrap">
+<aside class="settings" aria-label="Deck settings">
+
+<details class="sec" id="secData"><summary>Data source <span class="hint" id="dataHint"></span></summary><div class="body">
+  <div class="note">Runs offline from downloaded JSON files. Files are parsed in this browser; nothing is sent anywhere.</div>
+  <label class="f">Scryfall bulk JSON (Oracle Cards or Default Cards)
+    <input type="file" id="bulkFile"></label>
+  <div class="prog hidden" id="bulkProg"><i></i></div>
+  <div class="note">Download from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a>. Default Cards gives full printing history for set/date filters and uses the lowest price across printings.</div>
+  <label class="f">Commander Spellbook variants JSON (optional, combo detection)
+    <input type="file" id="comboFile"></label>
+  <div class="prog hidden" id="comboProg"><i></i></div>
+  <div class="note">.json or .json.gz. Export: <a href="https://json.commanderspellbook.com/variants.json" target="_blank" rel="noopener">json.commanderspellbook.com/variants.json</a></div>
+  <div class="row"><button type="button" class="small" id="forgetBtn">Forget stored bulk data</button><span class="note" id="idbNote"></span></div>
+</div></details>
+
+<details class="sec" open><summary>Commander</summary><div class="body">
+  <div class="ac"><label class="f">Commander <input type="search" id="cmd1" data-k="commanders.0" autocomplete="off" placeholder="Start typing a name" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd1L"></ul></div>
+  <div class="ac"><label class="f">Second commander (Partner, Partner with, Friends forever, Background, Doctor's companion)<input type="search" id="cmd2" data-k="commanders.1" autocomplete="off" placeholder="Optional" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd2L"></ul></div>
+  <div class="note" id="cmdNote"></div>
+</div></details>
+
+<details class="sec" open id="secQuick"><summary>Quick start <span class="hint" id="brHint"></span></summary><div class="body">
+  <div class="grid2">
+    <label class="f">Deck type
+      <select id="archetype" data-k="archetype">
+        <option value="">Auto (from commander)</option><option value="tribal">Tribal (add the type in Themes and tags)</option>
+      </select></label>
+    <label class="f">Power (Commander Bracket)
+      <select id="bracket" data-k="bracket" data-type="num">
+        <option value="1">1 · Exhibition</option><option value="2">2 · Core</option><option value="3">3 · Upgraded</option><option value="4">4 · Optimized</option><option value="5">5 · cEDH</option>
+      </select></label>
+  </div>
+  <div class="f"><span>Game plan</span><div class="seg wide" id="qPlan" role="radiogroup" aria-label="Game plan">
+    <button type="button" data-plan="balanced">Balanced</button><button type="button" data-plan="fast">Fast</button><button type="button" data-plan="late">Late game</button><button type="button" data-plan="control">Control</button>
+  </div><div class="note" id="qPlanNote"></div></div>
+  <div class="f"><span>Themes <span class="note">(tap to add or remove)</span></span><div class="chips" id="qThemes"></div></div>
+  <label class="f">Budget
+    <select id="qBudget"><option value="">No limit</option><option value="50">Up to 50</option><option value="100">Up to 100</option><option value="250">Up to 250</option><option value="500">Up to 500</option><option value="1000">Up to 1,000</option><option value="custom" disabled>Custom (set in Budget)</option></select></label>
+  <button type="button" class="primary block" id="qGen">Generate deck</button>
+</div></details>
+
+<div class="side-h">Fine-tune</div>
+
+<details class="sec"><summary>Bracket limits</summary><div class="body">
+  <div class="grid3">
+    <label class="f">Game Changers max<input type="number" min="0" id="blgc" data-k="bl.gc"></label>
+    <label class="f">Mass land denial max<input type="number" min="0" id="blmld" data-k="bl.mld"></label>
+    <label class="f">Extra-turn cards max<input type="number" min="0" id="blxturn" data-k="bl.xturn"></label>
+    <label class="f">Tutors max<input type="number" min="0" id="bltutor" data-k="bl.tutor"></label>
+    <label class="f">2-card infinites max<input type="number" min="0" id="blcombo2" data-k="bl.combo2"></label>
+  </div>
+  <div class="note">999 = unlimited. Rules per the Oct 21 2025 bracket update (unchanged Feb 9 2026): B1–2 no Game Changers, B3 up to 3; no mass land denial below B4; B1 no extra turns, B2–3 extra turns in low quantity and not chained (1 and 2 here are interpretations); no 2-card infinites in B1–2, none early-game in B3 (0 here is stricter); tutors are unrestricted. Game Changers use Scryfall's <code>game_changer</code> field, so the list is as current as your bulk file. Combo limits need the Spellbook file.</div>
+</div></details>
+
+<details class="sec"><summary>Themes and tags</summary><div class="body">
+  <label class="f">Tags (comma-separated: archetype keys, creature types, or o:oracle text)<input type="text" id="tags" data-k="tags" placeholder="e.g. Elf, tokens, o:proliferate"></label>
+  <div class="note" id="tagNote"></div>
+</div></details>
+
+<details class="sec"><summary>Budget</summary><div class="body">
+  <div class="grid2">
+    <label class="f">Total cap<input type="number" min="0" step="0.01" id="bTotal" data-k="budget.total" placeholder="none"></label>
+    <label class="f">Per-card cap<input type="number" min="0" step="0.01" id="bPer" data-k="budget.perCard" placeholder="none"></label>
+    <label class="f">Currency / price source
+      <select id="bCur" data-k="budget.cur"><option value="usd">USD (Scryfall prices.usd)</option><option value="eur">EUR (prices.eur)</option><option value="tix">TIX (prices.tix)</option></select></label>
+    <label class="f">Cards with no price
+      <select id="bUnk" data-k="budget.unknown"><option value="exclude">Exclude when a cap is set</option><option value="allow">Allow (count as 0)</option></select></label>
+  </div>
+  <label class="c"><input type="checkbox" id="bBasics" data-k="budget.inclBasics"> Include basic lands in total</label>
+  <div class="note">Commanders count toward the total but not the per-card cap.</div>
+</div></details>
+
+<details class="sec"><summary>Category targets</summary><div class="body">
+  <div class="grid3">
+    <label class="f">Lands<input type="number" min="0" max="99" id="tLands" data-k="targets.lands"></label>
+    <label class="f">Ramp<input type="number" min="0" id="tRamp" data-k="targets.ramp"></label>
+    <label class="f">Card draw<input type="number" min="0" id="tDraw" data-k="targets.draw"></label>
+    <label class="f">Targeted removal<input type="number" min="0" id="tRem" data-k="targets.removal"></label>
+    <label class="f">Board wipes<input type="number" min="0" id="tWipe" data-k="targets.wipes"></label>
+    <label class="f">Protection<input type="number" min="0" id="tProt" data-k="targets.protection"></label>
+    <label class="f">Recursion<input type="number" min="0" id="tRec" data-k="targets.recursion"></label>
+    <label class="f">Win conditions<input type="number" min="0" id="tWin" data-k="targets.wincon"></label>
+  </div>
+</div></details>
+
+<details class="sec"><summary>Mana base</summary><div class="body">
+  <div class="grid2">
+    <label class="f">Target average MV (nonland)<input type="number" min="1" max="7" step="0.1" id="mAvg" data-k="mana.avgMV"></label>
+    <label class="f">Nonbasic lands (blank = auto)<input type="number" min="0" max="99" id="mNB" data-k="mana.nonbasic" placeholder="auto"></label>
+  </div>
+  <div class="grid3">
+    <label class="c"><input type="checkbox" id="ltFetch" data-k="mana.types.fetch"> Fetches</label>
+    <label class="c"><input type="checkbox" id="ltShock" data-k="mana.types.shock"> Shocks</label>
+    <label class="c"><input type="checkbox" id="ltDual" data-k="mana.types.dual"> Duals</label>
+    <label class="c"><input type="checkbox" id="ltTri" data-k="mana.types.triome"> Triomes</label>
+    <label class="c"><input type="checkbox" id="ltUtil" data-k="mana.types.utility"> Utility</label>
+    <label class="c"><input type="checkbox" id="ltCmd" data-k="mana.types.command"> Any-color</label>
+  </div>
+  <div class="note">Basics are split by color-pip share of the nonland cards and commanders. Auto nonbasic counts by colors (0–5): 8, 7, 14, 17, 19, 21.</div>
+</div></details>
+
+<details class="sec"><summary>Include / exclude</summary><div class="body">
+  <label class="f">Must include (one per line, "N Name" allowed)<textarea id="incl" data-k="include" placeholder="1 Sol Ring"></textarea></label>
+  <label class="f">Exclude<textarea id="excl" data-k="exclude"></textarea></label>
+  <div class="note">Includes count toward category targets and are never auto-removed.</div>
+</div></details>
+
+<details class="sec"><summary>Filters</summary><div class="body">
+  <div class="grid2">
+    <label class="f">Combos<select id="fCombo" data-k="filters.combos"><option value="bracket">Follow bracket limit</option><option value="allow">Allow all</option><option value="prefer">Prefer (add up to 2)</option><option value="no2inf">Exclude 2-card infinites</option><option value="noinf">Exclude infinite combos</option><option value="none">Exclude all combos</option></select></label>
+    <label class="f">Tutors<select id="fTut" data-k="filters.tutors"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
+    <label class="f">Fast mana<select id="fFast" data-k="filters.fast"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
+    <label class="f">Stax pieces<select id="fStax" data-k="filters.stax"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
+    <label class="f">Extra turns<select id="fXt" data-k="filters.xturn"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
+    <label class="f">Mass land destruction<select id="fMld" data-k="filters.mld"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
+    <label class="f">Hate-bears<select id="fHate" data-k="filters.hate"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
+    <label class="f">Reserved list<select id="fRl" data-k="filters.reserved"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
+    <label class="f">Silver-border / acorn / Un<select id="fUn" data-k="filters.funny"><option value="exclude">Exclude</option><option value="allow">Allow if legal</option></select></label>
+    <label class="f">Allowed sets (codes)<input type="text" id="fSets" data-k="filters.sets" placeholder="all"></label>
+    <label class="f">Printed on/after<input type="date" id="fFrom" data-k="filters.dateFrom"></label>
+    <label class="f">Printed on/before<input type="date" id="fTo" data-k="filters.dateTo"></label>
+    <label class="f">Creatures min<input type="number" min="0" id="fCmin" data-k="filters.creaturesMin"></label>
+    <label class="f">Creatures max<input type="number" min="0" id="fCmax" data-k="filters.creaturesMax"></label>
+  </div>
+  <div class="note">Commander legality always wins: a filter cannot admit an illegal card. Flag rules are listed under Advanced.</div>
+</div></details>
+
+<details class="sec"><summary>Collection</summary><div class="body">
+  <label class="f">Mode<select id="oMode" data-k="owned.mode"><option value="off">Off</option><option value="prefer">Prefer owned</option><option value="only">Owned only</option></select></label>
+  <label class="f">Collection list (paste, or load a .txt/.csv)<textarea id="oList" data-k="owned.list"></textarea></label>
+  <input type="file" id="oFile" accept=".txt,.csv,text/plain,text/csv" aria-label="Load collection file">
+</div></details>
+
+<details class="sec"><summary>Randomness</summary><div class="body">
+  <div class="row"><label class="f" style="flex:1">Seed (blank = derived from settings)<input type="text" id="seed" data-k="seed"></label><button type="button" class="small" id="seedBtn" style="align-self:flex-end">New seed</button></div>
+  <label class="f">Variance <span id="varOut" class="mono-inline"></span><input type="range" min="0" max="1" step="0.05" id="variance" data-k="variance" data-type="num"></label>
+  <div class="note">Variance adds a seeded ±value to each score, so near-equal cards swap between seeds. Same seed and settings give the same deck.</div>
+</div></details>
+
+<details class="sec"><summary>Advanced</summary><div class="body">
+  <div class="grid3">
+    <label class="f">Synergy<input type="number" step="0.1" id="wSyn" data-k="weights.syn"></label>
+    <label class="f">Role need<input type="number" step="0.1" id="wRole" data-k="weights.role"></label>
+    <label class="f">Popularity<input type="number" step="0.1" id="wPop" data-k="weights.pop"></label>
+    <label class="f">Curve fit<input type="number" step="0.1" id="wCurve" data-k="weights.curve"></label>
+    <label class="f">Price penalty<input type="number" step="0.1" id="wPrice" data-k="weights.price"></label>
+    <label class="f">Owned bonus<input type="number" step="0.1" id="wOwned" data-k="weights.owned"></label>
+    <label class="f">Bracket penalty<input type="number" step="0.1" id="wBr" data-k="weights.bracket"></label>
+  </div>
+  <div class="note">score = syn·min(synergy,3) + role·(unfilled roles matched) + pop·(1 − log₁₀ rank / log₁₀ 40000) + curve·fit(MV) + owned − price·penalty − bracket·(limited flags) + seeded noise.</div>
+  <details><summary class="note" style="cursor:pointer">Tag and flag rules</summary><div id="rulesRef" class="note scroll"></div></details>
+</div></details>
+
+<details class="sec"><summary>Save, load, share</summary><div class="body">
+  <div class="row"><button type="button" class="small" id="saveSet">Save settings JSON</button><label class="small" style="font-size:12px">Load <input type="file" id="loadSet" accept=".json,application/json" style="width:180px"></label></div>
+  <label class="f">Share token (append to the page URL as #token, or paste here)<textarea id="shareTok" rows="2" spellcheck="false"></textarea></label>
+  <div class="row"><button type="button" class="small" id="copyTok">Copy token</button><button type="button" class="small" id="applyTok">Apply pasted token</button><button type="button" class="small" id="resetSet">Reset to defaults</button></div>
+</div></details>
+</aside>
+
+<main class="results">
+  <div class="actions">
+    <button type="button" class="primary" id="genBtn">Generate deck</button>
+    <button type="button" id="regenBtn" disabled>Regenerate unlocked</button>
+    <button type="button" id="testBtn">Run acceptance tests</button>
+    <span id="status" role="status" aria-live="polite"></span>
+  </div>
+  <div class="prog hidden" id="genProg"><i></i></div>
+  <div id="msgs"></div>
+  <div id="summary" class="panel summary hidden"></div>
+  <nav class="tabs" role="tablist" aria-label="Results">
+    <button role="tab" aria-selected="true" data-tab="deck">Deck</button>
+    <button role="tab" aria-selected="false" data-tab="analysis">Analysis</button>
+    <button role="tab" aria-selected="false" data-tab="role">By role</button>
+    <button role="tab" aria-selected="false" data-tab="stats">Stats</button>
+    <button role="tab" aria-selected="false" data-tab="valid">Validation</button>
+    <button role="tab" aria-selected="false" data-tab="log">Log</button>
+    <button role="tab" aria-selected="false" data-tab="export">Export</button>
+    <button role="tab" aria-selected="false" data-tab="tests">Tests</button>
+  </nav>
+  <section class="panel" id="view"></section>
+</main>
+</div>
