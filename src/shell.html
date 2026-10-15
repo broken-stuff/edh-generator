@@ -380,8 +380,9 @@ table.swaps td{vertical-align:top}
     <label class="f">Price penalty<input type="number" step="0.1" id="wPrice" data-k="weights.price"></label>
     <label class="f">Owned bonus<input type="number" step="0.1" id="wOwned" data-k="weights.owned"></label>
     <label class="f">Bracket penalty<input type="number" step="0.1" id="wBr" data-k="weights.bracket"></label>
+    <label class="f">Bracket power pull<input type="number" step="0.1" id="wPow" data-k="weights.power"></label>
   </div>
-  <div class="note">score = syn·min(synergy,3) + role·(unfilled roles matched) + pop·(1 − log₁₀ rank / log₁₀ 40000) + curve·fit(MV) + owned − price·penalty − bracket·(limited flags) + seeded noise.</div>
+  <div class="note">score = syn·min(synergy,3) + role·(unfilled roles matched) + pop·(1 − log₁₀ rank / log₁₀ 40000) + curve·fit(MV) + owned − price·min(3, price ÷ (per-card cap, or 3×budget÷99)) − bracket·(limited flags) + power·pref(bracket)·cardPower + seeded noise. pref = −1, −0.4, 0.5, 1.3, 2 for B1–B5. fit(MV) = 1 − |MV − target| / (4 below, 3 above). Price only counts when a budget is set.</div>
   <details><summary class="note" style="cursor:pointer">Tag and flag rules</summary><div id="rulesRef" class="note scroll"></div></details>
 </div></details>
 

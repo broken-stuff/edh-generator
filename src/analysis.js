@@ -277,10 +277,12 @@ const Analysis = (function () {
     const cardOf = n => byName.get(E.nameKey(n)) || byName.get(E.nameKey(String(n).split(' // ')[0])) || null;
     const cmdKeys = new Set(cmds.map(c => E.nameKey(c.n)));
     const sat = (x, k) => 100 * (1 - Math.exp(-Math.max(0, x) / k));
-    const comp = (label, n, w, cards) => ({ label, n, w, pts: n * w, cards: cards || [] });
+    // each card counts w × (0.6 + card power), so a stronger card in the same slot scores higher
+    const qf = x => typeof x === 'string' ? 1 : 0.6 + E.cardPower(x);
+    const comp = (label, n, w, cards) => { cards = cards || []; const pts = cards.length === n ? cards.reduce((s, x) => s + w * qf(x), 0) : n * w; return { label, n, w, pts, cards: cards.map(x => typeof x === 'string' ? x : x.n) }; };
     const vec = (key, label, k, parts) => { const pts = parts.reduce((s, p) => s + p.pts, 0); return { key, label, k, pts, score: Math.round(sat(pts, k)), parts }; };
     const uniq = new Set();
-    const take = (pred) => { const out = []; for (const e of nonland) { if (uniq.has(e.c)) continue; if (pred(e.c)) { uniq.add(e.c); out.push(e.c.n); } } return out; };
+    const take = (pred) => { const out = []; for (const e of nonland) { if (uniq.has(e.c)) continue; if (pred(e.c)) { uniq.add(e.c); out.push(e.c); } } return out; };
     // Speed: fast mana weighted most, then rocks, dorks, land ramp, treasure, cost reducers (one bucket per card)
     const sFast = take(c => A(c).flags.fast);
     const sRock2 = take(c => manaModel(c).rampPerm > 0 && !manaModel(c).dork && c.cmc <= 2);
@@ -342,7 +344,7 @@ const Analysis = (function () {
     const comboPts = families.reduce((s, f) => s + f.score * 8, 0);
     // Threats
     const synPieces = perCard.filter(x => x.links >= 3).map(x => x.c.n);
-    const vThreat = vec('threats', 'Threats', 20, [comp('Combo families (Spellbook)', families.length, families.length ? comboPts / families.length : 0, families.map(f => f.best.cards.join(' + '))), comp('Win conditions', wincons.length, 2, wincons), comp('Evasive creatures', evasive.length, 0.5, evasive), comp('Synergy pieces (≥3 links)', synPieces.length, 0.15, synPieces)]);
+    const vThreat = vec('threats', 'Threats', 20, [comp('Combo families (Spellbook)', families.length, families.length ? comboPts / families.length : 0, families.map(f => f.best.cards.join(' + '))), comp('Win conditions', wincons.length, 2, all.filter(e => A(e.c).roles.wincon).map(e => e.c)), comp('Evasive creatures', evasive.length, 0.5, evasive), comp('Synergy pieces (≥3 links)', synPieces.length, 0.15, synPieces)]);
     // Archetype
     const pairOf = k => pairStats.find(p => p.key === k);
     const themeScore = k => { const p = pairOf(k); return p && p.active ? Math.min(1, (p.en.length + p.pay.length) / 25 + (p.cmdEn || p.cmdPay ? 0.3 : 0)) : 0; };
@@ -367,7 +369,10 @@ const Analysis = (function () {
     const WEIGHTS = { Combo: [0.25, 0.3, 0.15, 0.3], Control: [0.2, 0.25, 0.35, 0.2], Stax: [0.2, 0.25, 0.35, 0.2], Aggro: [0.3, 0.2, 0.15, 0.35], Voltron: [0.3, 0.2, 0.15, 0.35], Tribal: [0.3, 0.2, 0.15, 0.35], Tokens: [0.3, 0.2, 0.15, 0.35], 'Big mana': [0.35, 0.2, 0.15, 0.3] };
     const wv = WEIGHTS[primary] || [0.25, 0.25, 0.2, 0.3];
     const vmix = vSpeed.score * wv[0] + vCons.score * wv[1] + vInt.score * wv[2] + vThreat.score * wv[3];
-    const plRaw = 1 + 9 * vmix / 100;
+    const cps = nonland.map(e => E.cardPower(e.c)).sort((a, b) => b - a);
+    const qualTop = cps.slice(0, 60); const cardQ = qualTop.length ? qualTop.reduce((a, b) => a + b, 0) / qualTop.length : 0;
+    const qScore = Math.min(100, cardQ / 0.6 * 100);
+    const plRaw = 1 + 9 * (0.7 * vmix + 0.3 * qScore) / 100;
     const manaMult = 0.85 + 0.15 * vMana.score / 100;
     const infra = nNon ? (sFast.length + tutors.length + cheapInteraction.length) / nNon : 0;
     const signals = [
@@ -406,7 +411,7 @@ const Analysis = (function () {
     // Card popularity distribution (EDHREC rank; popularity, not power)
     const RB = [['Top 500', 1, 500], ['501–2,000', 501, 2000], ['2,001–8,000', 2001, 8000], ['8,001+', 8001, 1e12]];
     const quality = RB.map(([label, lo, hi]) => ({ label, n: nonland.filter(e => e.c.rank && e.c.rank >= lo && e.c.rank <= hi).reduce((s, e) => s + e.qty, 0) })).concat([{ label: 'Unranked', n: nonland.filter(e => !e.c.rank).reduce((s, e) => s + e.qty, 0) }]);
-    const power = { pl, plRaw: Math.round(plRaw * 10) / 10, manaMult: Math.round(manaMult * 100) / 100, ceiling, ceilingBinding: plPre > ceiling, label: PL_LABEL[Math.max(1, Math.min(10, Math.floor(pl)))], ci, ciParts: ciParts.map(x => x[0]), confidence: ci <= 0.5 ? 'high' : ci <= 0.8 ? 'medium' : 'low', vectors, weights: { speed: wv[0], consistency: wv[1], interaction: wv[2], threats: wv[3] }, archetypes: ARCH.slice(0, 5), primary, signals, win: { best, typical, contested, comboTurn: comboTurn < 99 ? comboTurn : null }, minBracket: minB, minBracketWhy: why, combos: comboList, families: families.map(f => ({ score: Math.round(f.score * 100) / 100, n: f.combos.length, best: f.best })), earlyTwo, quality };
+    const power = { cardQ: Math.round(cardQ * 100) / 100, qScore: Math.round(qScore), pl, plRaw: Math.round(plRaw * 10) / 10, manaMult: Math.round(manaMult * 100) / 100, ceiling, ceilingBinding: plPre > ceiling, label: PL_LABEL[Math.max(1, Math.min(10, Math.floor(pl)))], ci, ciParts: ciParts.map(x => x[0]), confidence: ci <= 0.5 ? 'high' : ci <= 0.8 ? 'medium' : 'low', vectors, weights: { speed: wv[0], consistency: wv[1], interaction: wv[2], threats: wv[3] }, archetypes: ARCH.slice(0, 5), primary, signals, win: { best, typical, contested, comboTurn: comboTurn < 99 ? comboTurn : null }, minBracket: minB, minBracketWhy: why, combos: comboList, families: families.map(f => ({ score: Math.round(f.score * 100) / 100, n: f.combos.length, best: f.best })), earlyTwo, quality };
     // Anti-synergy checks
     const symWipes = names(c => A(c).roles.wipes && !/creatures? (?:your opponents|an opponent|you don't) control|nontoken creatures? (?:your opponents|you don't)/.test(c.low));
     const allGyExile = names(c => /exile (?:each|all) graveyards?|exile all cards from all graveyards|if a card would be put into an opponent's graveyard[^.]*exile|graveyards? from anywhere, exile it/.test(c.low) || /if a card or token would be put into a graveyard from anywhere/.test(c.low));

@@ -50,7 +50,7 @@ const Engine = (function () {
         reserved: 'allow', funny: 'exclude', dateFrom: '', dateTo: '', sets: '', creaturesMin: null, creaturesMax: null },
       owned: { mode: 'off', list: '' },
       seed: '', reroll: 0, variance: 0.15,
-      weights: { syn: 2, role: 1.5, pop: 1.5, curve: 1, price: 0.5, owned: 1, bracket: 0.5 }
+      weights: { syn: 2, role: 1.5, pop: 1.5, curve: 1.5, price: 0.5, owned: 1, bracket: 0.5, power: 2 }
     };
   }
   function bracketDefaults(b) { return Object.assign({}, BRACKETS[b] || BRACKETS[3]); }
@@ -356,6 +356,29 @@ const Engine = (function () {
     };
   }
 
+  /* ---------- card power index (0–1) from card data: flags, efficiency of each role at its mana value, free casting, EDHREC popularity.
+     Weights are this tool's own; they rank cards, they are not a published rating. ---------- */
+  const CP = new WeakMap();
+  function cardPower(c) {
+    let v = CP.get(c); if (v != null) return v;
+    const a = analyze(c), low = c.low || '', mv = c.cmc || 0, inst = /\bInstant\b/.test(c.ft) || (c.kw || []).includes('flash');
+    let p = 0;
+    if (a.flags.fast) p += 0.45;
+    if (a.flags.gc) p += 0.35;
+    if (a.flags.tutor) p += mv <= 2 ? 0.35 : 0.2;
+    if (a.roles.removal) p += mv <= 2 ? (inst ? 0.3 : 0.2) : mv <= 3 ? 0.1 : 0;
+    if (a.roles.wipes && mv <= 4) p += 0.1;
+    if (a.roles.ramp && !a.isLand) p += mv <= 1 ? 0.3 : mv === 2 ? 0.15 : 0;
+    if (a.roles.draw) p += (/\b(?:Artifact|Creature|Enchantment|Planeswalker)\b/.test(c.ft) && /whenever|at the beginning of/.test(low) && mv <= 3) ? 0.2 : mv <= 2 ? 0.1 : 0;
+    if (a.roles.protection && mv <= 1) p += 0.15;
+    if (/without paying (?:its|this spell's) mana cost|rather than pay (?:this spell's|its) mana cost/.test(low)) p += 0.25;
+    if (a.flags.stax) p += 0.1;
+    p += 0.25 * (c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0);
+    v = Math.max(0, Math.min(1, p)); CP.set(c, v); return v;
+  }
+  // how much each bracket prefers raw card power when generating (negative = avoid strong cards)
+  const POWER_PREF = { 1: -1, 2: -0.4, 3: 0.5, 4: 1.3, 5: 2 };
+
   /* ---------- generation ---------- */
   async function generate(db, S0, env) {
     env = env || {};
@@ -515,13 +538,14 @@ const Engine = (function () {
     const synOf = c => { let v = syn.get(c); if (v) return v; let s = 0; const hit = []; for (const t of tags) if (t.test(c)) { s += t.w; hit.push(t.label); } v = { s, hit }; syn.set(c, v); return v; };
     const pop = c => c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
     const priceRef = pcap != null ? pcap : (cap != null ? Math.max(1, cap / mainSize * 3) : null);
-    const pricePen = c => { const p = price(c); if (p == null) return 0; return priceRef ? Math.min(2, p / priceRef) : Math.log1p(p) / Math.log1p(100); };
-    const curveFit = c => c.cmc <= T + 1 ? 1 : Math.max(0, 1 - (c.cmc - (T + 1)) / 4);
+    const pricePen = c => { const p = price(c); if (p == null || !priceRef) return 0; return Math.min(3, p / priceRef); }; // no budget → price is ignored
+    const curveFit = c => Math.max(-0.5, 1 - Math.abs(c.cmc - T) / (c.cmc < T ? 4 : 3));
+    const pPref = (POWER_PREF[S.bracket] != null ? POWER_PREF[S.bracket] : 0.5) * (W.power != null ? +W.power : 2);
     const bpen = c => { const a = analyze(c); let s = 0; for (const k of ['gc', 'tutor', 'xturn', 'mld']) if (a.flags[k] && lim[k] < 999) s += 1; return s; };
     const baseCache = new Map();
     const base = c => {
       let v = baseCache.get(c); if (v != null) return v;
-      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (noise.get(c.n) || 0);
+      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + pPref * cardPower(c) + (noise.get(c.n) || 0);
       baseCache.set(c, v); return v;
     };
 
@@ -691,15 +715,22 @@ const Engine = (function () {
 
     /* 6. curve adjustment (soft) */
     const avgMV = () => { const nl = deck.filter(e => !analyze(e.c).isLand); const q = nl.reduce((s, e) => s + e.qty, 0); return q ? nl.reduce((s, e) => s + e.c.cmc * e.qty, 0) / q : 0; };
-    for (let i = 0; i < 12 && avgMV() > T + 0.15; i++) {
-      const victim = deck.filter(e => !e.locked && (e.slot === 'flex' || e.slot === 'synergy') && e.c.cmc > T).sort((a, b) => b.c.cmc - a.c.cmc || a.score - b.score)[0];
-      if (!victim) break;
-      const rep = sortScored(pool.filter(c => !analyze(c).isLand && !st.names.has(c.n) && c.cmc <= T && (victim.slot !== 'synergy' || synOf(c).s > 0)).map(c => ({ c, s: dyn(c) })))
-        .find(x => x.s >= victim.score - 1.5 && !canAdd(x.c, { replacing: victim }));
-      if (!rep) break;
-      removeEntry(victim); add(rep.c, victim.slot, 1, rep.s);
-      L('Curve: swapped ' + victim.c.n + ' (MV ' + victim.c.cmc + ', score ' + victim.score.toFixed(2) + ') → ' + rep.c.n + ' (MV ' + rep.c.cmc + ', score ' + rep.s.toFixed(2) + '); avg MV now ' + avgMV().toFixed(2) + '.');
-    }
+    const curveOk = (c, slot) => slot === 'synergy' ? synOf(c).s > 0 : ROLES.includes(slot) ? !!analyze(c).roles[slot] : true;
+    const curveStep = up => {
+      const victims = deck.filter(e => !e.locked && e.qty === 1 && (e.slot === 'flex' || e.slot === 'synergy' || ROLES.includes(e.slot)) && (up ? e.c.cmc < T - 0.5 : e.c.cmc > T))
+        .sort((a, b) => (up ? a.c.cmc - b.c.cmc : b.c.cmc - a.c.cmc) || a.score - b.score);
+      for (const victim of victims) {
+        const rep = sortScored(pool.filter(c => !analyze(c).isLand && !st.names.has(c.n) && (up ? c.cmc > victim.c.cmc && c.cmc <= T + 2 : c.cmc <= T) && curveOk(c, victim.slot)).map(c => ({ c, s: dyn(c) })))
+          .find(x => x.s >= victim.score - 1.5 && !canAdd(x.c, { replacing: victim }));
+        if (!rep) continue;
+        removeEntry(victim); add(rep.c, victim.slot, 1, rep.s);
+        L('Curve' + (up ? ' (up)' : '') + ': swapped ' + victim.c.n + ' (' + victim.slot + ', MV ' + victim.c.cmc + ', score ' + victim.score.toFixed(2) + ') → ' + rep.c.n + ' (MV ' + rep.c.cmc + ', score ' + rep.s.toFixed(2) + '); avg MV now ' + avgMV().toFixed(2) + '.');
+        return true;
+      }
+      return false;
+    };
+    for (let i = 0; i < 20 && avgMV() > T + 0.15 && curveStep(false); i++);
+    for (let i = 0; i < 20 && avgMV() < T - 0.15 && curveStep(true); i++);
 
     /* 7. basics */
     function addBasics(n, label) {
@@ -922,7 +953,7 @@ const Engine = (function () {
     return lines.join('\n') + '\n';
   }
 
-  return { defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
+  return { cardPower, POWER_PREF, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
     norm, buildDB, lookup, nameKey, parseList, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
     slimVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes };
 })();
