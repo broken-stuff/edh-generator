@@ -256,8 +256,8 @@
   }
 
   /* ---------- analysis tab ---------- */
-  function analysisInput() {
-    if (App.anSource === 'paste') {
+  function analysisInput(forcePaste) {
+    if (forcePaste || App.anSource === 'paste') {
       if (!App.bulk) return { error: 'Load the Scryfall bulk file first.' };
       const P = Analysis.parseDecklist(App.anText || '');
       let cmdNames = P.cmd.map(x => x.name);
@@ -274,6 +274,7 @@
   }
   const anGames = () => { const g = +App.anGames || 100000; return [1500, 10000, 25000, 50000, 100000].includes(g) ? g : 100000; };
   async function runAnalysis() {
+    if (App.anSource === 'compare') return runCompare();
     const inp = analysisInput();
     if (inp.error) { App.AN = { error: inp.error, unknown: inp.unknown || [] }; renderAnalysis(); return; }
     const key = App.anSource + '|' + inp.cmds.map(c => c.n).join('+') + '|' + inp.deck.map(e => e.qty + e.c.n).join(',') + '|' + JSON.stringify(App.S.targets) + App.S.bracket + '|' + anGames() + '|' + JSON.stringify(App.S.budget) + '|' + [...(App.denied || [])].join(',');
@@ -391,12 +392,68 @@
   const pct = x => Math.round(x * 100) + '%';
   const scoreCls = s => s >= 80 ? 'pass' : s >= 55 ? 'na' : 'fail';
   function cardList(arr, max) { if (!arr || !arr.length) return '<span class="note">none</span>'; const m = max || 12; return esc(arr.slice(0, m).join(', ')) + (arr.length > m ? ' <span class="note">+' + (arr.length - m) + ' more</span>' : ''); }
+  /* ---------- compare: generated deck vs a pasted list, same metrics and seed ---------- */
+  async function runCompare() {
+    if (!App.R || !App.R.stats) { App.AN = { error: 'Generate a deck first; it is the left column of the comparison.' }; renderAnalysis(); return; }
+    const pin = analysisInput(true);
+    if (pin.error) { App.AN = { error: pin.error, unknown: pin.unknown || [] }; renderAnalysis(); return; }
+    const games = Math.min(anGames(), 25000);
+    setStatus('Comparing (' + games.toLocaleString() + ' simulated games per deck)…'); await new Promise(r => setTimeout(r, 30));
+    const cur = App.S.budget.cur || 'usd';
+    const side = (deck, cmds, label) => {
+      const X = Analysis.run(App.bulk, deck, cmds, { settings: App.S, games, seed: Engine.hashStr('compare') });
+      const role = {}; let price = 0, unpriced = 0, creatures = 0, nonbasicLands = 0;
+      for (const c of cmds) { const p = c.p[cur]; if (p == null) unpriced++; else price += p; }
+      for (const e of deck) {
+        const a = Engine.analyze(e.c), q = e.qty || 1, p = e.c.p[cur];
+        if (p == null) unpriced += q; else if (!(a.land === 'basic' && !App.S.budget.inclBasics)) price += p * q;
+        for (const r of Object.keys(a.roles)) role[r] = (role[r] || 0) + q;
+        if (a.creature) creatures += q;
+        if (a.isLand && a.land !== 'basic') nonbasicLands += q;
+      }
+      return { label, X, role, price, unpriced, creatures, nonbasicLands, names: new Set(deck.map(e => e.c.n)) };
+    };
+    const A = side(App.R.deck, App.R.commanders, 'Generated'), B = side(pin.deck, pin.cmds, 'Pasted');
+    const shared = [...A.names].filter(n => B.names.has(n));
+    App.AN = { compare: true, A, B, shared, onlyA: [...A.names].filter(n => !B.names.has(n)), onlyB: [...B.names].filter(n => !A.names.has(n)), unknown: pin.unknown, games, cur, key: 'compare' };
+    setStatus('Comparison done (' + games.toLocaleString() + ' games per deck, same seed).');
+    renderAnalysis();
+  }
+  function compareHTML(C) {
+    const f1 = x => (Math.round(x * 10) / 10).toFixed(1), money = x => Engine.fmt(x, C.cur);
+    const vec = (S, k) => (S.X.power.vectors.find(v => v.key === k) || {}).score;
+    const ax = (S, k) => (S.X.axes.find(a => a.key === k) || {}).score;
+    const rows = [
+      ['Price', S => money(S.price) + (S.unpriced ? ' (' + S.unpriced + ' unpriced)' : ''), S => S.price, 0],
+      ['Power level', S => f1(S.X.power.pl), S => S.X.power.pl, 1],
+      ['Card quality (0–100)', S => S.X.power.qScore, S => S.X.power.qScore, 1],
+      ['Fundamentals', S => S.X.overall, S => S.X.overall, 1],
+      ['Min. bracket', S => S.X.power.minBracket, S => S.X.power.minBracket, 0],
+      ['Typical win turn', S => 'T' + S.X.power.win.typical, S => -S.X.power.win.typical, 1],
+      ['Game Changers', S => S.X.bracket.counts.gc, S => S.X.bracket.counts.gc, 0],
+      ['Avg MV (nonland)', S => S.X.avgMV.toFixed(2), S => S.X.avgMV, 0],
+      ['Lands (nonbasic)', S => S.X.nLands + ' (' + S.nonbasicLands + ')', S => S.X.nLands, 0],
+      ['Creatures', S => S.creatures, S => S.creatures, 0]
+    ].concat(['ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon'].map(r => [Engine.SLOT_LABEL[r], S => S.role[r] || 0, S => S.role[r] || 0, 0]))
+      .concat(C.A.X.power.vectors.map(v => ['Vector: ' + v.label, S => vec(S, v.key), S => vec(S, v.key), 1]))
+      .concat(C.A.X.axes.map(a => ['Axis: ' + a.label, S => ax(S, a.key), S => ax(S, a.key), 1]))
+      .concat([['Keep-7 rate', S => (S.X.sim.keep7 * 100).toFixed(0) + '%', S => S.X.sim.keep7, 1], ['Mana on T4 (avg)', S => (+S.X.sim.manaByTurn[4]).toFixed(2), S => +S.X.sim.manaByTurn[4], 1]]);
+    const d = (a, b) => { const x = a - b; return Math.abs(x) < 1e-9 ? '' : (x > 0 ? '+' : '') + (Math.abs(x) < 10 && x % 1 ? +x.toFixed(2) : Math.round(x)); };
+    const tbl = '<div class="scroll"><table class="t compact"><thead><tr><th>Metric</th><th class="n">Generated</th><th class="n">Pasted</th><th class="n">Gen − Pasted</th></tr></thead><tbody>' +
+      rows.map(([lab, show, num]) => '<tr><td>' + esc(lab) + '</td><td class="n">' + show(C.A) + '</td><td class="n">' + show(C.B) + '</td><td class="n note">' + d(num(C.A), num(C.B)) + '</td></tr>').join('') + '</tbody></table></div>';
+    const list = (t, arr) => '<details><summary class="note" style="cursor:pointer">' + esc(t) + ' (' + arr.length + ')</summary><p class="note">' + esc(arr.sort().join(', ')) + '</p></details>';
+    return '<div class="an-card wide" style="margin-top:10px"><div class="an-top"><h3>Generated vs pasted</h3><span class="chip">' + C.shared.length + ' shared cards</span></div>' + tbl +
+      '<p class="note">Both decks scored by the same rules with ' + C.games.toLocaleString() + ' simulated games and the same seed. Win turn: lower is faster, so its difference column is sign-flipped. Price uses ' + esc(C.cur.toUpperCase()) + ' from your bulk file' + (App.S.budget.inclBasics ? '' : ', basics excluded') + '.</p>' +
+      list('Only in generated', C.onlyA) + list('Only in pasted', C.onlyB) + list('Shared', C.shared.slice()) +
+      (C.unknown && C.unknown.length ? '<div class="msg warn">Not found in bulk data: ' + esc(C.unknown.join(', ')) + '</div>' : '') + '</div>';
+  }
   function renderAnalysis() {
     const X = App.AN;
-    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste') + '">Generated deck</button><button type="button" data-an="src-paste" aria-pressed="' + (App.anSource === 'paste') + '">Pasted list</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
-      (App.anSource === 'paste' ? '<label class="f" style="margin-top:8px">Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="anText" rows="8" spellcheck="false">' + esc(App.anText || '') + '</textarea></label>' : '');
+    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">Generated deck</button><button type="button" data-an="src-paste" aria-pressed="' + (App.anSource === 'paste') + '">Pasted list</button><button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
+      (App.anSource === 'paste' || App.anSource === 'compare' ? '<label class="f" style="margin-top:8px">' + (App.anSource === 'compare' ? 'List to compare against the generated deck. ' : '') + 'Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="anText" rows="8" spellcheck="false">' + esc(App.anText || '') + '</textarea></label>' : '');
     if (!X) { $('view').innerHTML = src + '<p class="note" style="margin-top:10px">Scores speed, mana, card advantage, interaction, resilience, synergy, consistency and win pressure from card data, exact probabilities and a seeded goldfish simulation. Runs entirely in this page.</p>'; return; }
     if (X.error) { $('view').innerHTML = src + '<div class="msg err" style="margin-top:10px">' + esc(X.error) + (X.unknown && X.unknown.length ? '<br>Unknown names: ' + esc(X.unknown.join(', ')) : '') + '</div>'; return; }
+    if (X.compare) { $('view').innerHTML = src + compareHTML(X); return; }
     const s = X.sim, b = X.bracket;
     const head = '<div class="summary an-head">' + [
       ['Power level', '<span class="big">' + X.power.pl.toFixed(1) + '</span><span class="note"> ±' + X.power.ci.toFixed(1) + '</span>'],
@@ -731,7 +788,7 @@
     $('view').addEventListener('click', e => {
       const b = e.target.closest('button[data-an]'); if (!b) return;
       const a = b.dataset.an;
-      if (a === 'src-deck' || a === 'src-paste') { App.anSource = a === 'src-paste' ? 'paste' : 'deck'; App.AN = null; renderAnalysis(); if (App.anSource === 'deck' && App.R) runAnalysis(); }
+      if (a === 'src-deck' || a === 'src-paste' || a === 'src-compare') { App.anSource = a.slice(4) === 'deck' ? 'deck' : a.slice(4); App.AN = null; renderAnalysis(); if (App.anSource === 'deck' && App.R) runAnalysis(); }
       else if (a === 'run') runAnalysis();
     });
     $('view').addEventListener('click', async e => {
@@ -760,7 +817,7 @@
   function fillStatic() {
     const sel = $('archetype');
     for (const [k, t] of Object.entries(Engine.TAGS)) { const o = document.createElement('option'); o.value = k; o.textContent = t.label; sel.appendChild(o); }
-    $('tagNote').textContent = 'Keys: ' + Object.keys(Engine.TAGS).join(', ') + '. Commander text also adds matching tags and any creature type it names.';
+    $('tagNote').textContent = 'Comma-separated. Any creature type in the data, a theme name, or o:text to match rules text. The commander\'s own text adds matching themes automatically.';
     const rows = [];
     for (const role of Engine.ROLES) for (const r of Engine.ROLE_RULES[role]) rows.push([Engine.SLOT_LABEL[role], r.id, r.desc]);
     for (const [k, f] of Object.entries(Engine.FLAGS)) rows.push(['Flag', k, f.desc]);

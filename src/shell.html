@@ -267,44 +267,17 @@ table.swaps td{vertical-align:top}
   <div class="f"><span>Game plan</span><div class="seg wide" id="qPlan" role="radiogroup" aria-label="Game plan">
     <button type="button" data-plan="balanced">Balanced</button><button type="button" data-plan="fast">Fast</button><button type="button" data-plan="late">Late game</button><button type="button" data-plan="control">Control</button>
   </div><div class="note" id="qPlanNote"></div></div>
-  <div class="f"><span>Themes <span class="note">(tap to add or remove)</span></span><div class="chips" id="qThemes"></div></div>
+  <div class="f"><span>Themes <span class="note">(pick any number; slots are shared evenly)</span></span><div class="chips" id="qThemes"></div></div>
+  <label class="f">Creature types and other themes<input type="text" id="tags" data-k="tags" placeholder="e.g. Angel, Human, o:proliferate"></label>
+  <div class="note" id="tagNote"></div>
   <label class="f">Budget
-    <select id="qBudget"><option value="">No limit</option><option value="50">Up to 50</option><option value="100">Up to 100</option><option value="250">Up to 250</option><option value="500">Up to 500</option><option value="1000">Up to 1,000</option><option value="custom" disabled>Custom (set in Budget)</option></select></label>
+    <select id="qBudget"><option value="">No limit</option><option value="50">Up to 50</option><option value="100">Up to 100</option><option value="250">Up to 250</option><option value="500">Up to 500</option><option value="1000">Up to 1,000</option><option value="custom" disabled>Custom (set in Budget and collection)</option></select></label>
   <button type="button" class="primary block" id="qGen">Generate deck</button>
 </div></details>
 
 <div class="side-h">Fine-tune</div>
 
-<details class="sec"><summary>Bracket limits</summary><div class="body">
-  <div class="grid3">
-    <label class="f">Game Changers max<input type="number" min="0" id="blgc" data-k="bl.gc"></label>
-    <label class="f">Mass land denial max<input type="number" min="0" id="blmld" data-k="bl.mld"></label>
-    <label class="f">Extra-turn cards max<input type="number" min="0" id="blxturn" data-k="bl.xturn"></label>
-    <label class="f">Tutors max<input type="number" min="0" id="bltutor" data-k="bl.tutor"></label>
-    <label class="f">2-card infinites max<input type="number" min="0" id="blcombo2" data-k="bl.combo2"></label>
-  </div>
-  <div class="note">999 = unlimited. Rules per the Oct 21 2025 bracket update (unchanged Feb 9 2026): B1–2 no Game Changers, B3 up to 3; no mass land denial below B4; B1 no extra turns, B2–3 extra turns in low quantity and not chained (1 and 2 here are interpretations); no 2-card infinites in B1–2, none early-game in B3 (0 here is stricter); tutors are unrestricted. Game Changers use Scryfall's <code>game_changer</code> field, so the list is as current as your bulk file. Combo limits need the Spellbook file.</div>
-</div></details>
-
-<details class="sec"><summary>Themes and tags</summary><div class="body">
-  <label class="f">Tags (comma-separated: archetype keys, creature types, or o:oracle text)<input type="text" id="tags" data-k="tags" placeholder="e.g. Elf, tokens, o:proliferate"></label>
-  <div class="note" id="tagNote"></div>
-</div></details>
-
-<details class="sec"><summary>Budget</summary><div class="body">
-  <div class="grid2">
-    <label class="f">Total cap<input type="number" min="0" step="0.01" id="bTotal" data-k="budget.total" placeholder="none"></label>
-    <label class="f">Per-card cap<input type="number" min="0" step="0.01" id="bPer" data-k="budget.perCard" placeholder="none"></label>
-    <label class="f">Currency / price source
-      <select id="bCur" data-k="budget.cur"><option value="usd">USD (Scryfall prices.usd)</option><option value="eur">EUR (prices.eur)</option><option value="tix">TIX (prices.tix)</option></select></label>
-    <label class="f">Cards with no price
-      <select id="bUnk" data-k="budget.unknown"><option value="exclude">Exclude when a cap is set</option><option value="allow">Allow (count as 0)</option></select></label>
-  </div>
-  <label class="c"><input type="checkbox" id="bBasics" data-k="budget.inclBasics"> Include basic lands in total</label>
-  <div class="note">Commanders count toward the total but not the per-card cap.</div>
-</div></details>
-
-<details class="sec"><summary>Category targets</summary><div class="body">
+<details class="sec"><summary>Deck shape</summary><div class="body">
   <div class="grid3">
     <label class="f">Lands<input type="number" min="0" max="99" id="tLands" data-k="targets.lands"></label>
     <label class="f">Ramp<input type="number" min="0" id="tRamp" data-k="targets.ramp"></label>
@@ -314,32 +287,43 @@ table.swaps td{vertical-align:top}
     <label class="f">Protection<input type="number" min="0" id="tProt" data-k="targets.protection"></label>
     <label class="f">Recursion<input type="number" min="0" id="tRec" data-k="targets.recursion"></label>
     <label class="f">Win conditions<input type="number" min="0" id="tWin" data-k="targets.wincon"></label>
+    <label class="f">Target average MV (nonland)<input type="number" min="1" max="7" step="0.1" id="mAvg" data-k="mana.avgMV"></label>
   </div>
+  <div class="note">Game plan sets these; change any number here.</div>
 </div></details>
 
-<details class="sec"><summary>Mana base</summary><div class="body">
+<details class="sec"><summary>Budget and collection</summary><div class="body">
   <div class="grid2">
-    <label class="f">Target average MV (nonland)<input type="number" min="1" max="7" step="0.1" id="mAvg" data-k="mana.avgMV"></label>
-    <label class="f">Nonbasic lands (blank = auto)<input type="number" min="0" max="99" id="mNB" data-k="mana.nonbasic" placeholder="auto"></label>
+    <label class="f">Total cap<input type="number" min="0" step="0.01" id="bTotal" data-k="budget.total" placeholder="none"></label>
+    <label class="f">Per-card cap<input type="number" min="0" step="0.01" id="bPer" data-k="budget.perCard" placeholder="none"></label>
+    <label class="f">Currency / price source
+      <select id="bCur" data-k="budget.cur"><option value="usd">USD (Scryfall prices.usd)</option><option value="eur">EUR (prices.eur)</option><option value="tix">TIX (prices.tix)</option></select></label>
+    <label class="f">Cards with no price
+      <select id="bUnk" data-k="budget.unknown"><option value="exclude">Exclude when a cap is set</option><option value="allow">Allow (count as 0)</option></select></label>
   </div>
-  <div class="grid3">
-    <label class="c"><input type="checkbox" id="ltFetch" data-k="mana.types.fetch"> Fetches</label>
-    <label class="c"><input type="checkbox" id="ltShock" data-k="mana.types.shock"> Shocks</label>
-    <label class="c"><input type="checkbox" id="ltDual" data-k="mana.types.dual"> Duals</label>
-    <label class="c"><input type="checkbox" id="ltTri" data-k="mana.types.triome"> Triomes</label>
-    <label class="c"><input type="checkbox" id="ltUtil" data-k="mana.types.utility"> Utility</label>
-    <label class="c"><input type="checkbox" id="ltCmd" data-k="mana.types.command"> Any-color</label>
+  <label class="c"><input type="checkbox" id="bBasics" data-k="budget.inclBasics"> Include basic lands in total</label>
+  <div class="grid2">
+    <label class="f">Mode<select id="oMode" data-k="owned.mode"><option value="off">Off</option><option value="prefer">Prefer owned</option><option value="only">Owned only</option></select></label>
   </div>
-  <div class="note">Basics are split by color-pip share of the nonland cards and commanders. Auto nonbasic counts by colors (0–5): 8, 7, 14, 17, 19, 21.</div>
+  <label class="f">Collection list (paste, or load a .txt/.csv)<textarea id="oList" data-k="owned.list"></textarea></label>
+  <input type="file" id="oFile" accept=".txt,.csv,text/plain,text/csv" aria-label="Load collection file">
+  <div class="note">Commanders count toward the total but not the per-card cap.</div>
 </div></details>
 
 <details class="sec"><summary>Include / exclude</summary><div class="body">
   <label class="f">Must include (one per line, "N Name" allowed)<textarea id="incl" data-k="include" placeholder="1 Sol Ring"></textarea></label>
-  <label class="f">Exclude<textarea id="excl" data-k="exclude"></textarea></label>
+    <label class="f">Exclude<textarea id="excl" data-k="exclude"></textarea></label>
   <div class="note">Includes count toward category targets and are never auto-removed.</div>
 </div></details>
 
-<details class="sec"><summary>Filters</summary><div class="body">
+<details class="sec"><summary>Rules</summary><div class="body">
+  <div class="grid3">
+    <label class="f">Game Changers max<input type="number" min="0" id="blgc" data-k="bl.gc"></label>
+    <label class="f">Mass land denial max<input type="number" min="0" id="blmld" data-k="bl.mld"></label>
+    <label class="f">Extra-turn cards max<input type="number" min="0" id="blxturn" data-k="bl.xturn"></label>
+    <label class="f">Tutors max<input type="number" min="0" id="bltutor" data-k="bl.tutor"></label>
+    <label class="f">2-card infinites max<input type="number" min="0" id="blcombo2" data-k="bl.combo2"></label>
+  </div>
   <div class="grid2">
     <label class="f">Combos<select id="fCombo" data-k="filters.combos"><option value="bracket">Follow bracket limit</option><option value="allow">Allow all</option><option value="prefer">Prefer (add up to 2)</option><option value="no2inf">Exclude 2-card infinites</option><option value="noinf">Exclude infinite combos</option><option value="none">Exclude all combos</option></select></label>
     <label class="f">Tutors<select id="fTut" data-k="filters.tutors"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
@@ -350,25 +334,8 @@ table.swaps td{vertical-align:top}
     <label class="f">Hate-bears<select id="fHate" data-k="filters.hate"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
     <label class="f">Reserved list<select id="fRl" data-k="filters.reserved"><option value="allow">Allow</option><option value="exclude">Exclude</option></select></label>
     <label class="f">Silver-border / acorn / Un<select id="fUn" data-k="filters.funny"><option value="exclude">Exclude</option><option value="allow">Allow if legal</option></select></label>
-    <label class="f">Allowed sets (codes)<input type="text" id="fSets" data-k="filters.sets" placeholder="all"></label>
-    <label class="f">Printed on/after<input type="date" id="fFrom" data-k="filters.dateFrom"></label>
-    <label class="f">Printed on/before<input type="date" id="fTo" data-k="filters.dateTo"></label>
-    <label class="f">Creatures min<input type="number" min="0" id="fCmin" data-k="filters.creaturesMin"></label>
-    <label class="f">Creatures max<input type="number" min="0" id="fCmax" data-k="filters.creaturesMax"></label>
   </div>
-  <div class="note">Commander legality always wins: a filter cannot admit an illegal card. Flag rules are listed under Advanced.</div>
-</div></details>
-
-<details class="sec"><summary>Collection</summary><div class="body">
-  <label class="f">Mode<select id="oMode" data-k="owned.mode"><option value="off">Off</option><option value="prefer">Prefer owned</option><option value="only">Owned only</option></select></label>
-  <label class="f">Collection list (paste, or load a .txt/.csv)<textarea id="oList" data-k="owned.list"></textarea></label>
-  <input type="file" id="oFile" accept=".txt,.csv,text/plain,text/csv" aria-label="Load collection file">
-</div></details>
-
-<details class="sec"><summary>Randomness</summary><div class="body">
-  <div class="row"><label class="f" style="flex:1">Seed (blank = derived from settings)<input type="text" id="seed" data-k="seed"></label><button type="button" class="small" id="seedBtn" style="align-self:flex-end">New seed</button></div>
-  <label class="f">Variance <span id="varOut" class="mono-inline"></span><input type="range" min="0" max="1" step="0.05" id="variance" data-k="variance" data-type="num"></label>
-  <div class="note">Variance adds a seeded ±value to each score, so near-equal cards swap between seeds. Same seed and settings give the same deck.</div>
+  <div class="note">Bracket sets the limits (999 = unlimited). Oct 21 2025 rules, unchanged Feb 9 2026: B1–2 no Game Changers, B3 up to 3; no mass land denial below B4; B1 no extra turns, B2–3 few (1 and 2 here are interpretations); no 2-card infinites in B1–2, none early in B3 (0 here is stricter); tutors unrestricted. Game Changers use Scryfall's <code>game_changer</code> field. Commander legality always wins.</div>
 </div></details>
 
 <details class="sec"><summary>Advanced</summary><div class="body">
@@ -382,7 +349,26 @@ table.swaps td{vertical-align:top}
     <label class="f">Bracket penalty<input type="number" step="0.1" id="wBr" data-k="weights.bracket"></label>
     <label class="f">Bracket power pull<input type="number" step="0.1" id="wPow" data-k="weights.power"></label>
   </div>
-  <div class="note">score = syn·min(synergy,3) + role·(unfilled roles matched) + pop·(1 − log₁₀ rank / log₁₀ 40000) + curve·fit(MV) + owned − price·min(3, price ÷ (per-card cap, or 3×budget÷99)) − bracket·(limited flags) + power·pref(bracket)·cardPower + seeded noise. pref = −1, −0.4, 0.5, 1.3, 2 for B1–B5. fit(MV) = 1 − |MV − target| / (4 below, 3 above). Price only counts when a budget is set.</div>
+  <div class="note">score = syn·min(synergy,3) + role·(unfilled roles matched) + pop·(1 − log₁₀ rank / log₁₀ 40000) + curve·fit(MV) + owned − price·min(3, price ÷ (per-card cap, or 3×budget÷99)) − bracket·(limited flags) + power·pref(bracket)·cardPower + seeded noise. pref = −1, −0.4, 0.5, 1.3, 2 for B1–B5. fit(MV) = 1 − |MV − target| / (4 below, 3 above). Price only counts when a budget is set. With two or more themes, synergy slots go round-robin to the theme with the fewest cards relative to its weight.</div>
+  <div class="row"><label class="f" style="flex:1">Seed (blank = derived from settings)<input type="text" id="seed" data-k="seed"></label><button type="button" class="small" id="seedBtn" style="align-self:flex-end">New seed</button></div>
+  <label class="f">Variance <span id="varOut" class="mono-inline"></span><input type="range" min="0" max="1" step="0.05" id="variance" data-k="variance" data-type="num"></label>
+  <div class="grid2">
+    <label class="f">Nonbasic lands (blank = auto)<input type="number" min="0" max="99" id="mNB" data-k="mana.nonbasic" placeholder="auto"></label>
+    <label class="f">Allowed sets (codes)<input type="text" id="fSets" data-k="filters.sets" placeholder="all"></label>
+    <label class="f">Printed on/after<input type="date" id="fFrom" data-k="filters.dateFrom"></label>
+    <label class="f">Printed on/before<input type="date" id="fTo" data-k="filters.dateTo"></label>
+    <label class="f">Creatures min<input type="number" min="0" id="fCmin" data-k="filters.creaturesMin"></label>
+    <label class="f">Creatures max<input type="number" min="0" id="fCmax" data-k="filters.creaturesMax"></label>
+  </div>
+  <div class="grid3">
+    <label class="c"><input type="checkbox" id="ltFetch" data-k="mana.types.fetch"> Fetches</label>
+    <label class="c"><input type="checkbox" id="ltShock" data-k="mana.types.shock"> Shocks</label>
+    <label class="c"><input type="checkbox" id="ltDual" data-k="mana.types.dual"> Duals</label>
+    <label class="c"><input type="checkbox" id="ltTri" data-k="mana.types.triome"> Triomes</label>
+    <label class="c"><input type="checkbox" id="ltUtil" data-k="mana.types.utility"> Utility</label>
+    <label class="c"><input type="checkbox" id="ltCmd" data-k="mana.types.command"> Any-color</label>
+  </div>
+  <div class="note">Basics split by color-pip share. Auto nonbasic counts by colors (0–5): 8, 7, 14, 17, 19, 21. Variance adds a seeded ±value to each score; same seed and settings give the same deck.</div>
   <details><summary class="note" style="cursor:pointer">Tag and flag rules</summary><div id="rulesRef" class="note scroll"></div></details>
 </div></details>
 

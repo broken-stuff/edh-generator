@@ -685,8 +685,28 @@ const Engine = (function () {
       }
       return n;
     };
-    const nSyn = tags.length ? fill('synergy', c => synOf(c).s > 0) : 0;
-    L('Synergy: ' + nSyn + ' cards matching tags [' + tags.map(t => t.label).join(', ') + '].');
+    /* several themes: round-robin by weight so one large theme cannot crowd out the others */
+    const synFill = () => {
+      if (tags.length < 2) return fill('synergy', c => synOf(c).s > 0);
+      const lists = tags.map(t => ({ t, got: 0, cands: sortScored(pool.filter(c => !analyze(c).isLand && t.test(c)).map(c => ({ c, s: dyn(c) }))), i: 0 }));
+      for (const l of lists) l.got = deck.filter(e => !analyze(e.c).isLand && l.t.test(e.c)).length;
+      let n = 0;
+      for (let guard = 0; guard < 400 && nonlandSlots() > 0; guard++) {
+        const open = lists.filter(l => l.i < l.cands.length);
+        if (!open.length) break;
+        const l = open.sort((a, b) => a.got / a.t.w - b.got / b.t.w || (a.t.key < b.t.key ? -1 : 1))[0];
+        const x = l.cands[l.i++];
+        if (st.names.has(x.c.n)) continue;
+        if (cmin != null && cmin - st.creatures >= nonlandSlots() && !analyze(x.c).creature) continue;
+        if (canAdd(x.c)) continue;
+        add(x.c, 'synergy', 1, dyn(x.c)); n++;
+        for (const m of lists) if (m.t.test(x.c)) m.got++;
+      }
+      R.themeCounts = lists.map(l => ({ label: l.t.label, n: l.got }));
+      return n;
+    };
+    const nSyn = tags.length ? synFill() : 0;
+    L('Synergy: ' + nSyn + ' cards matching tags [' + tags.map(t => t.label).join(', ') + ']' + (R.themeCounts ? '; per theme (incl. role cards): ' + R.themeCounts.map(x => x.label + ' ' + x.n).join(', ') : '') + '.');
     const nFlex = fill('flex', () => true);
     L('Flex: ' + nFlex + ' cards by score.');
 
