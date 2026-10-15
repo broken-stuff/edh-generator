@@ -4,7 +4,7 @@ Offline Commander (EDH) deck generator and analyzer. One static page (`index.htm
 
 ## Data files
 
-The page loads card and combo data from `data/` in this repository:
+The page loads card data from `data/` in this repository:
 
 | File | Source | Required |
 |---|---|---|
