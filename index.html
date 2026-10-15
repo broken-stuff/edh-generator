@@ -386,8 +386,9 @@ table.swaps td{vertical-align:top}
     <label class="f">Price penalty<input type="number" step="0.1" id="wPrice" data-k="weights.price"></label>
     <label class="f">Owned bonus<input type="number" step="0.1" id="wOwned" data-k="weights.owned"></label>
     <label class="f">Bracket penalty<input type="number" step="0.1" id="wBr" data-k="weights.bracket"></label>
+    <label class="f">Bracket power pull<input type="number" step="0.1" id="wPow" data-k="weights.power"></label>
   </div>
-  <div class="note">score = syn·min(synergy,3) + role·(unfilled roles matched) + pop·(1 − log₁₀ rank / log₁₀ 40000) + curve·fit(MV) + owned − price·penalty − bracket·(limited flags) + seeded noise.</div>
+  <div class="note">score = syn·min(synergy,3) + role·(unfilled roles matched) + pop·(1 − log₁₀ rank / log₁₀ 40000) + curve·fit(MV) + owned − price·min(3, price ÷ (per-card cap, or 3×budget÷99)) − bracket·(limited flags) + power·pref(bracket)·cardPower + seeded noise. pref = −1, −0.4, 0.5, 1.3, 2 for B1–B5. fit(MV) = 1 − |MV − target| / (4 below, 3 above). Price only counts when a budget is set.</div>
   <details><summary class="note" style="cursor:pointer">Tag and flag rules</summary><div id="rulesRef" class="note scroll"></div></details>
 </div></details>
 
@@ -474,7 +475,7 @@ const Engine = (function () {
         reserved: 'allow', funny: 'exclude', dateFrom: '', dateTo: '', sets: '', creaturesMin: null, creaturesMax: null },
       owned: { mode: 'off', list: '' },
       seed: '', reroll: 0, variance: 0.15,
-      weights: { syn: 2, role: 1.5, pop: 1.5, curve: 1, price: 0.5, owned: 1, bracket: 0.5 }
+      weights: { syn: 2, role: 1.5, pop: 1.5, curve: 1.5, price: 0.5, owned: 1, bracket: 0.5, power: 2 }
     };
   }
   function bracketDefaults(b) { return Object.assign({}, BRACKETS[b] || BRACKETS[3]); }
@@ -780,6 +781,29 @@ const Engine = (function () {
     };
   }
 
+  /* ---------- card power index (0–1) from card data: flags, efficiency of each role at its mana value, free casting, EDHREC popularity.
+     Weights are this tool's own; they rank cards, they are not a published rating. ---------- */
+  const CP = new WeakMap();
+  function cardPower(c) {
+    let v = CP.get(c); if (v != null) return v;
+    const a = analyze(c), low = c.low || '', mv = c.cmc || 0, inst = /\bInstant\b/.test(c.ft) || (c.kw || []).includes('flash');
+    let p = 0;
+    if (a.flags.fast) p += 0.45;
+    if (a.flags.gc) p += 0.35;
+    if (a.flags.tutor) p += mv <= 2 ? 0.35 : 0.2;
+    if (a.roles.removal) p += mv <= 2 ? (inst ? 0.3 : 0.2) : mv <= 3 ? 0.1 : 0;
+    if (a.roles.wipes && mv <= 4) p += 0.1;
+    if (a.roles.ramp && !a.isLand) p += mv <= 1 ? 0.3 : mv === 2 ? 0.15 : 0;
+    if (a.roles.draw) p += (/\b(?:Artifact|Creature|Enchantment|Planeswalker)\b/.test(c.ft) && /whenever|at the beginning of/.test(low) && mv <= 3) ? 0.2 : mv <= 2 ? 0.1 : 0;
+    if (a.roles.protection && mv <= 1) p += 0.15;
+    if (/without paying (?:its|this spell's) mana cost|rather than pay (?:this spell's|its) mana cost/.test(low)) p += 0.25;
+    if (a.flags.stax) p += 0.1;
+    p += 0.25 * (c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0);
+    v = Math.max(0, Math.min(1, p)); CP.set(c, v); return v;
+  }
+  // how much each bracket prefers raw card power when generating (negative = avoid strong cards)
+  const POWER_PREF = { 1: -1, 2: -0.4, 3: 0.5, 4: 1.3, 5: 2 };
+
   /* ---------- generation ---------- */
   async function generate(db, S0, env) {
     env = env || {};
@@ -939,13 +963,14 @@ const Engine = (function () {
     const synOf = c => { let v = syn.get(c); if (v) return v; let s = 0; const hit = []; for (const t of tags) if (t.test(c)) { s += t.w; hit.push(t.label); } v = { s, hit }; syn.set(c, v); return v; };
     const pop = c => c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
     const priceRef = pcap != null ? pcap : (cap != null ? Math.max(1, cap / mainSize * 3) : null);
-    const pricePen = c => { const p = price(c); if (p == null) return 0; return priceRef ? Math.min(2, p / priceRef) : Math.log1p(p) / Math.log1p(100); };
-    const curveFit = c => c.cmc <= T + 1 ? 1 : Math.max(0, 1 - (c.cmc - (T + 1)) / 4);
+    const pricePen = c => { const p = price(c); if (p == null || !priceRef) return 0; return Math.min(3, p / priceRef); }; // no budget → price is ignored
+    const curveFit = c => Math.max(-0.5, 1 - Math.abs(c.cmc - T) / (c.cmc < T ? 4 : 3));
+    const pPref = (POWER_PREF[S.bracket] != null ? POWER_PREF[S.bracket] : 0.5) * (W.power != null ? +W.power : 2);
     const bpen = c => { const a = analyze(c); let s = 0; for (const k of ['gc', 'tutor', 'xturn', 'mld']) if (a.flags[k] && lim[k] < 999) s += 1; return s; };
     const baseCache = new Map();
     const base = c => {
       let v = baseCache.get(c); if (v != null) return v;
-      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (noise.get(c.n) || 0);
+      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + pPref * cardPower(c) + (noise.get(c.n) || 0);
       baseCache.set(c, v); return v;
     };
 
@@ -1115,15 +1140,22 @@ const Engine = (function () {
 
     /* 6. curve adjustment (soft) */
     const avgMV = () => { const nl = deck.filter(e => !analyze(e.c).isLand); const q = nl.reduce((s, e) => s + e.qty, 0); return q ? nl.reduce((s, e) => s + e.c.cmc * e.qty, 0) / q : 0; };
-    for (let i = 0; i < 12 && avgMV() > T + 0.15; i++) {
-      const victim = deck.filter(e => !e.locked && (e.slot === 'flex' || e.slot === 'synergy') && e.c.cmc > T).sort((a, b) => b.c.cmc - a.c.cmc || a.score - b.score)[0];
-      if (!victim) break;
-      const rep = sortScored(pool.filter(c => !analyze(c).isLand && !st.names.has(c.n) && c.cmc <= T && (victim.slot !== 'synergy' || synOf(c).s > 0)).map(c => ({ c, s: dyn(c) })))
-        .find(x => x.s >= victim.score - 1.5 && !canAdd(x.c, { replacing: victim }));
-      if (!rep) break;
-      removeEntry(victim); add(rep.c, victim.slot, 1, rep.s);
-      L('Curve: swapped ' + victim.c.n + ' (MV ' + victim.c.cmc + ', score ' + victim.score.toFixed(2) + ') → ' + rep.c.n + ' (MV ' + rep.c.cmc + ', score ' + rep.s.toFixed(2) + '); avg MV now ' + avgMV().toFixed(2) + '.');
-    }
+    const curveOk = (c, slot) => slot === 'synergy' ? synOf(c).s > 0 : ROLES.includes(slot) ? !!analyze(c).roles[slot] : true;
+    const curveStep = up => {
+      const victims = deck.filter(e => !e.locked && e.qty === 1 && (e.slot === 'flex' || e.slot === 'synergy' || ROLES.includes(e.slot)) && (up ? e.c.cmc < T - 0.5 : e.c.cmc > T))
+        .sort((a, b) => (up ? a.c.cmc - b.c.cmc : b.c.cmc - a.c.cmc) || a.score - b.score);
+      for (const victim of victims) {
+        const rep = sortScored(pool.filter(c => !analyze(c).isLand && !st.names.has(c.n) && (up ? c.cmc > victim.c.cmc && c.cmc <= T + 2 : c.cmc <= T) && curveOk(c, victim.slot)).map(c => ({ c, s: dyn(c) })))
+          .find(x => x.s >= victim.score - 1.5 && !canAdd(x.c, { replacing: victim }));
+        if (!rep) continue;
+        removeEntry(victim); add(rep.c, victim.slot, 1, rep.s);
+        L('Curve' + (up ? ' (up)' : '') + ': swapped ' + victim.c.n + ' (' + victim.slot + ', MV ' + victim.c.cmc + ', score ' + victim.score.toFixed(2) + ') → ' + rep.c.n + ' (MV ' + rep.c.cmc + ', score ' + rep.s.toFixed(2) + '); avg MV now ' + avgMV().toFixed(2) + '.');
+        return true;
+      }
+      return false;
+    };
+    for (let i = 0; i < 20 && avgMV() > T + 0.15 && curveStep(false); i++);
+    for (let i = 0; i < 20 && avgMV() < T - 0.15 && curveStep(true); i++);
 
     /* 7. basics */
     function addBasics(n, label) {
@@ -1346,7 +1378,7 @@ const Engine = (function () {
     return lines.join('\n') + '\n';
   }
 
-  return { defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
+  return { cardPower, POWER_PREF, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
     norm, buildDB, lookup, nameKey, parseList, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
     slimVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes };
 })();
@@ -1632,10 +1664,12 @@ const Analysis = (function () {
     const cardOf = n => byName.get(E.nameKey(n)) || byName.get(E.nameKey(String(n).split(' // ')[0])) || null;
     const cmdKeys = new Set(cmds.map(c => E.nameKey(c.n)));
     const sat = (x, k) => 100 * (1 - Math.exp(-Math.max(0, x) / k));
-    const comp = (label, n, w, cards) => ({ label, n, w, pts: n * w, cards: cards || [] });
+    // each card counts w × (0.6 + card power), so a stronger card in the same slot scores higher
+    const qf = x => typeof x === 'string' ? 1 : 0.6 + E.cardPower(x);
+    const comp = (label, n, w, cards) => { cards = cards || []; const pts = cards.length === n ? cards.reduce((s, x) => s + w * qf(x), 0) : n * w; return { label, n, w, pts, cards: cards.map(x => typeof x === 'string' ? x : x.n) }; };
     const vec = (key, label, k, parts) => { const pts = parts.reduce((s, p) => s + p.pts, 0); return { key, label, k, pts, score: Math.round(sat(pts, k)), parts }; };
     const uniq = new Set();
-    const take = (pred) => { const out = []; for (const e of nonland) { if (uniq.has(e.c)) continue; if (pred(e.c)) { uniq.add(e.c); out.push(e.c.n); } } return out; };
+    const take = (pred) => { const out = []; for (const e of nonland) { if (uniq.has(e.c)) continue; if (pred(e.c)) { uniq.add(e.c); out.push(e.c); } } return out; };
     // Speed: fast mana weighted most, then rocks, dorks, land ramp, treasure, cost reducers (one bucket per card)
     const sFast = take(c => A(c).flags.fast);
     const sRock2 = take(c => manaModel(c).rampPerm > 0 && !manaModel(c).dork && c.cmc <= 2);
@@ -1697,7 +1731,7 @@ const Analysis = (function () {
     const comboPts = families.reduce((s, f) => s + f.score * 8, 0);
     // Threats
     const synPieces = perCard.filter(x => x.links >= 3).map(x => x.c.n);
-    const vThreat = vec('threats', 'Threats', 20, [comp('Combo families (Spellbook)', families.length, families.length ? comboPts / families.length : 0, families.map(f => f.best.cards.join(' + '))), comp('Win conditions', wincons.length, 2, wincons), comp('Evasive creatures', evasive.length, 0.5, evasive), comp('Synergy pieces (≥3 links)', synPieces.length, 0.15, synPieces)]);
+    const vThreat = vec('threats', 'Threats', 20, [comp('Combo families (Spellbook)', families.length, families.length ? comboPts / families.length : 0, families.map(f => f.best.cards.join(' + '))), comp('Win conditions', wincons.length, 2, all.filter(e => A(e.c).roles.wincon).map(e => e.c)), comp('Evasive creatures', evasive.length, 0.5, evasive), comp('Synergy pieces (≥3 links)', synPieces.length, 0.15, synPieces)]);
     // Archetype
     const pairOf = k => pairStats.find(p => p.key === k);
     const themeScore = k => { const p = pairOf(k); return p && p.active ? Math.min(1, (p.en.length + p.pay.length) / 25 + (p.cmdEn || p.cmdPay ? 0.3 : 0)) : 0; };
@@ -1722,7 +1756,10 @@ const Analysis = (function () {
     const WEIGHTS = { Combo: [0.25, 0.3, 0.15, 0.3], Control: [0.2, 0.25, 0.35, 0.2], Stax: [0.2, 0.25, 0.35, 0.2], Aggro: [0.3, 0.2, 0.15, 0.35], Voltron: [0.3, 0.2, 0.15, 0.35], Tribal: [0.3, 0.2, 0.15, 0.35], Tokens: [0.3, 0.2, 0.15, 0.35], 'Big mana': [0.35, 0.2, 0.15, 0.3] };
     const wv = WEIGHTS[primary] || [0.25, 0.25, 0.2, 0.3];
     const vmix = vSpeed.score * wv[0] + vCons.score * wv[1] + vInt.score * wv[2] + vThreat.score * wv[3];
-    const plRaw = 1 + 9 * vmix / 100;
+    const cps = nonland.map(e => E.cardPower(e.c)).sort((a, b) => b - a);
+    const qualTop = cps.slice(0, 60); const cardQ = qualTop.length ? qualTop.reduce((a, b) => a + b, 0) / qualTop.length : 0;
+    const qScore = Math.min(100, cardQ / 0.6 * 100);
+    const plRaw = 1 + 9 * (0.7 * vmix + 0.3 * qScore) / 100;
     const manaMult = 0.85 + 0.15 * vMana.score / 100;
     const infra = nNon ? (sFast.length + tutors.length + cheapInteraction.length) / nNon : 0;
     const signals = [
@@ -1761,7 +1798,7 @@ const Analysis = (function () {
     // Card popularity distribution (EDHREC rank; popularity, not power)
     const RB = [['Top 500', 1, 500], ['501–2,000', 501, 2000], ['2,001–8,000', 2001, 8000], ['8,001+', 8001, 1e12]];
     const quality = RB.map(([label, lo, hi]) => ({ label, n: nonland.filter(e => e.c.rank && e.c.rank >= lo && e.c.rank <= hi).reduce((s, e) => s + e.qty, 0) })).concat([{ label: 'Unranked', n: nonland.filter(e => !e.c.rank).reduce((s, e) => s + e.qty, 0) }]);
-    const power = { pl, plRaw: Math.round(plRaw * 10) / 10, manaMult: Math.round(manaMult * 100) / 100, ceiling, ceilingBinding: plPre > ceiling, label: PL_LABEL[Math.max(1, Math.min(10, Math.floor(pl)))], ci, ciParts: ciParts.map(x => x[0]), confidence: ci <= 0.5 ? 'high' : ci <= 0.8 ? 'medium' : 'low', vectors, weights: { speed: wv[0], consistency: wv[1], interaction: wv[2], threats: wv[3] }, archetypes: ARCH.slice(0, 5), primary, signals, win: { best, typical, contested, comboTurn: comboTurn < 99 ? comboTurn : null }, minBracket: minB, minBracketWhy: why, combos: comboList, families: families.map(f => ({ score: Math.round(f.score * 100) / 100, n: f.combos.length, best: f.best })), earlyTwo, quality };
+    const power = { cardQ: Math.round(cardQ * 100) / 100, qScore: Math.round(qScore), pl, plRaw: Math.round(plRaw * 10) / 10, manaMult: Math.round(manaMult * 100) / 100, ceiling, ceilingBinding: plPre > ceiling, label: PL_LABEL[Math.max(1, Math.min(10, Math.floor(pl)))], ci, ciParts: ciParts.map(x => x[0]), confidence: ci <= 0.5 ? 'high' : ci <= 0.8 ? 'medium' : 'low', vectors, weights: { speed: wv[0], consistency: wv[1], interaction: wv[2], threats: wv[3] }, archetypes: ARCH.slice(0, 5), primary, signals, win: { best, typical, contested, comboTurn: comboTurn < 99 ? comboTurn : null }, minBracket: minB, minBracketWhy: why, combos: comboList, families: families.map(f => ({ score: Math.round(f.score * 100) / 100, n: f.combos.length, best: f.best })), earlyTwo, quality };
     // Anti-synergy checks
     const symWipes = names(c => A(c).roles.wipes && !/creatures? (?:your opponents|an opponent|you don't) control|nontoken creatures? (?:your opponents|you don't)/.test(c.low));
     const allGyExile = names(c => /exile (?:each|all) graveyards?|exile all cards from all graveyards|if a card would be put into an opponent's graveyard[^.]*exile|graveyards? from anywhere, exile it/.test(c.low) || /if a card or token would be put into a graveyard from anywhere/.test(c.low));
@@ -2326,6 +2363,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       '<table class="t compact"><tbody>' +
       '<tr><td>Archetype</td><td>' + esc(P.primary) + '</td><td class="why">' + esc(P.archetypes.slice(1, 4).map(a => a.name + ' ' + a.score.toFixed(2)).join(' · ')) + '</td></tr>' +
       '<tr><td>Vector mix → raw</td><td class="n">' + P.plRaw.toFixed(1) + '</td><td class="why">speed ' + P.weights.speed + ', consistency ' + P.weights.consistency + ', interaction ' + P.weights.interaction + ', threats ' + P.weights.threats + ' (' + esc(P.primary) + ' weights)</td></tr>' +
+      '<tr><td>Card quality</td><td class="n">' + P.qScore + '</td><td class="why">mean card power of top 60 nonland cards ' + P.cardQ + ' (scaled to 100 at 0.6); 30% of raw power</td></tr>' +
       '<tr><td>Mana base multiplier</td><td class="n">×' + P.manaMult.toFixed(2) + '</td><td></td></tr>' +
       '<tr><td>Strategy ceiling</td><td class="n">' + P.ceiling.toFixed(1) + '</td><td class="why">' + (P.ceilingBinding ? 'binding. ' : '') + P.signals.map(sg => (sg.on ? '✓ ' : '✗ ') + esc(sg.label)).join('<br>') + '</td></tr>' +
       '<tr><td>Win turn</td><td class="n">T' + P.win.best + ' / T' + P.win.typical + ' / T' + P.win.contested + '</td><td class="why">best / typical / contested' + (P.win.comboTurn ? '; fastest combo castable T' + P.win.comboTurn : '') + '</td></tr>' +
@@ -2368,7 +2406,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       '<li>Color sources: Frank Karsten\'s 99-card figures call for about 19 sources to cast a single-pip card on turn 1 and 30 for a double-pip card on turn 2 at ~90% (<a href="https://scrollvault.net/guides/mana-bases.html" target="_blank" rel="noopener">summary</a>). The color warning here is a looser share-of-pips check.</li>' +
       '<li>Goldfish: seeded, ' + s.games + ' games, no opponents. One free mulligan when the opening 7 has fewer than 2 or more than 5 lands. Draws from turn 2. Each turn it plays an untapped land if possible, casts ramp first, then the commander, then the largest spells that fit. Mana rocks add mana immediately, creatures next turn, land-search ramp adds tapped lands. Colors, rituals and card draw are not modeled.</li>' +
       '<li>Exact probabilities use the hypergeometric distribution over the ' + X.deckSize + '-card library.</li>' +
-      '<li>Power model follows the structure documented by <a href="https://scrycheck.com/docs" target="_blank" rel="noopener">ScryCheck</a>: five vectors (speed, consistency, interaction, mana base, threats), combo families from Spellbook, archetype-dependent weights, a strategy ceiling from four signals, a 1–10 scale with ± uncertainty, best/typical/contested win turns and a recommended minimum bracket. ScryCheck does not publish its weights, so every weight and curve here is this tool\'s own, shown on each card, and uncalibrated against labeled decks. Typical win turn maps power to WotC turn expectations (PL 5 → T8, 7 → T6, 8 → T5, 9 → T4). ScryCheck\'s Playgroup.gg anchor, edhtop16 metagame test and per-card power ratings need online data and are not reproduced.</li>' +
+      '<li>Power model follows the structure documented by <a href="https://scrycheck.com/docs" target="_blank" rel="noopener">ScryCheck</a>: five vectors (speed, consistency, interaction, mana base, threats), combo families from Spellbook, archetype-dependent weights, a strategy ceiling from four signals, a 1–10 scale with ± uncertainty, best/typical/contested win turns and a recommended minimum bracket. ScryCheck does not publish its weights, so every weight and curve here is this tool\'s own, shown on each card, and uncalibrated against labeled decks. Typical win turn maps power to WotC turn expectations (PL 5 → T8, 7 → T6, 8 → T5, 9 → T4). Raw power = 1 + 9·(0.7·vector mix + 0.3·card quality)/100. Card power (0–1) is an oracle-text heuristic: fast mana +0.45, Game Changer +0.35, tutor +0.2–0.35, cheap instant removal +0.3, MV≤1 ramp +0.3, free spells +0.25, cheap repeatable draw +0.2, plus 0.25×EDHREC popularity. Vector components weight each card by 0.6 + card power, so a like-for-like upgrade moves the score. ScryCheck\'s Playgroup.gg anchor, edhtop16 metagame test and per-card power ratings need online data and are not reproduced.</li>' +
       '<li>Bracket estimate: lowest bracket whose card limits (Bracket panel defaults) the list satisfies, per the <a href="https://mtg.wiki/page/Commander_Brackets" target="_blank" rel="noopener">Commander Brackets</a> as updated <a href="https://draftsim.com/mtg-october-2025-commander-bracket-changes/" target="_blank" rel="noopener">Oct 21 2025</a> and <a href="https://magic.wizards.com/en/news/announcements/commander-brackets-beta-update-february-9-2026" target="_blank" rel="noopener">Feb 9 2026</a>. Tutors are counted but no longer limit any bracket. Expected game length (B1 9+, B2 8+, B3 6+, B4 4+ turns) and intent are not measurable from card data.</li></ul></details>';
     $('view').innerHTML = src + head + '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + power + '<h3 class="an-sec">Fundamentals</h3><div class="an-grid top"><div class="an-card">' + '<h3>Profile</h3>' + radarSVG(X.axes) + '</div>' + goldfish + '</div>' + recs + axes + '<div class="an-grid">' + mana + inter + br + '</div>' + synergy + method;
   }
