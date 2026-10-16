@@ -137,6 +137,17 @@ table.t tr.grp td{background:transparent;color:var(--muted);font-weight:600;font
 .msg ul{margin:4px 0 0;padding-left:18px}
 .ms{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 3px;border-radius:9px;font-family:var(--f-mono);font-size:10px;font-weight:600;color:var(--pip-ink);background:var(--mC);margin-right:2px;vertical-align:1px;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 1px 1px rgba(0,0,0,.18)}
 .ms.W{background:var(--mW)}.ms.U{background:var(--mU)}.ms.B{background:var(--mB)}.ms.R{background:var(--mR)}.ms.G{background:var(--mG)}
+.scorebar{position:sticky;top:8px;z-index:20;display:flex;flex-wrap:wrap;gap:6px 18px;padding:8px 14px;border-radius:14px;background:var(--glass-strong);backdrop-filter:blur(18px) saturate(1.6);-webkit-backdrop-filter:blur(18px) saturate(1.6);box-shadow:0 2px 10px rgba(0,0,0,.10),var(--hi)}
+.scorebar .sb{display:flex;flex-direction:column;min-width:0}
+.scorebar .sb span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.scorebar .sb b{font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.scorebar .sb.bad b{color:var(--bad,#d70015)}
+.scorebar .sb.warn b{color:var(--warn,#b25000)}
+@media (max-width:720px){.scorebar{gap:4px 12px;padding:6px 10px}.scorebar .sb b{font-size:13px}}
+.subtabs{display:flex;gap:4px;overflow-x:auto;margin:12px 0 4px;padding-bottom:2px;scrollbar-width:thin}
+.subtabs button{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;background:transparent;box-shadow:none;padding:5px 12px;color:var(--muted);font-weight:500;font-size:13px}
+.subtabs button[aria-selected="true"]{color:var(--ink);background:var(--glass-strong);border-color:transparent;box-shadow:0 1px 3px rgba(0,0,0,.12),var(--hi);font-weight:600}
+table.turns td,table.turns th{white-space:nowrap}
 .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px 16px}
 .kv{display:flex;flex-direction:column;gap:3px;min-width:0}
 .kv>span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
@@ -176,6 +187,7 @@ svg .gl{stroke:var(--hair);stroke-width:1}
 .an-card .why{min-width:0}
 .an-card{overflow-x:auto;background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:12px 14px;min-width:0;box-shadow:var(--hi)}
 .an-card.wide{margin-top:12px}
+.primer ul{margin:6px 0 0;padding-left:18px}.primer li{margin:5px 0;line-height:1.45}.primer p{margin:6px 0}
 .an-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .an-top h3{margin:0}
 .an-sec{margin:18px 0 0;font-size:15px;font-weight:600;color:var(--muted)}
@@ -253,6 +265,20 @@ table.swaps td{vertical-align:top}
   <div class="note" id="cmdNote"></div>
 </div></details>
 
+<details class="sec" open id="secBudget"><summary>Budget <span class="hint" id="budHint"></span></summary><div class="body">
+  <div class="chips" id="qBudget" role="group" aria-label="Budget presets"><button type="button" data-b="25">$25</button><button type="button" data-b="50">$50</button><button type="button" data-b="100">$100</button><button type="button" data-b="250">$250</button><button type="button" data-b="500">$500</button><button type="button" data-b="">No limit</button></div>
+  <div class="grid2">
+    <label class="f">Total cap<input type="number" min="0" step="0.01" id="bTotal" data-k="budget.total" placeholder="none"></label>
+    <label class="f">Per-card cap<input type="number" min="0" step="0.01" id="bPer" data-k="budget.perCard" placeholder="none"></label>
+    <label class="f">Currency / price source
+      <select id="bCur" data-k="budget.cur"><option value="usd">USD (Scryfall prices.usd)</option><option value="eur">EUR (prices.eur)</option><option value="tix">TIX (prices.tix)</option></select></label>
+    <label class="f">Cards with no price
+      <select id="bUnk" data-k="budget.unknown"><option value="exclude">Exclude when a cap is set</option><option value="allow">Allow (count as 0)</option></select></label>
+  </div>
+  <label class="c"><input type="checkbox" id="bBasics" data-k="budget.inclBasics"> Include basic lands in total</label>
+  <div class="note">The total is a hard cap: the optimiser never exceeds it and spends it where it raises the deck score most. Commanders count toward the total but not the per-card cap.</div>
+</div></details>
+
 <details class="sec" open id="secQuick"><summary>Quick start <span class="hint" id="brHint"></span></summary><div class="body">
   <div class="grid2">
     <label class="f">Deck type
@@ -270,13 +296,31 @@ table.swaps td{vertical-align:top}
   <div class="f"><span>Themes <span class="note">(pick any number; slots are shared evenly)</span></span><div class="chips" id="qThemes"></div></div>
   <label class="f">Creature types and other themes<input type="text" id="tags" data-k="tags" placeholder="e.g. Angel, Human, o:proliferate"></label>
   <div class="note" id="tagNote"></div>
-  <label class="f">Budget
-    <select id="qBudget"><option value="">No limit</option><option value="50">Up to 50</option><option value="100">Up to 100</option><option value="250">Up to 250</option><option value="500">Up to 500</option><option value="1000">Up to 1,000</option><option value="custom" disabled>Custom (set in Budget and collection)</option></select></label>
   <button type="button" class="primary block" id="qGen">Generate deck</button>
 </div></details>
 
 <div class="side-h">Fine-tune</div>
 
+<details class="sec"><summary>Include / exclude</summary><div class="body">
+  <label class="f">Must include (one per line, "N Name" allowed)<textarea id="incl" data-k="include" placeholder="1 Sol Ring"></textarea></label>
+    <label class="f">Exclude<textarea id="excl" data-k="exclude"></textarea></label>
+  <div class="note">Includes count toward category targets and are never auto-removed.</div>
+</div></details>
+
+<details class="sec"><summary>Collection</summary><div class="body">
+  <div class="grid2">
+    <label class="f">Mode<select id="oMode" data-k="owned.mode"><option value="off">Off</option><option value="prefer">Prefer owned</option><option value="only">Owned only</option></select></label>
+  </div>
+  <label class="f">Collection list (paste, or load a .txt/.csv)<textarea id="oList" data-k="owned.list"></textarea></label>
+  <input type="file" id="oFile" accept=".txt,.csv,text/plain,text/csv" aria-label="Load collection file">
+</div></details>
+
+<details class="sec"><summary>Save, load, share</summary><div class="body">
+  <div class="row"><button type="button" class="small" id="saveSet">Save settings JSON</button><label class="small" style="font-size:12px">Load <input type="file" id="loadSet" accept=".json,application/json" style="width:180px"></label></div>
+  <label class="f">Share token (append to the page URL as #token, or paste here)<textarea id="shareTok" rows="2" spellcheck="false"></textarea></label>
+  <div class="row"><button type="button" class="small" id="copyTok">Copy token</button><button type="button" class="small" id="applyTok">Apply pasted token</button><button type="button" class="small" id="resetSet">Reset to defaults</button></div>
+</div></details>
+<div hidden id="moreSettings" aria-hidden="true"><!-- kept for the engine and share links; not shown for now -->
 <details class="sec"><summary>Deck shape</summary><div class="body">
   <div class="grid3">
     <label class="f">Lands<input type="number" min="0" max="99" id="tLands" data-k="targets.lands"></label>
@@ -291,31 +335,6 @@ table.swaps td{vertical-align:top}
   </div>
   <div class="note">Game plan sets these; change any number here.</div>
 </div></details>
-
-<details class="sec"><summary>Budget and collection</summary><div class="body">
-  <div class="grid2">
-    <label class="f">Total cap<input type="number" min="0" step="0.01" id="bTotal" data-k="budget.total" placeholder="none"></label>
-    <label class="f">Per-card cap<input type="number" min="0" step="0.01" id="bPer" data-k="budget.perCard" placeholder="none"></label>
-    <label class="f">Currency / price source
-      <select id="bCur" data-k="budget.cur"><option value="usd">USD (Scryfall prices.usd)</option><option value="eur">EUR (prices.eur)</option><option value="tix">TIX (prices.tix)</option></select></label>
-    <label class="f">Cards with no price
-      <select id="bUnk" data-k="budget.unknown"><option value="exclude">Exclude when a cap is set</option><option value="allow">Allow (count as 0)</option></select></label>
-  </div>
-  <label class="c"><input type="checkbox" id="bBasics" data-k="budget.inclBasics"> Include basic lands in total</label>
-  <div class="grid2">
-    <label class="f">Mode<select id="oMode" data-k="owned.mode"><option value="off">Off</option><option value="prefer">Prefer owned</option><option value="only">Owned only</option></select></label>
-  </div>
-  <label class="f">Collection list (paste, or load a .txt/.csv)<textarea id="oList" data-k="owned.list"></textarea></label>
-  <input type="file" id="oFile" accept=".txt,.csv,text/plain,text/csv" aria-label="Load collection file">
-  <div class="note">Commanders count toward the total but not the per-card cap.</div>
-</div></details>
-
-<details class="sec"><summary>Include / exclude</summary><div class="body">
-  <label class="f">Must include (one per line, "N Name" allowed)<textarea id="incl" data-k="include" placeholder="1 Sol Ring"></textarea></label>
-    <label class="f">Exclude<textarea id="excl" data-k="exclude"></textarea></label>
-  <div class="note">Includes count toward category targets and are never auto-removed.</div>
-</div></details>
-
 <details class="sec"><summary>Rules</summary><div class="body">
   <div class="grid3">
     <label class="f">Game Changers max<input type="number" min="0" id="blgc" data-k="bl.gc"></label>
@@ -337,7 +356,6 @@ table.swaps td{vertical-align:top}
   </div>
   <div class="note">Bracket sets the limits (999 = unlimited). Oct 21 2025 rules, unchanged Feb 9 2026: B1–2 no Game Changers, B3 up to 3; no mass land denial below B4; B1 no extra turns, B2–3 few (1 and 2 here are interpretations); no 2-card infinites in B1–2, none early in B3 (0 here is stricter); tutors unrestricted. Game Changers use Scryfall's <code>game_changer</code> field. Commander legality always wins.</div>
 </div></details>
-
 <details class="sec"><summary>Advanced</summary><div class="body">
   <div class="grid3">
     <label class="f">Synergy<input type="number" step="0.1" id="wSyn" data-k="weights.syn"></label>
@@ -372,33 +390,30 @@ table.swaps td{vertical-align:top}
   </div>
   <div class="note">Basics split by color-pip share. Auto nonbasic counts by colors (0–5): 8, 7, 14, 17, 19, 21. Variance adds a seeded ±value to each score; same seed and settings give the same deck.</div>
   <details><summary class="note" style="cursor:pointer">Tag and flag rules</summary><div id="rulesRef" class="note scroll"></div></details>
-</div></details>
-
-<details class="sec"><summary>Save, load, share</summary><div class="body">
-  <div class="row"><button type="button" class="small" id="saveSet">Save settings JSON</button><label class="small" style="font-size:12px">Load <input type="file" id="loadSet" accept=".json,application/json" style="width:180px"></label></div>
-  <label class="f">Share token (append to the page URL as #token, or paste here)<textarea id="shareTok" rows="2" spellcheck="false"></textarea></label>
-  <div class="row"><button type="button" class="small" id="copyTok">Copy token</button><button type="button" class="small" id="applyTok">Apply pasted token</button><button type="button" class="small" id="resetSet">Reset to defaults</button></div>
-</div></details>
+</div>
 </aside>
 
 <main class="results">
   <div class="actions">
     <button type="button" class="primary" id="genBtn">Generate deck</button>
-    <button type="button" id="regenBtn" disabled>Regenerate unlocked</button>
+    <button type="button" id="regenBtn" disabled title="Rebuild keeping the cards you locked and leaving out the ones you removed">Rebuild around locks</button>
     <button type="button" id="testBtn">Run acceptance tests</button>
     <span id="status" role="status" aria-live="polite"></span>
   </div>
   <div class="prog hidden" id="genProg"><i></i></div>
+  <div id="scorebar" class="scorebar hidden" aria-live="polite"></div>
   <div id="msgs"></div>
   <div id="summary" class="panel summary hidden"></div>
   <nav class="tabs" role="tablist" aria-label="Results">
     <button role="tab" aria-selected="true" data-tab="deck">Deck</button>
     <button role="tab" aria-selected="false" data-tab="analysis">Analysis</button>
+    <button role="tab" aria-selected="false" data-tab="primer">Primer</button>
     <button role="tab" aria-selected="false" data-tab="role">By role</button>
     <button role="tab" aria-selected="false" data-tab="stats">Stats</button>
     <button role="tab" aria-selected="false" data-tab="valid">Validation</button>
     <button role="tab" aria-selected="false" data-tab="log">Log</button>
     <button role="tab" aria-selected="false" data-tab="export">Export</button>
+    <button role="tab" aria-selected="false" data-tab="history">History</button>
     <button role="tab" aria-selected="false" data-tab="tests">Tests</button>
   </nav>
   <section class="panel" id="view"></section>

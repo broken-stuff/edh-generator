@@ -49,7 +49,7 @@ const Engine = (function () {
       filters: { combos: 'bracket', tutors: 'allow', fast: 'allow', stax: 'allow', xturn: 'allow', mld: 'allow', hate: 'allow',
         reserved: 'allow', funny: 'exclude', dateFrom: '', dateTo: '', sets: '', creaturesMin: null, creaturesMax: null },
       owned: { mode: 'off', list: '' },
-      seed: '', reroll: 0, variance: 0.15,
+      seed: '', reroll: 0, variance: 0,
       weights: { syn: 1.5, role: 1.5, pop: 5, quality: 2, curve: 1.5, price: 0.25, owned: 1, bracket: 0.5, power: 2, link: 1 }
     };
   }
@@ -793,7 +793,7 @@ const Engine = (function () {
        A swap blocked by the total budget may be paired with a cheaper swap elsewhere (incl. nonbasic land → basic)
        when the two together raise J. All moves pass canAdd (budget, bracket, creature cap, combos). */
     {
-      const t0 = Date.now(), timeCap = +(S.optTimeMs || 8000);
+      const t0 = Date.now(), timeCap = +(S.optTimeMs || 60000); // safety only: rounds, not time, end the search, so results never depend on machine speed
       const Wl = W.link != null ? +W.link : 1;
       const NP = PAIRS.length, tagKeys = new Set(tags.map(t => t.key));
       const PW = PAIRS.map(p => (cmds.some(c => p.en(c) || p.pay(c)) || tagKeys.has(p.key)) ? 1 : 0.35);
@@ -838,7 +838,7 @@ const Engine = (function () {
         const synAfter = synTotal(), sfAfter = shortfall(), cpAfter = curvePen(mvSum);
         cnt.set(snap.cnt); rc.splice(0, rc.length, ...snap.rc); mvSum = snap.mv;
         return (inV - outV) + (synAfter - synTotal()) - W.role * 2 * (sfAfter - shortfall()) - (cpAfter - curvePen(mvSum)); };
-      for (; rounds < 120 && Date.now() - t0 < timeCap; rounds++) {
+      for (; rounds < 250 && Date.now() - t0 < timeCap; rounds++) {
         const outs = deck.filter(e => !e.locked && e.qty === 1 && e.slot !== 'combo' && e.slot !== 'include' && !analyze(e.c).isLand);
         const moves = [], blocked = [];
         const BUCKETS = [0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
@@ -908,6 +908,20 @@ const Engine = (function () {
       L('Optimise: deck score ' + J0.toFixed(1) + ' → ' + J1.toFixed(1) + ' after ' + swaps.length + ' swap(s) in ' + rounds + ' round(s); ' + pairs.toLocaleString() + ' (deck card, pool card) pairs scored across ' + cands.length.toLocaleString() + ' nonland candidates in ' + R.optimize.ms + ' ms' + (R.optimize.timedOut ? ' (time cap reached)' : '; no improving swap left') + '.');
       for (const w of swaps) L('  ' + w.tag + ': ' + w.out + ' → ' + w.in + ' (' + (w.d >= 0 ? '+' : '') + w.d.toFixed(2) + ')');
     }
+
+    /* deck score from scratch for the current list (same J as the optimiser), so edits and history show a comparable number */
+    R.deckScore = () => {
+      const Wl = W.link != null ? +W.link : 1, tagKeys = new Set(tags.map(t => t.key));
+      const cnt = new Float64Array(PAIRS.length * 2);
+      const addSides = (c, q) => PAIRS.forEach((p, i) => { if (p.en(c)) cnt[2 * i] += q; if (p.pay(c)) cnt[2 * i + 1] += q; });
+      for (const c of cmds) addSides(c, 3);
+      let b = 0, mv = 0, n = 0; const rc = {};
+      for (const e of deck) { const a = analyze(e.c); if (!isBasic(e.c)) addSides(e.c, e.qty); for (const r of ROLES) if (a.roles[r]) rc[r] = (rc[r] || 0) + 1;
+        if (a.isLand) b += isBasic(e.c) ? 0 : landScore(e.c) * e.qty; else { b += base(e.c) * e.qty; mv += e.c.cmc * e.qty; n += e.qty; } }
+      let g = 0; PAIRS.forEach((p, i) => { const w = (cmds.some(c => p.en(c) || p.pay(c)) || tagKeys.has(p.key)) ? 1 : 0.35; g += w * 2 * Math.sqrt(cnt[2 * i] * cnt[2 * i + 1]); });
+      const sf = ROLES.reduce((s2, r) => s2 + Math.max(0, (+S.targets[r] || 0) - (rc[r] || 0)), 0);
+      return b + Wl * g - W.role * 2 * sf - W.curve * 8 * Math.max(0, Math.abs((n ? mv / n : T) - T) - 0.15);
+    };
 
     /* 8. validate + auto-repair */
     R._runBan = new Set();

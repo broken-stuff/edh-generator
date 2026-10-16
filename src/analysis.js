@@ -54,7 +54,8 @@ const Analysis = (function () {
   function simulate(cards, cmds, games, seed) {
     const lib0 = []; for (const e of cards) for (let i = 0; i < e.qty; i++) lib0.push(e.c);
     const N = lib0.length, rng = mulberry32(seed >>> 0);
-    const T = 8, mana = new Array(T + 1).fill(0), landsT = new Array(T + 1).fill(0);
+    const T = 10, mana = new Array(T + 1).fill(0), landsT = new Array(T + 1).fill(0);
+    const dropT = new Array(T + 1).fill(0), spentT = new Array(T + 1).fill(0), spellsT = new Array(T + 1).fill(0), handT = new Array(T + 1).fill(0), cmdByT = new Array(T + 1).fill(0);
     const cmdCmc = cmds.length ? Math.min(...cmds.map(c => c.cmc)) : 0;
     let mulls = 0, keep7 = 0, missT4 = 0, spent6 = 0, avail6 = 0, spells6 = 0, cmdOnCurve = 0; const cmdTurns = [];
     let flood = 0, screw = 0;
@@ -73,13 +74,14 @@ const Analysis = (function () {
         if (t > 1 && pos < lib.length) hand.push(lib[pos++]);
         landsUntapped += landsTappedNext + rampLandsNext; landsTappedNext = 0; rampLandsNext = 0;
         dorksReady += dorksNext; dorksNext = 0;
-        let drops = 1 + extraDrops;
+        let drops = 1 + extraDrops; const before = landsPlayed;
         while (drops > 0) {
           let i = hand.findIndex(c => isL(c) && !manaModel(c).tapped); if (i < 0) i = hand.findIndex(isL);
           if (i < 0) break;
           const c = hand.splice(i, 1)[0]; landsPlayed++; drops--;
           if (manaModel(c).tapped) landsTappedNext++; else landsUntapped++;
         }
+        if (landsPlayed > before) dropT[t]++;
         let avail = landsUntapped + rocks + dorksReady;
         mana[t] += avail; landsT[t] += landsUntapped + landsTappedNext;
         let spent = 0;
@@ -87,7 +89,7 @@ const Analysis = (function () {
         const ramp = hand.filter(c => !isL(c) && (manaModel(c).rampPerm || manaModel(c).rampLand || manaModel(c).extraDrop)).sort((a, b) => a.cmc - b.cmc);
         for (const c of ramp) {
           if (c.cmc > avail - spent) continue;
-          spent += c.cmc; hand.splice(hand.indexOf(c), 1); gSpells += t <= 6 ? 1 : 0;
+          spent += c.cmc; hand.splice(hand.indexOf(c), 1); gSpells += t <= 6 ? 1 : 0; spellsT[t]++;
           const m = manaModel(c);
           if (m.rampPerm) { if (m.dork) dorksNext += m.rampPerm; else { rocks += m.rampPerm; avail += m.rampPerm; } }
           if (m.rampLand) rampLandsNext += m.rampLand;
@@ -97,7 +99,8 @@ const Analysis = (function () {
         if (cmds.length && !cmdCast && cmdCmc <= avail - spent) { cmdCast = true; spent += cmdCmc; cmdTurns.push(t); if (t <= Math.max(1, cmdCmc)) cmdOnCurve++; }
         // 3) other spells, largest that fits first
         const rest = hand.filter(c => !isL(c)).sort((a, b) => b.cmc - a.cmc);
-        for (const c of rest) { if (c.cmc <= avail - spent) { spent += c.cmc; hand.splice(hand.indexOf(c), 1); if (t <= 6) gSpells++; } }
+        for (const c of rest) { if (c.cmc <= avail - spent) { spent += c.cmc; hand.splice(hand.indexOf(c), 1); if (t <= 6) gSpells++; spellsT[t]++; } }
+        spentT[t] += spent; handT[t] += hand.length; if (cmdCast) cmdByT[t]++;
         if (t <= 6) { gSpent += spent; gAvail += avail; }
         if (t === 4 && landsPlayed < 4) missT4++;
         if (t === 6) { const inHandLands = hand.filter(isL).length; if (inHandLands >= 3 && hand.length - inHandLands <= 1) flood++; if (landsPlayed <= 3) screw++; }
@@ -108,6 +111,7 @@ const Analysis = (function () {
     cmdTurns.sort((a, b) => a - b);
     return {
       games, deckSize: N, manaByTurn: mana.map(x => x / games), landsByTurn: landsT.map(x => x / games),
+      perTurn: Array.from({ length: T }, (_, i) => { const t = i + 1; return { t, lands: landsT[t] / games, mana: mana[t] / games, spent: spentT[t] / games, spells: spellsT[t] / games, hand: handT[t] / games, pDrop: dropT[t] / games, pCmd: cmdByT[t] / games }; }),
       keep7: keep7 / games, mulligan: mulls / games, missLandDropT4: missT4 / games, flood6: flood / games, screw6: screw / games,
       efficiency6: avail6 ? spent6 / avail6 : 0, spellsBy6: spells6 / games,
       cmdCmc, cmdMedianTurn: cmdTurns.length ? cmdTurns[Math.floor(cmdTurns.length / 2)] : null, cmdOnCurve: cmds.length ? cmdOnCurve / games : null
@@ -183,6 +187,10 @@ const Analysis = (function () {
     /* simulation */
     const seed = E.hashStr(all.map(e => e.c.n).sort().join('|') + '#' + cmds.map(c => c.n).join('|'));
     const sim = simulate(all, cmds, opts.games || 1500, opts.seed != null ? opts.seed : seed);
+    /* exact odds of having drawn at least one card of a role by turn t (7-card hand + one draw per turn after the first) */
+    const roleN = { ramp: count(c => A(c).roles.ramp && !A(c).isLand), draw: role('draw'), removal: role('removal'), wipes: role('wipes'), protection: role('protection'), wincon: role('wincon') };
+    for (const row of sim.perTurn) { const seen = Math.min(deckSize, 7 + row.t - 1); row.seen = seen; row.pRole = {}; for (const k in roleN) row.pRole[k] = atLeast(deckSize, roleN[k], seen, 1); row.expLandsSeen = seen * nLands / deckSize; }
+    sim.roleN = roleN;
 
     /* synergy */
     const sides = c => { const out = []; for (const p of PAIRS) { const en = p.en(c), pay = p.pay(c); if (en) out.push([p.key, 'en']); if (pay) out.push([p.key, 'pay']); } return out; };

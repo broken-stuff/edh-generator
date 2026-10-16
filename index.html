@@ -143,6 +143,17 @@ table.t tr.grp td{background:transparent;color:var(--muted);font-weight:600;font
 .msg ul{margin:4px 0 0;padding-left:18px}
 .ms{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 3px;border-radius:9px;font-family:var(--f-mono);font-size:10px;font-weight:600;color:var(--pip-ink);background:var(--mC);margin-right:2px;vertical-align:1px;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 1px 1px rgba(0,0,0,.18)}
 .ms.W{background:var(--mW)}.ms.U{background:var(--mU)}.ms.B{background:var(--mB)}.ms.R{background:var(--mR)}.ms.G{background:var(--mG)}
+.scorebar{position:sticky;top:8px;z-index:20;display:flex;flex-wrap:wrap;gap:6px 18px;padding:8px 14px;border-radius:14px;background:var(--glass-strong);backdrop-filter:blur(18px) saturate(1.6);-webkit-backdrop-filter:blur(18px) saturate(1.6);box-shadow:0 2px 10px rgba(0,0,0,.10),var(--hi)}
+.scorebar .sb{display:flex;flex-direction:column;min-width:0}
+.scorebar .sb span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.scorebar .sb b{font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.scorebar .sb.bad b{color:var(--bad,#d70015)}
+.scorebar .sb.warn b{color:var(--warn,#b25000)}
+@media (max-width:720px){.scorebar{gap:4px 12px;padding:6px 10px}.scorebar .sb b{font-size:13px}}
+.subtabs{display:flex;gap:4px;overflow-x:auto;margin:12px 0 4px;padding-bottom:2px;scrollbar-width:thin}
+.subtabs button{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;background:transparent;box-shadow:none;padding:5px 12px;color:var(--muted);font-weight:500;font-size:13px}
+.subtabs button[aria-selected="true"]{color:var(--ink);background:var(--glass-strong);border-color:transparent;box-shadow:0 1px 3px rgba(0,0,0,.12),var(--hi);font-weight:600}
+table.turns td,table.turns th{white-space:nowrap}
 .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px 16px}
 .kv{display:flex;flex-direction:column;gap:3px;min-width:0}
 .kv>span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
@@ -182,6 +193,7 @@ svg .gl{stroke:var(--hair);stroke-width:1}
 .an-card .why{min-width:0}
 .an-card{overflow-x:auto;background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:12px 14px;min-width:0;box-shadow:var(--hi)}
 .an-card.wide{margin-top:12px}
+.primer ul{margin:6px 0 0;padding-left:18px}.primer li{margin:5px 0;line-height:1.45}.primer p{margin:6px 0}
 .an-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .an-top h3{margin:0}
 .an-sec{margin:18px 0 0;font-size:15px;font-weight:600;color:var(--muted)}
@@ -259,6 +271,20 @@ table.swaps td{vertical-align:top}
   <div class="note" id="cmdNote"></div>
 </div></details>
 
+<details class="sec" open id="secBudget"><summary>Budget <span class="hint" id="budHint"></span></summary><div class="body">
+  <div class="chips" id="qBudget" role="group" aria-label="Budget presets"><button type="button" data-b="25">$25</button><button type="button" data-b="50">$50</button><button type="button" data-b="100">$100</button><button type="button" data-b="250">$250</button><button type="button" data-b="500">$500</button><button type="button" data-b="">No limit</button></div>
+  <div class="grid2">
+    <label class="f">Total cap<input type="number" min="0" step="0.01" id="bTotal" data-k="budget.total" placeholder="none"></label>
+    <label class="f">Per-card cap<input type="number" min="0" step="0.01" id="bPer" data-k="budget.perCard" placeholder="none"></label>
+    <label class="f">Currency / price source
+      <select id="bCur" data-k="budget.cur"><option value="usd">USD (Scryfall prices.usd)</option><option value="eur">EUR (prices.eur)</option><option value="tix">TIX (prices.tix)</option></select></label>
+    <label class="f">Cards with no price
+      <select id="bUnk" data-k="budget.unknown"><option value="exclude">Exclude when a cap is set</option><option value="allow">Allow (count as 0)</option></select></label>
+  </div>
+  <label class="c"><input type="checkbox" id="bBasics" data-k="budget.inclBasics"> Include basic lands in total</label>
+  <div class="note">The total is a hard cap: the optimiser never exceeds it and spends it where it raises the deck score most. Commanders count toward the total but not the per-card cap.</div>
+</div></details>
+
 <details class="sec" open id="secQuick"><summary>Quick start <span class="hint" id="brHint"></span></summary><div class="body">
   <div class="grid2">
     <label class="f">Deck type
@@ -276,13 +302,31 @@ table.swaps td{vertical-align:top}
   <div class="f"><span>Themes <span class="note">(pick any number; slots are shared evenly)</span></span><div class="chips" id="qThemes"></div></div>
   <label class="f">Creature types and other themes<input type="text" id="tags" data-k="tags" placeholder="e.g. Angel, Human, o:proliferate"></label>
   <div class="note" id="tagNote"></div>
-  <label class="f">Budget
-    <select id="qBudget"><option value="">No limit</option><option value="50">Up to 50</option><option value="100">Up to 100</option><option value="250">Up to 250</option><option value="500">Up to 500</option><option value="1000">Up to 1,000</option><option value="custom" disabled>Custom (set in Budget and collection)</option></select></label>
   <button type="button" class="primary block" id="qGen">Generate deck</button>
 </div></details>
 
 <div class="side-h">Fine-tune</div>
 
+<details class="sec"><summary>Include / exclude</summary><div class="body">
+  <label class="f">Must include (one per line, "N Name" allowed)<textarea id="incl" data-k="include" placeholder="1 Sol Ring"></textarea></label>
+    <label class="f">Exclude<textarea id="excl" data-k="exclude"></textarea></label>
+  <div class="note">Includes count toward category targets and are never auto-removed.</div>
+</div></details>
+
+<details class="sec"><summary>Collection</summary><div class="body">
+  <div class="grid2">
+    <label class="f">Mode<select id="oMode" data-k="owned.mode"><option value="off">Off</option><option value="prefer">Prefer owned</option><option value="only">Owned only</option></select></label>
+  </div>
+  <label class="f">Collection list (paste, or load a .txt/.csv)<textarea id="oList" data-k="owned.list"></textarea></label>
+  <input type="file" id="oFile" accept=".txt,.csv,text/plain,text/csv" aria-label="Load collection file">
+</div></details>
+
+<details class="sec"><summary>Save, load, share</summary><div class="body">
+  <div class="row"><button type="button" class="small" id="saveSet">Save settings JSON</button><label class="small" style="font-size:12px">Load <input type="file" id="loadSet" accept=".json,application/json" style="width:180px"></label></div>
+  <label class="f">Share token (append to the page URL as #token, or paste here)<textarea id="shareTok" rows="2" spellcheck="false"></textarea></label>
+  <div class="row"><button type="button" class="small" id="copyTok">Copy token</button><button type="button" class="small" id="applyTok">Apply pasted token</button><button type="button" class="small" id="resetSet">Reset to defaults</button></div>
+</div></details>
+<div hidden id="moreSettings" aria-hidden="true"><!-- kept for the engine and share links; not shown for now -->
 <details class="sec"><summary>Deck shape</summary><div class="body">
   <div class="grid3">
     <label class="f">Lands<input type="number" min="0" max="99" id="tLands" data-k="targets.lands"></label>
@@ -297,31 +341,6 @@ table.swaps td{vertical-align:top}
   </div>
   <div class="note">Game plan sets these; change any number here.</div>
 </div></details>
-
-<details class="sec"><summary>Budget and collection</summary><div class="body">
-  <div class="grid2">
-    <label class="f">Total cap<input type="number" min="0" step="0.01" id="bTotal" data-k="budget.total" placeholder="none"></label>
-    <label class="f">Per-card cap<input type="number" min="0" step="0.01" id="bPer" data-k="budget.perCard" placeholder="none"></label>
-    <label class="f">Currency / price source
-      <select id="bCur" data-k="budget.cur"><option value="usd">USD (Scryfall prices.usd)</option><option value="eur">EUR (prices.eur)</option><option value="tix">TIX (prices.tix)</option></select></label>
-    <label class="f">Cards with no price
-      <select id="bUnk" data-k="budget.unknown"><option value="exclude">Exclude when a cap is set</option><option value="allow">Allow (count as 0)</option></select></label>
-  </div>
-  <label class="c"><input type="checkbox" id="bBasics" data-k="budget.inclBasics"> Include basic lands in total</label>
-  <div class="grid2">
-    <label class="f">Mode<select id="oMode" data-k="owned.mode"><option value="off">Off</option><option value="prefer">Prefer owned</option><option value="only">Owned only</option></select></label>
-  </div>
-  <label class="f">Collection list (paste, or load a .txt/.csv)<textarea id="oList" data-k="owned.list"></textarea></label>
-  <input type="file" id="oFile" accept=".txt,.csv,text/plain,text/csv" aria-label="Load collection file">
-  <div class="note">Commanders count toward the total but not the per-card cap.</div>
-</div></details>
-
-<details class="sec"><summary>Include / exclude</summary><div class="body">
-  <label class="f">Must include (one per line, "N Name" allowed)<textarea id="incl" data-k="include" placeholder="1 Sol Ring"></textarea></label>
-    <label class="f">Exclude<textarea id="excl" data-k="exclude"></textarea></label>
-  <div class="note">Includes count toward category targets and are never auto-removed.</div>
-</div></details>
-
 <details class="sec"><summary>Rules</summary><div class="body">
   <div class="grid3">
     <label class="f">Game Changers max<input type="number" min="0" id="blgc" data-k="bl.gc"></label>
@@ -343,7 +362,6 @@ table.swaps td{vertical-align:top}
   </div>
   <div class="note">Bracket sets the limits (999 = unlimited). Oct 21 2025 rules, unchanged Feb 9 2026: B1–2 no Game Changers, B3 up to 3; no mass land denial below B4; B1 no extra turns, B2–3 few (1 and 2 here are interpretations); no 2-card infinites in B1–2, none early in B3 (0 here is stricter); tutors unrestricted. Game Changers use Scryfall's <code>game_changer</code> field. Commander legality always wins.</div>
 </div></details>
-
 <details class="sec"><summary>Advanced</summary><div class="body">
   <div class="grid3">
     <label class="f">Synergy<input type="number" step="0.1" id="wSyn" data-k="weights.syn"></label>
@@ -378,33 +396,30 @@ table.swaps td{vertical-align:top}
   </div>
   <div class="note">Basics split by color-pip share. Auto nonbasic counts by colors (0–5): 8, 7, 14, 17, 19, 21. Variance adds a seeded ±value to each score; same seed and settings give the same deck.</div>
   <details><summary class="note" style="cursor:pointer">Tag and flag rules</summary><div id="rulesRef" class="note scroll"></div></details>
-</div></details>
-
-<details class="sec"><summary>Save, load, share</summary><div class="body">
-  <div class="row"><button type="button" class="small" id="saveSet">Save settings JSON</button><label class="small" style="font-size:12px">Load <input type="file" id="loadSet" accept=".json,application/json" style="width:180px"></label></div>
-  <label class="f">Share token (append to the page URL as #token, or paste here)<textarea id="shareTok" rows="2" spellcheck="false"></textarea></label>
-  <div class="row"><button type="button" class="small" id="copyTok">Copy token</button><button type="button" class="small" id="applyTok">Apply pasted token</button><button type="button" class="small" id="resetSet">Reset to defaults</button></div>
-</div></details>
+</div>
 </aside>
 
 <main class="results">
   <div class="actions">
     <button type="button" class="primary" id="genBtn">Generate deck</button>
-    <button type="button" id="regenBtn" disabled>Regenerate unlocked</button>
+    <button type="button" id="regenBtn" disabled title="Rebuild keeping the cards you locked and leaving out the ones you removed">Rebuild around locks</button>
     <button type="button" id="testBtn">Run acceptance tests</button>
     <span id="status" role="status" aria-live="polite"></span>
   </div>
   <div class="prog hidden" id="genProg"><i></i></div>
+  <div id="scorebar" class="scorebar hidden" aria-live="polite"></div>
   <div id="msgs"></div>
   <div id="summary" class="panel summary hidden"></div>
   <nav class="tabs" role="tablist" aria-label="Results">
     <button role="tab" aria-selected="true" data-tab="deck">Deck</button>
     <button role="tab" aria-selected="false" data-tab="analysis">Analysis</button>
+    <button role="tab" aria-selected="false" data-tab="primer">Primer</button>
     <button role="tab" aria-selected="false" data-tab="role">By role</button>
     <button role="tab" aria-selected="false" data-tab="stats">Stats</button>
     <button role="tab" aria-selected="false" data-tab="valid">Validation</button>
     <button role="tab" aria-selected="false" data-tab="log">Log</button>
     <button role="tab" aria-selected="false" data-tab="export">Export</button>
+    <button role="tab" aria-selected="false" data-tab="history">History</button>
     <button role="tab" aria-selected="false" data-tab="tests">Tests</button>
   </nav>
   <section class="panel" id="view"></section>
@@ -462,7 +477,7 @@ const Engine = (function () {
       filters: { combos: 'bracket', tutors: 'allow', fast: 'allow', stax: 'allow', xturn: 'allow', mld: 'allow', hate: 'allow',
         reserved: 'allow', funny: 'exclude', dateFrom: '', dateTo: '', sets: '', creaturesMin: null, creaturesMax: null },
       owned: { mode: 'off', list: '' },
-      seed: '', reroll: 0, variance: 0.15,
+      seed: '', reroll: 0, variance: 0,
       weights: { syn: 1.5, role: 1.5, pop: 5, quality: 2, curve: 1.5, price: 0.25, owned: 1, bracket: 0.5, power: 2, link: 1 }
     };
   }
@@ -1206,7 +1221,7 @@ const Engine = (function () {
        A swap blocked by the total budget may be paired with a cheaper swap elsewhere (incl. nonbasic land → basic)
        when the two together raise J. All moves pass canAdd (budget, bracket, creature cap, combos). */
     {
-      const t0 = Date.now(), timeCap = +(S.optTimeMs || 8000);
+      const t0 = Date.now(), timeCap = +(S.optTimeMs || 60000); // safety only: rounds, not time, end the search, so results never depend on machine speed
       const Wl = W.link != null ? +W.link : 1;
       const NP = PAIRS.length, tagKeys = new Set(tags.map(t => t.key));
       const PW = PAIRS.map(p => (cmds.some(c => p.en(c) || p.pay(c)) || tagKeys.has(p.key)) ? 1 : 0.35);
@@ -1251,7 +1266,7 @@ const Engine = (function () {
         const synAfter = synTotal(), sfAfter = shortfall(), cpAfter = curvePen(mvSum);
         cnt.set(snap.cnt); rc.splice(0, rc.length, ...snap.rc); mvSum = snap.mv;
         return (inV - outV) + (synAfter - synTotal()) - W.role * 2 * (sfAfter - shortfall()) - (cpAfter - curvePen(mvSum)); };
-      for (; rounds < 120 && Date.now() - t0 < timeCap; rounds++) {
+      for (; rounds < 250 && Date.now() - t0 < timeCap; rounds++) {
         const outs = deck.filter(e => !e.locked && e.qty === 1 && e.slot !== 'combo' && e.slot !== 'include' && !analyze(e.c).isLand);
         const moves = [], blocked = [];
         const BUCKETS = [0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
@@ -1321,6 +1336,20 @@ const Engine = (function () {
       L('Optimise: deck score ' + J0.toFixed(1) + ' → ' + J1.toFixed(1) + ' after ' + swaps.length + ' swap(s) in ' + rounds + ' round(s); ' + pairs.toLocaleString() + ' (deck card, pool card) pairs scored across ' + cands.length.toLocaleString() + ' nonland candidates in ' + R.optimize.ms + ' ms' + (R.optimize.timedOut ? ' (time cap reached)' : '; no improving swap left') + '.');
       for (const w of swaps) L('  ' + w.tag + ': ' + w.out + ' → ' + w.in + ' (' + (w.d >= 0 ? '+' : '') + w.d.toFixed(2) + ')');
     }
+
+    /* deck score from scratch for the current list (same J as the optimiser), so edits and history show a comparable number */
+    R.deckScore = () => {
+      const Wl = W.link != null ? +W.link : 1, tagKeys = new Set(tags.map(t => t.key));
+      const cnt = new Float64Array(PAIRS.length * 2);
+      const addSides = (c, q) => PAIRS.forEach((p, i) => { if (p.en(c)) cnt[2 * i] += q; if (p.pay(c)) cnt[2 * i + 1] += q; });
+      for (const c of cmds) addSides(c, 3);
+      let b = 0, mv = 0, n = 0; const rc = {};
+      for (const e of deck) { const a = analyze(e.c); if (!isBasic(e.c)) addSides(e.c, e.qty); for (const r of ROLES) if (a.roles[r]) rc[r] = (rc[r] || 0) + 1;
+        if (a.isLand) b += isBasic(e.c) ? 0 : landScore(e.c) * e.qty; else { b += base(e.c) * e.qty; mv += e.c.cmc * e.qty; n += e.qty; } }
+      let g = 0; PAIRS.forEach((p, i) => { const w = (cmds.some(c => p.en(c) || p.pay(c)) || tagKeys.has(p.key)) ? 1 : 0.35; g += w * 2 * Math.sqrt(cnt[2 * i] * cnt[2 * i + 1]); });
+      const sf = ROLES.reduce((s2, r) => s2 + Math.max(0, (+S.targets[r] || 0) - (rc[r] || 0)), 0);
+      return b + Wl * g - W.role * 2 * sf - W.curve * 8 * Math.max(0, Math.abs((n ? mv / n : T) - T) - 0.15);
+    };
 
     /* 8. validate + auto-repair */
     R._runBan = new Set();
@@ -1592,7 +1621,8 @@ const Analysis = (function () {
   function simulate(cards, cmds, games, seed) {
     const lib0 = []; for (const e of cards) for (let i = 0; i < e.qty; i++) lib0.push(e.c);
     const N = lib0.length, rng = mulberry32(seed >>> 0);
-    const T = 8, mana = new Array(T + 1).fill(0), landsT = new Array(T + 1).fill(0);
+    const T = 10, mana = new Array(T + 1).fill(0), landsT = new Array(T + 1).fill(0);
+    const dropT = new Array(T + 1).fill(0), spentT = new Array(T + 1).fill(0), spellsT = new Array(T + 1).fill(0), handT = new Array(T + 1).fill(0), cmdByT = new Array(T + 1).fill(0);
     const cmdCmc = cmds.length ? Math.min(...cmds.map(c => c.cmc)) : 0;
     let mulls = 0, keep7 = 0, missT4 = 0, spent6 = 0, avail6 = 0, spells6 = 0, cmdOnCurve = 0; const cmdTurns = [];
     let flood = 0, screw = 0;
@@ -1611,13 +1641,14 @@ const Analysis = (function () {
         if (t > 1 && pos < lib.length) hand.push(lib[pos++]);
         landsUntapped += landsTappedNext + rampLandsNext; landsTappedNext = 0; rampLandsNext = 0;
         dorksReady += dorksNext; dorksNext = 0;
-        let drops = 1 + extraDrops;
+        let drops = 1 + extraDrops; const before = landsPlayed;
         while (drops > 0) {
           let i = hand.findIndex(c => isL(c) && !manaModel(c).tapped); if (i < 0) i = hand.findIndex(isL);
           if (i < 0) break;
           const c = hand.splice(i, 1)[0]; landsPlayed++; drops--;
           if (manaModel(c).tapped) landsTappedNext++; else landsUntapped++;
         }
+        if (landsPlayed > before) dropT[t]++;
         let avail = landsUntapped + rocks + dorksReady;
         mana[t] += avail; landsT[t] += landsUntapped + landsTappedNext;
         let spent = 0;
@@ -1625,7 +1656,7 @@ const Analysis = (function () {
         const ramp = hand.filter(c => !isL(c) && (manaModel(c).rampPerm || manaModel(c).rampLand || manaModel(c).extraDrop)).sort((a, b) => a.cmc - b.cmc);
         for (const c of ramp) {
           if (c.cmc > avail - spent) continue;
-          spent += c.cmc; hand.splice(hand.indexOf(c), 1); gSpells += t <= 6 ? 1 : 0;
+          spent += c.cmc; hand.splice(hand.indexOf(c), 1); gSpells += t <= 6 ? 1 : 0; spellsT[t]++;
           const m = manaModel(c);
           if (m.rampPerm) { if (m.dork) dorksNext += m.rampPerm; else { rocks += m.rampPerm; avail += m.rampPerm; } }
           if (m.rampLand) rampLandsNext += m.rampLand;
@@ -1635,7 +1666,8 @@ const Analysis = (function () {
         if (cmds.length && !cmdCast && cmdCmc <= avail - spent) { cmdCast = true; spent += cmdCmc; cmdTurns.push(t); if (t <= Math.max(1, cmdCmc)) cmdOnCurve++; }
         // 3) other spells, largest that fits first
         const rest = hand.filter(c => !isL(c)).sort((a, b) => b.cmc - a.cmc);
-        for (const c of rest) { if (c.cmc <= avail - spent) { spent += c.cmc; hand.splice(hand.indexOf(c), 1); if (t <= 6) gSpells++; } }
+        for (const c of rest) { if (c.cmc <= avail - spent) { spent += c.cmc; hand.splice(hand.indexOf(c), 1); if (t <= 6) gSpells++; spellsT[t]++; } }
+        spentT[t] += spent; handT[t] += hand.length; if (cmdCast) cmdByT[t]++;
         if (t <= 6) { gSpent += spent; gAvail += avail; }
         if (t === 4 && landsPlayed < 4) missT4++;
         if (t === 6) { const inHandLands = hand.filter(isL).length; if (inHandLands >= 3 && hand.length - inHandLands <= 1) flood++; if (landsPlayed <= 3) screw++; }
@@ -1646,6 +1678,7 @@ const Analysis = (function () {
     cmdTurns.sort((a, b) => a - b);
     return {
       games, deckSize: N, manaByTurn: mana.map(x => x / games), landsByTurn: landsT.map(x => x / games),
+      perTurn: Array.from({ length: T }, (_, i) => { const t = i + 1; return { t, lands: landsT[t] / games, mana: mana[t] / games, spent: spentT[t] / games, spells: spellsT[t] / games, hand: handT[t] / games, pDrop: dropT[t] / games, pCmd: cmdByT[t] / games }; }),
       keep7: keep7 / games, mulligan: mulls / games, missLandDropT4: missT4 / games, flood6: flood / games, screw6: screw / games,
       efficiency6: avail6 ? spent6 / avail6 : 0, spellsBy6: spells6 / games,
       cmdCmc, cmdMedianTurn: cmdTurns.length ? cmdTurns[Math.floor(cmdTurns.length / 2)] : null, cmdOnCurve: cmds.length ? cmdOnCurve / games : null
@@ -1721,6 +1754,10 @@ const Analysis = (function () {
     /* simulation */
     const seed = E.hashStr(all.map(e => e.c.n).sort().join('|') + '#' + cmds.map(c => c.n).join('|'));
     const sim = simulate(all, cmds, opts.games || 1500, opts.seed != null ? opts.seed : seed);
+    /* exact odds of having drawn at least one card of a role by turn t (7-card hand + one draw per turn after the first) */
+    const roleN = { ramp: count(c => A(c).roles.ramp && !A(c).isLand), draw: role('draw'), removal: role('removal'), wipes: role('wipes'), protection: role('protection'), wincon: role('wincon') };
+    for (const row of sim.perTurn) { const seen = Math.min(deckSize, 7 + row.t - 1); row.seen = seen; row.pRole = {}; for (const k in roleN) row.pRole[k] = atLeast(deckSize, roleN[k], seen, 1); row.expLandsSeen = seen * nLands / deckSize; }
+    sim.roleN = roleN;
 
     /* synergy */
     const sides = c => { const out = []; for (const p of PAIRS) { const en = p.en(c), pay = p.pay(c); if (en) out.push([p.key, 'en']); if (pay) out.push([p.key, 'pay']); } return out; };
@@ -2222,7 +2259,9 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     if ($('qPlanNote')) $('qPlanNote').textContent = P ? P.t.lands + ' lands · ' + P.t.ramp + ' ramp · ' + P.t.draw + ' draw · ' + P.t.removal + ' removal · ' + P.t.wipes + ' wipe' + (P.t.wipes === 1 ? '' : 's') + ' · avg MV ' + P.mv.toFixed(1) + '. Sets Category targets; edit them under Fine-tune.' : '';
     const tags = new Set(tagList(S).map(t => t.toLowerCase()));
     document.querySelectorAll('#qThemes button').forEach(b => b.setAttribute('aria-pressed', String(tags.has(b.dataset.tag))));
-    const qb = $('qBudget'); if (qb) { const v = S.budget && S.budget.total != null && S.budget.total !== '' ? String(+S.budget.total) : ''; qb.value = [...qb.options].some(o => o.value === v) ? v : 'custom'; }
+    const bv = S.budget && S.budget.total != null && S.budget.total !== '' ? String(+S.budget.total) : '';
+    document.querySelectorAll('#qBudget button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.b === bv)));
+    if ($('budHint')) $('budHint').textContent = bv ? Engine.fmt(+bv, S.budget.cur || 'usd') + ' cap' : 'no limit';
   }
   function wireQuick() {
     const box = $('qThemes');
@@ -2238,7 +2277,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       App.S.plan = b.dataset.plan; App.S.targets = Object.assign({}, App.S.targets, P.t); App.S.mana = Object.assign({}, App.S.mana, { avgMV: P.mv });
       writeForm(App.S); persistSettings();
     });
-    $('qBudget').addEventListener('change', e => { const v = e.target.value; if (v === 'custom') return; App.S.budget.total = v === '' ? '' : +v; writeForm(App.S); persistSettings(); });
+    $('qBudget').addEventListener('click', e => { const b = e.target.closest('button[data-b]'); if (!b) return; App.S.budget.total = b.dataset.b === '' ? '' : +b.dataset.b; writeForm(App.S); persistSettings(); });
     $('qGen').addEventListener('click', () => { $('genBtn').click(); if (window.matchMedia('(max-width: 720px)').matches) document.querySelector('.results').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   }
   function onFormChange(ev) {
@@ -2246,6 +2285,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     setPath(App.S, el.dataset.k, readEl(el));
     if (el.id === 'bracket') { App.S.bl = Engine.bracketDefaults(App.S.bracket); writeForm(App.S); }
     if (el.id === 'variance') $('varOut').textContent = (+App.S.variance).toFixed(2);
+    if (el.id === 'bTotal' || el.id === 'bCur') syncQuick(App.S);
     persistSettings();
   }
   let persistT = 0;
@@ -2423,7 +2463,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   async function applyChange(cut, add) {
     if (App.anSource !== 'paste' && App.R) {
       const entry = App.R.deck.find(e => e.c === cut); if (!entry) { setStatus(cut.n + ' is no longer in the deck.'); return; }
-      await App.R.swapOne(entry, add); setStatus('Swapped ' + cut.n + ' → ' + add.n + ' (locked).'); return;
+      await App.R.swapOne(entry, add); histOp({ op: 'swap', cut: cut.n, add: add.n }); App.QS = null; histPush('edit', cut.n + ' → ' + add.n); setStatus('Swapped ' + cut.n + ' → ' + add.n + ' (locked).'); return;
     }
     const inp = App.AN && App.AN.inp; if (!inp) return;
     const deck = Analysis.applySwap(inp.deck, cut, add);
@@ -2547,6 +2587,18 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       list('Only in generated', C.onlyA) + list('Only in pasted', C.onlyB) + list('Shared', C.shared.slice()) +
       (C.unknown && C.unknown.length ? '<div class="msg warn">Not found in bulk data: ' + esc(C.unknown.join(', ')) + '</div>' : '') + '</div>';
   }
+  /* ---------- per-turn expectations: goldfish simulation (mean or share of games) + exact draw odds ---------- */
+  function turnsHTML(X) {
+    const rows = (X.sim.perTurn || []).filter(r => r.t <= 10);
+    if (!rows.length) return '';
+    const f1 = v => v.toFixed(1), pc = v => Math.round(v * 100) + '%';
+    const RL = [['ramp', 'Ramp'], ['draw', 'Draw'], ['removal', 'Removal'], ['wipes', 'Wipe'], ['wincon', 'Win con']];
+    const head = '<tr><th class="n">Turn</th><th class="n">Cards seen</th><th class="n">Lands in play</th><th class="n">Mana available</th><th class="n">Mana spent</th><th class="n">Spells cast</th><th class="n">Hand size</th><th class="n">Land drop made</th><th class="n">Commander out</th>' + RL.map(r => '<th class="n">≥1 ' + r[1] + ' seen</th>').join('') + '</tr>';
+    const body = rows.map(r => '<tr><td class="n">T' + r.t + '</td><td class="n">' + r.seen + '</td><td class="n">' + f1(r.lands) + '</td><td class="n">' + f1(r.mana) + '</td><td class="n">' + f1(r.spent) + '</td><td class="n">' + f1(r.spells) + '</td><td class="n">' + f1(r.hand) + '</td><td class="n">' + pc(r.pDrop) + '</td><td class="n">' + (X.cmds.length ? pc(r.pCmd) : '—') + '</td>' + RL.map(k => '<td class="n">' + pc(r.pRole[k[0]]) + '</td>').join('') + '</tr>').join('');
+    const n = X.sim.roleN || {};
+    return '<div class="an-card wide"><h3>Expected state by turn</h3><div class="scroll"><table class="t compact turns"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+      '<p class="note">Lands, mana, spells, hand size, land drops and commander: mean (or share) across ' + X.sim.games.toLocaleString() + ' seeded goldfish games on the play, no opponents, with the mulligan and casting rules under Method. "Seen" columns are exact hypergeometric odds of at least one such card among the cards seen by that turn (deck counts: ' + RL.map(k => k[1].toLowerCase() + ' ' + (n[k[0]] || 0)).join(', ') + ').</p></div>';
+  }
   function renderAnalysis() {
     const X = App.AN;
     const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">Generated deck</button><button type="button" data-an="src-paste" aria-pressed="' + (App.anSource === 'paste') + '">Pasted list</button><button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
@@ -2623,7 +2675,20 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       '<li>Exact probabilities use the hypergeometric distribution over the ' + X.deckSize + '-card library.</li>' +
       '<li>Power model follows the structure documented by <a href="https://scrycheck.com/docs" target="_blank" rel="noopener">ScryCheck</a>: five vectors (speed, consistency, interaction, mana base, threats), combo families from Spellbook, archetype-dependent weights, a strategy ceiling from four signals, a 1–10 scale with ± uncertainty, best/typical/contested win turns and a recommended minimum bracket. ScryCheck does not publish its weights, so every weight and curve here is this tool\'s own, shown on each card, and uncalibrated against labeled decks. Typical win turn maps power to WotC turn expectations (PL 5 → T8, 7 → T6, 8 → T5, 9 → T4). Raw power = 1 + 9·(0.7·vector mix + 0.3·card quality)/100. Card power (0–1) is an oracle-text heuristic: fast mana +0.45, Game Changer +0.35, tutor +0.2–0.35, cheap instant removal +0.3, MV≤1 ramp +0.3, free spells +0.25, cheap repeatable draw +0.2, plus 0.25×EDHREC popularity. Vector components weight each card by 0.6 + card power, so a like-for-like upgrade moves the score. ScryCheck\'s Playgroup.gg anchor, edhtop16 metagame test and per-card power ratings need online data and are not reproduced.</li>' +
       '<li>Bracket estimate: lowest bracket whose card limits (Bracket panel defaults) the list satisfies, per the <a href="https://mtg.wiki/page/Commander_Brackets" target="_blank" rel="noopener">Commander Brackets</a> as updated <a href="https://draftsim.com/mtg-october-2025-commander-bracket-changes/" target="_blank" rel="noopener">Oct 21 2025</a> and <a href="https://magic.wizards.com/en/news/announcements/commander-brackets-beta-update-february-9-2026" target="_blank" rel="noopener">Feb 9 2026</a>. Tutors are counted but no longer limit any bracket. Expected game length (B1 9+, B2 8+, B3 6+, B4 4+ turns) and intent are not measurable from card data.</li></ul></details>';
-    $('view').innerHTML = src + head + '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + power + '<h3 class="an-sec">Fundamentals</h3><div class="an-grid top"><div class="an-card">' + '<h3>Profile</h3>' + radarSVG(X.axes) + '</div>' + goldfish + '</div>' + recs + axes + '<div class="an-grid">' + mana + inter + br + '</div>' + synergy + method;
+    const turns = turnsHTML(X);
+    const SUBS = [['overview', 'Overview'], ['turns', 'Turn by turn'], ['power', 'Power'], ['fund', 'Fundamentals'], ['mana', 'Mana & interaction'], ['synergy', 'Synergy'], ['method', 'Method']];
+    const sub = SUBS.some(x => x[0] === App.anSub) ? App.anSub : 'overview';
+    const nav = '<div class="subtabs" role="tablist" aria-label="Analysis sections">' + SUBS.map(([k, l]) => '<button type="button" role="tab" data-ansub="' + k + '" aria-selected="' + (k === sub) + '">' + l + '</button>').join('') + '</div>';
+    const body = {
+      overview: '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + recs,
+      turns: turns + '<div class="an-grid top">' + goldfish + '</div>',
+      power: power,
+      fund: '<div class="an-grid top"><div class="an-card"><h3>Profile</h3>' + radarSVG(X.axes) + '</div></div>' + axes,
+      mana: '<div class="an-grid">' + mana + inter + br + '</div>',
+      synergy: synergy,
+      method: method.replace('<details class="an-method">', '<details class="an-method" open>')
+    }[sub];
+    $('view').innerHTML = src + head + nav + body;
   }
 
   /* ---------- views ---------- */
@@ -2738,6 +2803,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === App.tab));
     if (App.tab === 'tests') return renderTests();
     if (App.tab === 'analysis') return renderAnalysis();
+    if (App.tab === 'history') return void renderHistory();
+    if (App.tab === 'primer') return void renderPrimer();
     if (!App.R || !App.R.stats) { $('view').innerHTML = emptyView(); return; }
     switch (App.tab) {
       case 'deck': $('view').innerHTML = renderDeckTable(false); break;
@@ -2748,7 +2815,147 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       case 'export': renderExport(); break;
     }
   }
-  function renderAll() { renderSummary(); renderView(); $('regenBtn').disabled = !App.R || !App.R.stats || App.busy; }
+  /* ---------- history: last 25 decks and revisions (IndexedDB). An entry stores settings, locks/bans and the edit
+     operations since generation; opening it regenerates (deterministic) and replays the edits, then checks the card list. ---------- */
+  const HIST_MAX = 25;
+  async function histLoad() { if (!App.history) App.history = (await IDB.get('history')) || []; return App.history; }
+  async function histPush(kind, label) {
+    const R = App.R; if (!R || !R.stats || App.restoring || !App.chain) return;
+    const q = quickStats();
+    const e = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), kind, label,
+      settings: JSON.parse(JSON.stringify(App.chain.settings)), env: JSON.parse(JSON.stringify(App.chain.env)), ops: App.chain.ops.slice(),
+      cmds: R.commanders.map(c => c.n), names: R.deck.map(x => x.qty + ' ' + x.c.n).sort(), file: (R.dbMeta && R.dbMeta.file) || '',
+      m: { price: R.stats.total, cur: R.settings.budget.cur, cap: R.settings.budget.total, bracket: R.settings.bracket, pl: q && q.pl, fund: q && q.fund, score: q && q.score } };
+    const h = await histLoad();
+    // an unchanged rebuild (same settings, same cards) refreshes the newest entry instead of adding a duplicate
+    if (h[0] && h[0].kind === e.kind && h[0].names.join('|') === e.names.join('|') && JSON.stringify(h[0].settings) === JSON.stringify(e.settings) && JSON.stringify(h[0].env) === JSON.stringify(e.env)) h[0].at = e.at;
+    else { h.unshift(e); h.length = Math.min(h.length, HIST_MAX); }
+    await IDB.put('history', h);
+  }
+  function histOp(op) { if (App.chain && !App.restoring) App.chain.ops.push(op); }
+  async function histOpen(id) {
+    const e = (await histLoad()).find(x => x.id === id); if (!e || App.busy) return;
+    App.restoring = true;
+    try {
+      App.S = deepAssign(uiDefaults(), e.settings); writeForm(App.S); persistSettings();
+      await runGenerate(e.env);
+      const R = App.R; if (!R) return;
+      for (const op of e.ops) {
+        const cut = op.cut && R.deck.find(x => x.c.n === op.cut), add = op.add && Engine.lookup(App.bulk, op.add);
+        if (op.op === 'swap' && cut && add) await R.swapOne(cut, add);
+        else if (op.op === 'replace' && cut && add) await R.replace(cut, add, op.locked);
+        else if (op.op === 'remove' && cut) await R.remove(cut);
+      }
+      App.chain = { settings: e.settings, env: e.env, ops: e.ops.slice() };
+      const now = R.deck.map(x => x.qty + ' ' + x.c.n).sort(), same = now.join('|') === e.names.join('|');
+      App.AN = null; App.QS = null; App.tab = 'deck'; renderAll();
+      setStatus(same ? 'Restored "' + e.label + '" from ' + new Date(e.at).toLocaleString() + ' (identical card list).' : 'Restored "' + e.label + '", but ' + now.filter(n => !e.names.includes(n)).length + ' card(s) differ: the card data changed since it was saved (' + (e.file || 'unknown file') + ' → ' + ((R.dbMeta && R.dbMeta.file) || 'current') + ').');
+    } finally { App.restoring = false; }
+  }
+  async function renderHistory() {
+    const h = await histLoad(); if (App.tab !== 'history') return;
+    if (!h.length) { $('view').innerHTML = '<p class="note">No saved decks yet. Each generated deck and each accepted change is saved here (last ' + HIST_MAX + ', in this browser).</p>'; return; }
+    $('view').innerHTML = '<div class="scroll"><table class="t compact"><thead><tr><th>When</th><th>Deck</th><th>Change</th><th class="n">Bracket</th><th class="n">Price</th><th class="n">Power</th><th class="n">Score</th><th></th></tr></thead><tbody>' +
+      h.map(e => '<tr><td class="nw">' + esc(new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</td><td>' + esc(e.cmds.join(' + ')) + '</td><td class="why">' + esc(e.label) + '</td><td class="n">B' + e.m.bracket + '</td><td class="n nw">' + Engine.fmt(e.m.price, e.m.cur || 'usd') + (e.m.cap != null && e.m.cap !== '' ? '<span class="note"> / ' + Engine.fmt(+e.m.cap, e.m.cur || 'usd') + '</span>' : '') + '</td><td class="n">' + (e.m.pl != null ? e.m.pl.toFixed(1) : '—') + '</td><td class="n">' + (e.m.score != null ? e.m.score.toFixed(1) : '—') + '</td><td class="nw"><button type="button" class="small" data-hist="open" data-id="' + e.id + '">Open</button> <button type="button" class="small" data-hist="del" data-id="' + e.id + '" aria-label="Delete">✕</button></td></tr>').join('') +
+      '</tbody></table></div><div class="row" style="margin-top:8px"><span class="note">Opening an entry rebuilds it from its settings and replays its edits; it flags any difference if the card data has changed since.</span><button type="button" class="small" data-hist="clear">Clear history</button></div>';
+  }
+
+  /* ---------- primer: a play guide derived from the deck's analysis (simulation, exact odds, card roles) ---------- */
+  function primerData() {
+    const R = App.R; if (!R || !R.stats || !App.bulk) return null;
+    const key = deckKey(R);
+    if (App.PR && App.PR.key === key) return App.PR.X;
+    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label === 'Generated deck' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, combos: R.combos && R.combos.length ? R.combos : null, games: 10000 });
+    App.PR = { key, X }; return X;
+  }
+  function renderPrimer() {
+    const R = App.R;
+    if (!R || !R.stats) { $('view').innerHTML = emptyView(); return; }
+    const X = primerData(); if (!X) return;
+    const A = c => Engine.analyze(c), pct = p => Math.round(p * 100) + '%', f1 = v => v.toFixed(1);
+    const cards = R.deck.filter(e => !A(e.c).isLand).map(e => e.c);
+    const list = (arr, max) => { arr = [...new Set(arr)]; max = max || 8; return arr.length ? arr.slice(0, max).map(esc).join(', ') + (arr.length > max ? ' and ' + (arr.length - max) + ' more' : '') : 'none'; };
+    const byMV = pred => cards.filter(pred).sort((a, b) => a.cmc - b.cmc || (a.n < b.n ? -1 : 1)).map(c => c.n + ' (' + c.cmc + ')');
+    const sim = X.sim, P = X.power, pt = sim.perTurn, row = t => pt[Math.min(pt.length, t) - 1];
+    const cmdT = sim.cmdMedianTurn, cmds = R.commanders;
+    const firstTurn = (k, p) => { const r = pt.find(r => r.pRole[k] >= p); return r ? 'by T' + r.t : 'only after T' + pt.length; };
+    const pCmdBy = t => row(t).pCmd;
+    const rampEarly = byMV(c => A(c).roles.ramp && c.cmc <= 2), rampMid = byMV(c => A(c).roles.ramp && c.cmc >= 3 && c.cmc <= 4);
+    const oneSided = c => /(?:creatures?|permanents?|artifacts?|enchantments?) (?:your opponents control|you don't control|an opponent controls)|each opponent sacrifices/.test(c.low);
+    const wipes = cards.filter(c => A(c).roles.wipes), wOne = wipes.filter(oneSided).map(c => c.n), wSym = wipes.filter(c => !oneSided(c)).map(c => c.n);
+    const pw = p => 2 * Math.sqrt(p.en.length * p.pay.length), active = X.synergy.pairs.filter(p => p.active && pw(p) > 0).sort((a, b) => pw(b) - pw(a));
+    const arch = P.archetypes.filter(a => a.score > 0), tied = arch.filter(a => a.score === arch[0].score);
+    const vec = P.vectors.slice().sort((a, b) => a.score - b.score);
+    const sec = (h, body) => '<div class="an-card wide primer"><h3>' + h + '</h3>' + body + '</div>';
+    const li = arr => '<ul>' + arr.filter(Boolean).map(x => '<li>' + x + '</li>').join('') + '</ul>';
+    const combos = (P.combos || []).filter(c => c.outcome !== 'value').slice(0, 5);
+
+    const plan = li([
+      'Archetype: <b>' + tied.map(a => esc(a.name)).join(' / ') + '</b>' + (tied.length > 1 ? ' (tied at ' + tied[0].score.toFixed(2) + ')' : '') + (arch.length > tied.length ? '; next: ' + arch.slice(tied.length, tied.length + 2).map(a => esc(a.name) + ' ' + a.score.toFixed(2)).join(', ') : '') + '. Power level ' + P.pl.toFixed(1) + ' (' + esc(P.label) + ').',
+      cmds.length ? 'Commander' + (cmds.length > 1 ? 's' : '') + ': ' + cmds.map(c => '<b>' + esc(c.n) + '</b> (MV ' + c.cmc + ')').join(' and ') + '. Median cast turn in simulation: ' + (cmdT != null && cmdT <= pt.length ? 'T' + cmdT : 'after T' + pt.length) + '; cast by T4 in ' + pct(pCmdBy(4)) + ' of games, by T6 in ' + pct(pCmdBy(6)) + '.' : '',
+      active.length ? 'Strongest synergy themes (enabler × payoff balance' + (active.length > 4 ? ', top 4 of ' + active.length : '') + '): ' + active.slice(0, 4).map(p => esc(p.label) + ' (' + p.en.length + ' enablers, ' + p.pay.length + ' payoffs' + (p.cmdEn || p.cmdPay ? ', commander is ' + (p.cmdEn && p.cmdPay ? 'both' : p.cmdEn ? 'an enabler' : 'a payoff') : '') + ')').join('; ') + '.' : 'No enabler/payoff theme reaches the active threshold; the deck wins on card quality rather than a synergy engine.',
+      'Expected win turn without opposition: best T' + P.win.best + ', typical T' + P.win.typical + ', contested T' + P.win.contested + (P.win.comboTurn ? '; earliest combo T' + P.win.comboTurn : '') + '.',
+      'Win conditions (' + X.threat.wincons.length + '): ' + list(X.threat.wincons, 10) + '.' + (X.threat.evasive.length ? ' Evasive creatures: ' + X.threat.evasive.length + '.' : '')
+    ]);
+    if (cmds.length) {
+      const cmdText = cmds.map(c => '<p class="note"><b>' + esc(c.n) + '</b> ' + esc(c.mc || '') + ' · ' + esc(c.tl || '') + '<br>' + esc(c.ot || '').replace(/\n/g, '<br>') + '</p>').join('');
+      var cmdSec = sec('Commander text', cmdText);
+    }
+    const mull = li([
+      'Lands: ' + X.nLands + ' of ' + X.deckSize + '. Opening 7 has 2–5 lands in ' + pct(X.prob.openingLands.p2to5) + ' of hands and 3+ lands in ' + pct(X.prob.openingLands.p3plus) + '.',
+      'Simulated keep rule: keep 7 with 2–5 lands, otherwise take the free mulligan. Kept on 7: ' + pct(sim.keep7) + '.',
+      'At least one ramp spell of MV ≤ 2 by your turn-2 draw: ' + pct(X.prob.pRampEarly) + ' (' + X.prob.nRamp2 + ' in the deck). A 2-land hand is a keep when it holds one of these.',
+      'Missed land drop by T4: ' + pct(sim.missLandDropT4) + '. Flooded at T6: ' + pct(sim.flood6) + '. Screwed at T6 (3 or fewer lands): ' + pct(sim.screw6) + '.'
+    ]);
+    const tt = (a, b) => { const r1 = row(a), r2 = row(b); return 'lands ' + f1(r1.lands) + '–' + f1(r2.lands) + ', mana ' + f1(r1.mana) + '–' + f1(r2.mana) + ', ' + f1(r2.hand) + ' cards in hand by T' + b; };
+    const turns = li([
+      '<b>T1–T3</b> (' + tt(1, 3) + '). Play a land every turn (T3 drop made in ' + pct(row(3).pDrop) + ' of games). Spend mana on ramp first: ' + list(rampEarly, 10) + '.' + (rampMid.length ? ' 3–4 MV ramp: ' + list(rampMid, 6) + '.' : ''),
+      '<b>T4–T6</b> (' + tt(4, 6) + '). ' + (cmds.length ? 'Commander out by T6 in ' + pct(pCmdBy(6)) + ' of games. ' : '') + 'Deploy draw engines while the table is developing: ' + list(X.cards.engines, 8) + '. A draw source is seen ' + firstTurn('draw', 0.8) + ' in 80% of games (' + (sim.roleN.draw || 0) + ' in the deck).',
+      '<b>T7+</b> (' + tt(7, Math.min(10, pt.length)) + '). Close with: ' + list(X.threat.wincons, 8) + '. A win condition is seen ' + firstTurn('wincon', 0.8) + ' in 80% of games' + (X.cards.tutors.length ? '; tutors to find it: ' + list(X.cards.tutors, 6) : '') + '.',
+      combos.length ? '<b>Combos</b> (Spellbook): ' + combos.map(c => esc(c.cards.join(' + ')) + ' (' + c.outcome + (c.turn != null ? ', ≈T' + c.turn : '') + ')').join('; ') + '.' : ''
+    ]);
+    const inter = li([
+      'Targeted removal ' + X.interaction.removal + ', instant-speed ' + X.interaction.instantInteraction.length + ', MV ≤ 2 ' + X.interaction.cheapInteraction.length + '. Hold instant-speed answers for threats you cannot otherwise beat: ' + list(X.interaction.instantInteraction, 8) + '.',
+      wipes.length ? 'Board wipes (' + wipes.length + '): ' + (wOne.length ? 'one-sided, use freely: ' + list(wOne) + '. ' : '') + (wSym.length ? 'Symmetric, which also hit your ' + X.threat.creatures + ' creatures: ' + list(wSym) + '. These cost you least when opponents have more on board than you.' : '') : 'No board wipes: recover from opposing boards with spot removal only.',
+      'Protection (' + X.resilience.protection.length + '): ' + list(X.resilience.protection, 8) + '.' + (X.resilience.cmdProtect.length ? ' Keeps the commander alive: ' + list(X.resilience.cmdProtect, 6) + '. Leave mana up for these when the commander is your engine.' : ''),
+      X.resilience.recursion.length ? 'Recursion (' + X.resilience.recursion.length + '): ' + list(X.resilience.recursion, 8) + '.' : ''
+    ]);
+    const key = X.synergy.perCard.filter(x => x.links >= 3).slice(0, 10);
+    const keySec = key.length ? sec('Key synergy pieces', '<p>Cards linked to the most other cards in the list (commander and theme links). Protect these and prioritise them in tutor targets.</p>' + li(key.map(x => '<b>' + esc(x.c.n) + '</b>: ' + x.links + ' links (' + esc(x.why.slice(0, 3).join(', ')) + ')'))) : '';
+    const weak = li(vec.slice(0, 2).map(v => esc(v.label) + ' ' + v.score + '/100 is the weakest power axis.').concat([X.overall < 70 ? 'Fundamentals ' + X.overall + '/100: see Analysis → Overview for swaps.' : '']));
+    $('view').innerHTML = '<div class="primer-wrap">' + sec('Game plan', plan) + (cmdSec || '') + sec('Mulligan', mull) + sec('Turn by turn', turns) + sec('Interaction and protection', inter) + keySec + sec('Weak spots', weak) + '</div>' +
+      '<p class="note">Every number is from this deck: ' + sim.games.toLocaleString() + ' seeded goldfish games on the play (no opponents), exact hypergeometric odds, and the rules-text role tags shown on the Deck tab. Win turns are goldfish estimates and run later against interaction.</p>';
+  }
+
+  /* ---------- score bar: always-visible headline numbers for the current deck ---------- */
+  const deckKey = R => R.commanders.map(c => c.n).join('+') + '|' + R.deck.map(e => e.qty + e.c.n).sort().join(',');
+  function quickStats() {
+    const R = App.R; if (!R || !R.stats || !App.bulk) return null;
+    const key = deckKey(R);
+    if (App.QS && App.QS.key === key) return App.QS;
+    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label === 'Generated deck' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, games: 4000 });
+    App.QS = { key, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, score: R.deckScore ? R.deckScore() : null, games: X.sim.games };
+    return App.QS;
+  }
+  function renderScorebar() {
+    const el = $('scorebar'); const R = App.R;
+    if (!R || !R.stats) { el.classList.add('hidden'); return; }
+    const q = quickStats(); if (!q) { el.classList.add('hidden'); return; }
+    const cap = R.settings.budget.total, cur = R.settings.budget.cur, total = R.stats.total;
+    const over = cap != null && cap !== '' && total > +cap + 1e-9;
+    const items = [
+      ['Power', q.pl.toFixed(1)], ['Fundamentals', q.fund], ['Deck score', q.score != null ? q.score.toFixed(1) : '—'],
+      ['Price', Engine.fmt(total, cur) + (cap != null && cap !== '' ? '<span class="note"> / ' + Engine.fmt(+cap, cur) + '</span>' : ''), over ? 'bad' : ''],
+      ['Bracket', 'B' + R.settings.bracket + (q.minB > R.settings.bracket ? '<span class="note"> · plays like B' + q.minB + '</span>' : ''), q.minB > R.settings.bracket ? 'warn' : ''],
+      ['Win turn', '~T' + q.win]
+    ];
+    el.innerHTML = items.map(([k, v, cls]) => '<div class="sb' + (cls ? ' ' + cls : '') + '"><span>' + k + '</span><b>' + v + '</b></div>').join('');
+    el.title = 'Power, fundamentals, bracket and win turn from ' + q.games.toLocaleString() + ' simulated games; deck score is the optimiser\'s objective for the current list.';
+    el.classList.remove('hidden');
+  }
+  function renderAll() { renderSummary(); renderScorebar(); renderView(); $('regenBtn').disabled = !App.R || !App.R.stats || App.busy; }
 
   /* ---------- clipboard / files ---------- */
   async function copyText(text, ta, note) {
@@ -2790,13 +2997,15 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       if (db.meta.warnings && db.meta.warnings.length) R.warnings = db.meta.warnings.concat(R.warnings);
       if (R.errors.length) { App.R = null; showMsgs(R.errors, R.warnings); setStatus('Not generated.'); }
       else {
-        App.R = R; App.openSwap = null; if (App.anSource !== 'paste') App.AN = null;
+        App.R = R; App.openSwap = null; App.QS = null; if (App.anSource !== 'paste') App.AN = null;
+        if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
         const O = R.optimize;
         setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '. Optimised: deck score ' + O.baseline.toFixed(1) + ' → ' + O.final.toFixed(1) + ' (' + O.swaps.length + ' swaps; ' + O.pairs.toLocaleString() + ' card pairs scored' + (O.timedOut ? '; time cap reached' : '; no better single swap left') + ').' : '.'));
       }
     } catch (e) { App.R = null; showMsgs([e.message || String(e)], []); setStatus('Error.'); console.error(e); }
     App.busy = false; setProg(null); renderSources(); renderAll();
+    if (App.R && !App.restoring) histPush('generate', opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
     if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R) runAnalysis();
   }
 
@@ -2877,7 +3086,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     $('genBtn').addEventListener('click', () => { App.S.reroll = 0; runGenerate(); });
     $('regenBtn').addEventListener('click', () => {
       if (!App.R) return;
-      App.S.reroll = (App.S.reroll || 0) + 1;
+      App.S.reroll = 0; // same settings + same locks = same deck
       const locks = App.R.deck.filter(e => e.locked && !e.inc).map(e => ({ name: e.c.n, slot: e.slot, qty: e.qty }));
       runGenerate({ locks, bans: App.R.bans || [] });
     });
@@ -2893,6 +3102,14 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); App.AN = null; if (App.anSource !== 'paste') renderAll(); App.tab = 'analysis'; renderView(); runAnalysis(); }
     });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
+    $('view').addEventListener('click', async e => {
+      const b = e.target.closest('button[data-hist]'); if (!b) return;
+      const v = b.dataset.hist, h = await histLoad();
+      if (v === 'clear') { if (!confirm('Delete all ' + h.length + ' saved decks?')) return; h.length = 0; await IDB.put('history', h); renderHistory(); }
+      else if (v === 'del') { const i = h.findIndex(x => x.id === b.dataset.id); if (i >= 0) h.splice(i, 1); await IDB.put('history', h); renderHistory(); }
+      else if (v === 'open') histOpen(b.dataset.id);
+    });
+    $('view').addEventListener('click', e => { const b = e.target.closest('button[data-ansub]'); if (!b) return; App.anSub = b.dataset.ansub; try { localStorage.setItem('edhgen.anSub', App.anSub); } catch (x) { } renderAnalysis(); });
     $('view').addEventListener('click', e => {
       const b = e.target.closest('button[data-an]'); if (!b) return;
       const a = b.dataset.an;
@@ -2905,8 +3122,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       const act = b.dataset.act;
       if (act === 'lock') { entry.locked = !entry.locked; renderView(); }
       else if (act === 'swap') { App.openSwap = App.openSwap === entry ? null : entry; renderView(); }
-      else if (act === 'use') { const alt = App.R.alternatives(entry, 5)[+b.dataset.j]; if (alt) { await App.R.replace(entry, alt.c, true); App.openSwap = null; renderAll(); } }
-      else if (act === 'remove') { await App.R.remove(entry); App.openSwap = null; renderAll(); }
+      else if (act === 'use') { const alt = App.R.alternatives(entry, 5)[+b.dataset.j]; if (alt) { const cut = entry.c.n; await App.R.replace(entry, alt.c, true); histOp({ op: 'replace', cut, add: alt.c.n, locked: true }); App.QS = null; App.openSwap = null; renderAll(); histPush('edit', cut + ' → ' + alt.c.n); } }
+      else if (act === 'remove') { const cut = entry.c.n; const ne = await App.R.remove(entry); histOp({ op: 'remove', cut }); App.QS = null; App.openSwap = null; renderAll(); histPush('edit', 'Removed ' + cut + (ne && ne.c ? ' → ' + ne.c.n : '')); }
       if (act === 'use' || act === 'remove') { if (App.anSource !== 'paste') App.AN = null; }
     });
     $('saveSet').addEventListener('click', () => saveFile('edh-settings.json', JSON.stringify(readForm(), null, 2), $('idbNote')));
@@ -2917,7 +3134,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const themes = ['system', 'light', 'dark'];
     const applyTheme = t => { if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); $('themeBtn').textContent = 'Theme: ' + t; };
     let theme = LS.get('edhgen.theme') || 'system'; applyTheme(theme);
-    App.anGames = +(LS.get('edhgen.anGames') || 100000);
+    App.anGames = +(LS.get('edhgen.anGames') || 100000); App.anSub = LS.get('edhgen.anSub') || 'overview';
     $('themeBtn').addEventListener('click', () => { theme = themes[(themes.indexOf(theme) + 1) % 3]; applyTheme(theme); LS.set('edhgen.theme', theme); });
     setupAC('cmd1', 'cmd1L'); setupAC('cmd2', 'cmd2L');
     wireQuick(); syncQuick(App.S);
@@ -2941,7 +3158,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     if (hash && /^[zj][A-Za-z0-9_-]+$/.test(hash)) { try { S = await decodeSettings(hash); setStatus('Settings loaded from link.'); } catch (e) { } }
     if (!S) { try { const raw = LS.get('edhgen.settings'); if (raw) S = JSON.parse(raw); } catch (e) { } }
     App.S = deepAssign(uiDefaults(), S || {});
-    if (!S || S.weightsV !== 2) { App.S.weights = uiDefaults().weights; App.S.weightsV = 2; } // weights were recalibrated on real Scryfall data (Oct 2026)
+    if (!S || S.weightsV !== 3) { App.S.weights = uiDefaults().weights; App.S.variance = 0; App.S.reroll = 0; App.S.weightsV = 3; } // v2: weights recalibrated on real data; v3: no random variance, so a rebuild is identical
     if (App.S.bl && ({ 1: 2, 2: 3, 3: 6 })[App.S.bracket] === +App.S.bl.tutor) App.S.bl.tutor = 999; // old defaults; tutor limits were removed Oct 21 2025
     writeForm(App.S); updateShareToken();
     wire(); renderSources(); renderAll();
