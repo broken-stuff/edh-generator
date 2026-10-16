@@ -1,177 +1,110 @@
 # broken-stuff EDH generator
 
-A Commander (EDH) deck builder and analyser that runs entirely in the browser from Scryfall's bulk card data. Pick a commander, a bracket, a game plan, themes and a budget. It builds a legal 100-card deck from every eligible card in the file, optimises it, and scores the result.
+Two Commander (EDH) tools that run in your browser on Scryfall's full card data and Commander Spellbook's combo list:
 
-Live site: GitHub Pages serves `index.html` from this repository. The page makes no API calls; it only requests static files from `data/` on the same site (card data and Commander Spellbook combos).
+- **Deck generator** (`index.html`): builds a legal 100-card deck for a commander, bracket, budget and game plan, then scores and explains it.
+- **Card explorer** (`card.html`): look up any card and see the closest cards to it, ranked by how well they match, plus its 2-card combos.
 
-## How a deck is built
+The two pages link to each other from the header. In the generator, a card's popup has **Similar cards and combos ↗**, which opens that card in the explorer. In the explorer, a card that can be a commander has **Build a deck with it**, which opens the generator with that commander filled in.
 
-1. **Card data.** The Scryfall file is read line by line. Tokens, emblems, art cards and non-English printings are dropped, and reprints are merged into one entry per card. With the current Oracle Cards file that is 38,751 records → 34,988 unique cards → 32,116 legal in Commander.
-2. **Candidate pool.** Every card is checked against the commander's colour identity, legality, the bracket's hard limits (Game Changers, mass land denial, extra turns), your filters, your exclude list and the per-card price cap. The Log tab lists each exclusion reason with counts. Example: Sigarda, Font of Blessings at Bracket 2 with a $50 cap gives 12,005 candidates.
-3. **Card score.** Each candidate gets one score from:
-   - EDHREC popularity rank (log scale);
-   - a card-power estimate from rules text (fast mana, cheap interaction, tutors, card advantage engines);
-   - synergy with the commander and chosen themes or creature types;
-   - fit to the target mana curve;
-   - price, only when a budget is set;
-   - a bracket preference that leans toward stronger cards at higher brackets.
+Nothing you enter is sent anywhere. Card pictures, when turned on, load from `cards.scryfall.io`.
 
-   The weights are fixed defaults. The Deck shape, Rules and Advanced panels are hidden in this version; saved or shared settings that set them still apply.
-4. **Baseline.** A first pass fills nonbasic lands, then the role slots (ramp, draw, removal, wipes, protection, recursion, win conditions), then theme slots. Theme slots rotate across your themes so no single theme crowds out the others. Basics are split by colour-pip share.
-5. **Optimiser.** It scores every movable deck card against every pool card for one deck-level score:
-   - the sum of card scores;
-   - pair synergy: 2√(enablers × payoffs) for each theme, which rewards a balanced mix of enablers and payoffs;
-   - a penalty for any role slot below its target;
-   - a penalty for average mana value drifting from the target.
+## Card explorer
 
-   It applies the best swaps that pass every rule (budget, bracket limits, creature limits, combo rules), then re-scans, until no single swap raises the score.
+Search a card by name. The card is in the middle with its prices (USD, EUR, MTGO). Its rules text, mana value, colour identity, EDHREC rank, legality, keywords, deck roles and mechanics are on the left. Recommendations are on the right. The address bar keeps the card name, so Back works and links can be shared (`card.html#Sol%20Ring`).
 
-   A swap blocked by the total budget can be paired with a cheaper swap elsewhere, including trading a nonbasic land for a basic, when the pair raises the score overall. For Sigarda at $50 this scores about 4.3 million card pairs in about 1 second.
-6. **Validation.** The final deck is checked for size, legality, colour identity, singleton rule, budget and bracket limits. Anything that fails is repaired, and the checks are listed on the Validation tab.
+**Similar cards** gives every other card a match from 0 to 100%:
 
-### Same settings, same deck
-
-Generation is deterministic. The random seed is a hash of the settings, the score has no random component, and the optimiser stops on a fixed round count rather than a timer. Generate and Rebuild with unchanged settings and card data return the identical list (checked for four commander/bracket/budget combinations, three runs each, and after a page reload).
-
-### What "optimal" means here
-
-The result is a local optimum of the deck score above, checked by brute force: re-scoring every feasible single swap (more than 500,000 for the Sigarda example) finds none that raises it. It is not a proof of the best possible deck under any definition, for two reasons:
-
-- the score is only as good as its inputs (popularity rank, rules-text patterns, hand-set weights);
-- swaps of three or more cards at once are not searched.
-
-## Layout
-
-The left menu has three groups: Build (Setup, Commanders, Deck, Primer, History), Evaluate (Analysis, Sample hand, Combos, Stats, By role) and Output and checks (Export, Validation, Log, Tests). Setup holds the commander, budget and game plan; generating a deck opens the Deck page. On phones the menu becomes a scrolling tab strip.
-
-**Card names.** Hover a card name (mouse) or tap it (touch) for its mana cost, type, rules text, P/T or loyalty, price, EDHREC rank, role tags, flags and, for cards in the deck, why the generator picked it. Ctrl/Cmd-click opens Scryfall.
-
-**Card images** are off by default. Appearance → Card images → On shows pictures in the popover and the sample hand. They load from `cards.scryfall.io`, Scryfall's image host; this is the only thing the page ever loads from outside the site, and only when turned on.
-
-**Keys:** 1–9 and 0 open pages in menu order, G generates, / jumps to search, U or Ctrl/Cmd+Z undoes the last edit, Esc closes popups, ? shows the list.
-
-**Undo** (next to Rebuild around locks) reverts the last swap, replacement, removal or combo add. It rebuilds the deck from its settings and replays every edit but the last, which gives the same list because generation is deterministic. Cards you locked by hand stay locked.
-
-On phones the deck list shows one card per row (name, cost, price, roles, reason, actions) instead of a wide table.
-
-**Clear** (top right) starts over: it removes the current deck, analysis and swap decisions and resets Setup to defaults. History, the loaded card and combo data and Appearance are kept.
-
-**Appearance** (gear button, top right) sets light, dark or system mode, an accent colour (ink, blue, violet, pink, green, orange, teal), text size (S, M, L, XL) and serif or sans headings. The choice is stored in the browser.
-
-## Commanders
-
-Lists every legal commander in the card data. Filter by name, type or rules text, by colour (within, exactly or including the chosen colours) and by theme (the generator's own synergy tags matched against the commander's text). Sort by EDHREC popularity, price or mana value. Build puts the commander into Setup.
-
-## Sample hand
-
-Draws a 7-card hand from the generated list with the browser's random generator, so each hand is new. Mulligan follows the London rule with the first mulligan free (multiplayer): draw 7, then tap one card per later mulligan to put it on the bottom. Draw a card continues from the library. The Primer and Analysis odds come from the seeded simulation, not from this page.
-
-## Score cards
-
-Six cards above every page show, for the current deck: power level, fundamentals, deck score (the optimiser's objective), total price against the budget cap, bracket (flagged when the cards imply a higher one) and typical win turn. It updates after every edit.
-
-## Analysis
-
-The Analysis tab scores any deck, whether generated or pasted. It is split into Overview, Turn by turn, Power, Fundamentals, Mana & interaction, Synergy and Method:
-
-- eight fundamentals axes;
-- a power level from 1 to 10 built from speed, consistency, interaction, mana base and threats;
-- best, typical and contested win turns;
-- the minimum bracket implied by the cards;
-- a seeded goldfish simulation (up to 100,000 games);
-- expected state for turns 1–10: cards seen, lands, mana available and spent, spells cast, hand size, land-drop and commander-cast rates, and exact odds of having seen at least one ramp, draw, removal, wipe or win-condition card;
-- exact draw odds;
-- swap recommendations with projected effects, which you can accept or deny.
-
-## Stats
-
-Mana curve, colour pips against sources, role counts against targets, price, Game Changers, combos and synergy tags. **Colour check** finds, for each colour, the card that is hardest to cast on curve (most pips of that colour for its mana value) and gives the exact hypergeometric chance of having drawn that many sources by that turn on the play. Frank Karsten's guideline is 90%; lower values are shown in red.
-
-## Primer
-
-The Primer tab is a play guide built only from the deck's own numbers. **Table talk** opens it: the bracket, typical win turn and counts of Game Changers, tutors, fast mana, extra turns, mass land denial, stax and Spellbook combos, for the pre-game conversation. Then: archetype, commander cast-turn distribution, strongest themes, mulligan odds, a turn-by-turn plan (which ramp, engines and win conditions to deploy, with expected lands and mana), interaction and protection to hold, one-sided versus symmetric wipes, Spellbook combos and the most-linked synergy pieces. **Tokens, emblems and counters to bring** lists token types (for example Treasure, 1/1 white Soldier creature), markers (monarch, initiative, energy, poison, day/night) and counters, read from rules text with reminder text removed.
-
-**Print primer and list** prints the decklist in three columns followed by the primer. **Print proxies** prints a text proxy for every card except basic lands at 63 × 88 mm, nine per page (Letter or A4): name, cost, type line, rules text and P/T.
-
-## History
-
-
-
-The History tab keeps the last 25 decks and revisions in the browser (IndexedDB). Each generate and each accepted swap, replacement or removal is an entry with price, power and deck score. Opening an entry rebuilds it from its settings and replays its edits, then confirms the card list is identical or reports how many cards differ because the card data has changed.
-
-**Compare two entries:** tick two rows and press Compare selected for the cards out and in and the change in price, power, deck score, fundamentals and bracket.
-
-**Compare** (Analysis) scores the generated deck and any pasted list side by side, with the same rules and the same random seed.
-
-## Data files
-
-Everything the page loads comes from this site's `data/` folder. The page makes no API calls.
-
-| Path | What it is | How it gets there |
+| Part | Weight | What it compares |
 |---|---|---|
-| `data/oracle-cards-*.jsonl.gz` (also `.json`, `.jsonl`, `.json.gz`; `default-cards-*` accepted) | Scryfall Oracle Cards (https://scryfall.com/docs/api/bulk-data), cut to the fields the page reads | Refreshed by the **Data files** workflow every Monday when Scryfall has published a newer file, or on demand. A hand upload of the full file also works; delete the old one. |
-| `data/index.json` | List of files in `data/` with size and SHA-256 | Written by the **Data files** workflow after every push to `data/`. |
-| `data/spellbook/` | Commander Spellbook combos in compact form | Rebuilt by the **Data files** workflow every Monday, or on demand. |
+| Mechanics | 60 | Rules text wording, plus the mechanics both cards have (keywords, triggers, counters, tokens, roles, themes). Rare mechanics count more than common ones. |
+| Mana cost | 20 | Mana value and colour identity |
+| Type | 12 | Card types, subtypes, legendary or not |
+| Stats | 8 | Power/toughness or loyalty (only for cards that have them) |
 
-- **Finding the card file.** The page reads `data/index.json` and picks the newest Scryfall file. If the index is missing, it falls back to the GitHub contents API, then to `data/cards.json.gz`, `data/cards.json` and `data/cards.jsonl.gz`.
-- **Caching.** Card and combo files are downloaded only when their hash or manifest changes. Otherwise the copy stored in the browser (IndexedDB) is used.
-- **Your own card file.** Anyone can load their own file under Card data (`.json`, `.jsonl` or `.gz`).
+Each result shows its price, EDHREC rank, the mechanics it shares with your card, and a bar showing which parts the score came from.
 
-### Scryfall card data
+- **Focus:** click a mechanic, such as Cascade, Enters trigger or +1/+1 counters, either on the left or in the Focus row. Only cards with that mechanic are kept. Each score is then half how alike their text for that mechanic is and half the overall match.
+- **Filters:** colours (any, within the card's colour identity, or same identity), shared card type, maximum price, Commander-legal only.
+- **Sort:** best match, lowest price, or most played.
+- **Weights:** sliders change how much each part counts.
 
-`tools/scryfall-slim.js` streams Scryfall's Oracle Cards file and keeps only the fields `Engine.norm()` reads (name, cost, type, rules text, P/T, loyalty, colour identity, Commander legality, prices, EDHREC rank, Game Changer and reserved flags, set, dates, keywords, produced mana, the Scryfall link and the "normal" image path). On the 16 Oct 2026 file it went from 25 MB to 7.1 MB gzipped (38,751 cards), and the page builds identical card records from either file apart from the tracking suffix on Scryfall links. The workflow asks `api.scryfall.com/bulk-data/oracle-cards` for the current file name (`jsonl_download_uri`), downloads it only if it is new, slims it, replaces the old file and commits. Weekly commits of about 7 MB grow the repository by roughly 350 MB a year.
+**2-card combos** lists every Commander Spellbook combo made of the card plus one other card, most played first. Each shows what the combo produces, any extra requirement, both prices, and a link to the steps.
 
-```sh
-node tools/scryfall-slim.js oracle-cards-20261016090200.json data/oracle-cards-20261016090200.jsonl.gz
-```
+When the page first opens, it takes a few seconds to read the rules text of every card before similar cards appear.
 
-### Commander Spellbook combos
+## Deck generator
 
-Spellbook publishes every combo in one file, `https://json.commanderspellbook.com/variants.json`. It is several hundred MB because each combo repeats full card records with image links and step-by-step text. The `.gz` copy is served with `Content-Encoding: gzip`, so browsers and many download tools unpack it on arrival and save plain JSON under a `.gz` name, which then fails to open as gzip.
+Pick a commander, a bracket, a game plan, themes and a budget, then press **Generate deck**. The generator scores every eligible card and builds a legal 100-card deck. It then swaps cards until no single swap improves the deck, while staying inside your budget and bracket rules.
 
-`tools/spellbook-shard.js` streams that file (plain or gzip, detected from the bytes rather than the name). It keeps what the generator and the Combos page use and writes:
+What it weighs for each card:
+- EDHREC popularity
+- a card-power estimate from rules text (fast mana, cheap interaction, tutors, card advantage)
+- synergy with your commander and themes
+- fit to the mana curve
+- price, when you set a budget
 
-| File | Contents |
-|---|---|
-| `manifest.json` | Source, Spellbook timestamp and version, counts, list of shards |
-| `tables.json` | Card, result ("feature") and requirement ("template") names |
-| `variants-NNN.json` | 20,000 combos per file, as `[id, cards, results, requirements, colour identity, mana value, bracket tag, popularity, flags]` using indices into the tables |
+The same settings always produce the same deck.
 
-Only combos with status OK or Example that are legal in Commander are kept. On a 316 MB test file in the export format, the output was four shards of about 1.1 MB each, and every row matched the source field by field.
+**Pages** (left menu; a tab strip on phones):
 
-The step-by-step text is not kept. The Combos page links each combo to commanderspellbook.com for its steps; that is a link, not a request the page makes.
+- **Setup:** commander, budget, game plan, themes and creature types.
+- **Commanders:** browse every legal commander. Filter by name, text, colour or theme, then send one to Setup with **Build**.
+- **Deck:** the list grouped by type. Lock cards you want to keep. **Swap** shows the five best alternatives for a card. **Rebuild around locks** rebuilds while keeping locked cards, and **Undo** reverts your last edit.
+- **Primer:** a play guide built from the deck's own numbers, covering:
+  - table talk for the pre-game conversation
+  - mulligan odds and a turn-by-turn plan
+  - interaction to hold and combos
+  - tokens and counters to bring
 
-**Workflow.** `.github/workflows/data.yml` runs on GitHub, not in the browser. It refreshes the Scryfall file (above), downloads `variants.json`, runs the converter, rewrites `data/index.json` and commits any changes. To refresh now: Actions → Data files → Run workflow. Scryfall and Spellbook are ticked by default; "Re-download Scryfall card data" fetches the card file even when its name hasn't changed.
+  It can also print the list and primer, or nine text proxies per page.
+- **History:** your last 25 decks and edits. Tick two to compare them.
+- **Analysis:** scores any deck, generated or pasted. You get:
+  - a power level from 1 to 10 and eight fundamentals
+  - win turns and the bracket the cards imply
+  - a goldfish simulation
+  - turn-by-turn odds of drawing ramp, draw, removal and win conditions
+  - swap suggestions you can accept or deny
+- **Sample hand:** draw 7, take London mulligans, draw more.
+- **Combos:** combos already in the deck, and combos one card away with that card's price. **+ Add** shows what to cut.
+- **Stats:** curve, colour pips against sources, roles against targets, price, Game Changers, and a colour check of the odds of casting your most colour-hungry card on curve.
+- **Export / Validation / Log:** copy the list, see the legality and budget checks, and see why cards were left out.
 
-**Running it locally:**
+**Hover or tap any card name** for its cost, text, price, roles and why it is in the deck.
 
-```sh
-curl -L --compressed -o variants.json https://json.commanderspellbook.com/variants.json
-node tools/spellbook-shard.js variants.json data/spellbook
-node tools/data-index.js data
-```
+**Keys:** 1–9 and 0 open pages, G generates, / jumps to search, U or Ctrl/Cmd+Z undoes, Esc closes popups, ? shows the list.
 
-### How combos are used
+**Clear** (top right) starts over. History, card data and appearance are kept.
 
-- **Generation** follows the bracket's 2-card-infinite limit and the Combos filter (allow, prefer, exclude).
-- **Analysis** counts combo families toward the threat score and the minimum bracket.
-- **Combos page** lists combos complete in the deck and combos one card away, with the missing card and its price. **+ Add** next to a missing card opens a picker for the card to cut (nonland cards outside every found combo, locked-out and includes excluded, weakest first) and shows the price after the swap, a warning if it adds a 2-card infinite or Game Changer the bracket doesn't allow, and any role it removes. **Add and lock** makes the swap, locks the new card and records it in History. Its search covers every combo by card name or result, filtered by colour identity, number of cards and infinite-only.
+## Appearance
 
-A combo counts as assembled only when every card is in the list. Combos that also need a card *type* (for example "a sacrifice outlet") are shown in search but never counted, because that requirement can't be checked automatically. Combos that need a specific card as commander count only when it is the commander.
+The gear button (top right, on both pages) sets:
+- light, dark or system mode
+- accent colour
+- text size
+- serif or sans headings
+- card pictures
 
-## Publishing (once)
+The explorer shows pictures by default. The generator hides them by default.
 
-Settings → Pages → Build and deployment → Source: *Deploy from a branch* → Branch: `main`, folder `/ (root)`.
+## Card data
 
-## Source and build
+The site refreshes Scryfall card data and Commander Spellbook combos every Monday. Your browser keeps a copy and downloads again only when the data changes. On the generator's Setup page, under **Card data**, you can also load your own Scryfall bulk file (`.json`, `.jsonl` or `.gz`) from [scryfall.com/docs/api/bulk-data](https://scryfall.com/docs/api/bulk-data).
 
-`index.html` is generated. Edit the files in `src/`, then:
+---
+
+## For maintainers
+
+- **Publishing:** Settings → Pages → Deploy from a branch → `main`, `/ (root)`.
+- **Refreshing data now:** Actions → Data files → Run workflow. The workflow (`.github/workflows/data.yml`) does three things:
+  - slims Scryfall's Oracle Cards file into `data/oracle-cards-*.jsonl.gz` with `tools/scryfall-slim.js`
+  - splits Commander Spellbook's `variants.json` into `data/spellbook/` with `tools/spellbook-shard.js`
+  - rewrites `data/index.json`
+- **Building:** `index.html` and `card.html` are generated, so edit `src/` instead:
 
 ```sh
 cd src
-sh build.sh                     # src/edh-deck-generator.html (single file)
-sh build-site.sh && mv site/index.html ../index.html && rm -r site
-node test.js && node atest.js   # engine and analysis tests on synthetic cards
-node ../tools/spellbook-shard.js variants.json ../data/spellbook   # combo files (see Commander Spellbook combos)
-node sens.js                    # sensitivity of scores to bracket, budget and game plan
+sh build.sh && sh build-site.sh && mv site/index.html ../index.html && rm -r site   # deck generator
+sh build-card.sh                                                                    # card explorer
+node test.js && node atest.js && node stest.js                                      # tests on synthetic cards
 ```

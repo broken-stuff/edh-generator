@@ -1145,7 +1145,7 @@
       '<div class="cp-m">' + (p != null ? fmtP(p) : 'no price') + (c.rank ? ' · EDHREC #' + c.rank.toLocaleString() : '') + (c.leg !== 'legal' ? ' · <span class="pup">' + esc(c.leg.replace('_', ' ')) + ' in Commander</span>' : '') + '</div>' +
       (chips ? '<div>' + chips + '</div>' : '') +
       (isCmd ? '<div class="cp-why"><b>Commander</b></div>' : e ? '<div class="cp-why"><b>Why it is in the deck:</b> ' + esc(e.why || Engine.SLOT_LABEL[e.slot] || e.slot || '') + (e.locked ? ' (locked)' : '') + '</div>' : '') +
-      (c.uri ? '<a href="' + esc(c.uri) + '" target="_blank" rel="noopener">Scryfall ↗</a>' : '');
+      '<div class="row"><a href="card.html#' + encodeURIComponent(c.n) + '" target="_blank" rel="noopener">Similar cards and combos ↗</a>' + (c.uri ? '<a href="' + esc(c.uri) + '" target="_blank" rel="noopener">Scryfall ↗</a>' : '') + '</div>';
   }
   let popT = 0, popFor = null, popPinned = false;
   function showPop(el, pinned) {

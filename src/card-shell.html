@@ -1,0 +1,132 @@
+<title>broken-stuff card explorer</title>
+<meta name="description" content="Search any Magic card: its parts, the closest cards by mechanics, mana cost, type and stats, and its 2-card combos.">
+<style>
+/* Card explorer. Uses the deck generator's stylesheet (prepended by build-card.sh) plus the rules below.
+   Layout: search bar; three columns: card details (left), the card (middle), recommendations (right).
+   Under 1100px: card and details side by side, recommendations below. Under 700px: one column. */
+.cx-top{display:flex;gap:12px;align-items:center;margin:4px 0 14px}
+.cx-search{flex:1;max-width:720px}
+.cx-search input{font-size:calc(15px*var(--fz));padding:12px 16px;border-radius:999px}
+.cx-search li .note{margin-left:6px}
+.cx-search li.none{cursor:default;color:var(--muted)}
+#statusBar{padding:6px 14px;border-radius:999px;margin-bottom:12px;align-self:flex-start}
+.cx{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,340px) minmax(0,1.3fr);grid-template-areas:"info mid recs";gap:16px;align-items:start}
+.cx.empty-state{grid-template-columns:minmax(0,1fr);grid-template-areas:"mid"}
+.cx.empty-state #cxInfo,.cx.empty-state #cxRecs{display:none}
+#cxInfo{grid-area:info}#cxMid{grid-area:mid;position:sticky;top:76px;display:flex;flex-direction:column;gap:10px;min-width:0}#cxRecs{grid-area:recs}
+.cx.empty-state #cxMid{position:static}
+@media (max-width:1100px){.cx{grid-template-columns:minmax(240px,320px) minmax(0,1fr);grid-template-areas:"mid info" "recs recs"}}
+@media (max-width:700px){.cx{grid-template-columns:minmax(0,1fr);grid-template-areas:"mid" "info" "recs"}#cxMid{position:static}.art{max-width:340px;margin:0 auto}}
+/* the card */
+.art{width:100%}
+.big-img{display:block;width:100%;aspect-ratio:488/680;border-radius:4.75%/3.5%;background:var(--card-2);box-shadow:var(--pop-shadow);object-fit:cover}
+.faux{aspect-ratio:488/680;border-radius:18px;border:10px solid var(--ink);background:var(--card);padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--pop-shadow);overflow:hidden}
+.faux .fx-h{display:flex;justify-content:space-between;gap:8px;font-size:calc(15px*var(--fz))}
+.faux .fx-t{border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong);padding:6px 0;font-weight:600;font-size:calc(12.5px*var(--fz))}
+.faux .fx-o{flex:1;overflow:auto;font-size:calc(13px*var(--fz))}.faux .fx-o p{margin:0 0 6px}
+.faux .fx-pt{align-self:flex-end;font-weight:700;font-size:calc(16px*var(--fz));border:1px solid var(--line-strong);border-radius:8px;padding:2px 10px}
+.prices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.prices div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;box-shadow:var(--shadow);min-width:0}
+.prices span{font-size:calc(11px*var(--fz));color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.prices b{font-size:calc(17px*var(--fz));font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pnote{margin:0}
+.mid-acts{justify-content:center}
+a.btnlink{display:inline-flex;align-items:center;border:1px solid var(--line-strong);background:var(--card);border-radius:999px;padding:4px 11px;font-size:calc(12px*var(--fz));color:var(--ink)}
+/* details */
+#cxInfo h3{margin:16px 0 6px;font-size:calc(11px*var(--fz));text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.ih{display:flex;gap:10px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+.ih h2{font-size:calc(26px*var(--fz));font-weight:500;letter-spacing:-.015em}
+.tl{margin:6px 0 10px;color:var(--muted)}.tl .pt{color:var(--ink);margin-left:6px}
+.oracle{background:var(--card-2);border-radius:12px;padding:12px 14px;line-height:1.55}
+.oracle p{margin:0 0 8px}.oracle p:last-child{margin:0}
+i.rem{color:var(--muted)}
+.kvs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;margin-top:14px}
+.kvs .kv b{font-size:calc(14px*var(--fz))}
+.mchips,.focusrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mchip{padding:5px 11px;font-size:calc(12.5px*var(--fz));border-radius:999px;display:inline-flex;align-items:center;gap:6px}
+.mchip small{color:var(--faint);font-variant-numeric:tabular-nums}
+.mchip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+.mchip[aria-pressed="true"] small{color:inherit;opacity:.75}
+.focusrow .lbl,.ctl .f{font-size:calc(12px*var(--fz))}
+.focusrow .lbl{color:var(--muted);font-weight:600;margin-right:2px}
+/* recommendations */
+.rtabs{margin:0 0 12px}
+.rtabs small{opacity:.7;margin-left:4px}
+.ctl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 10px;margin-top:12px}
+@media (max-width:1400px){.ctl{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ctl2{margin-top:8px;justify-content:space-between}
+.wts summary{cursor:pointer;font-size:calc(12.5px*var(--fz));color:var(--muted)}
+.wts[open]{flex-basis:100%}
+.wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;margin-top:8px;align-items:end}
+.wgrid label span{display:flex;align-items:center;gap:6px}.wgrid b{margin-left:auto}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:12px 0 4px;font-size:calc(12px*var(--fz));color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+i.sw{display:inline-block;width:10px;height:10px;border-radius:3px}
+.s-mech{background:var(--i-violet)}.s-cost{background:var(--i-blue)}.s-type{background:var(--i-teal)}.s-stats{background:var(--i-orange)}.s-focus{background:var(--i-pink)}
+.rhead{margin:4px 0 8px}
+ol.recs-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.rec{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;padding:12px 0;border-top:1px solid var(--line);align-items:start}
+.thb{padding:0;border:0;background:none;border-radius:6px;display:block;width:64px}
+.thb:hover{background:none}
+.th{display:block;width:64px;aspect-ratio:146/204;border-radius:4px;background:var(--card-2);object-fit:cover}
+.th-txt{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:2px;border:1px solid var(--line)}
+.rb{min-width:0;display:flex;flex-direction:column;gap:3px}
+.rt{display:flex;gap:8px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+button.cname{border:0;background:none;padding:0;font-weight:600;font-size:calc(14px*var(--fz));text-align:left;color:var(--ink);border-radius:4px}
+button.cname:hover{background:none;text-decoration:underline}
+.sh{display:flex;flex-wrap:wrap;gap:2px;align-items:center}
+.sh .chip{margin:0}
+.chip.inf{background:var(--accent-soft)}
+.sbar{display:flex;height:8px;border-radius:999px;background:var(--card-2);overflow:hidden;margin-top:4px}
+.sbar i{display:block;height:100%}
+.bd{font-size:calc(11.5px*var(--fz))}
+.rs{display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rs .pct{font-size:calc(22px*var(--fz));letter-spacing:-.02em;line-height:1.1}
+.plus{color:var(--muted);font-weight:600;margin-right:-4px}
+.combo .rt{justify-content:flex-start}
+.method{margin-top:16px}.method summary{cursor:pointer}.method ul{padding-left:18px;display:flex;flex-direction:column;gap:4px}
+/* empty state */
+.cx .empty{max-width:none}
+.starter{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-top:8px}
+.st-card{display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:12px;text-align:left;font-size:calc(12.5px*var(--fz))}
+.st-card img{width:100%;aspect-ratio:146/204;border-radius:5px;object-fit:cover}
+@media (max-width:640px){.rec{grid-template-columns:48px minmax(0,1fr) auto;gap:10px}.thb,.th{width:48px}.ctl{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.wgrid{grid-template-columns:minmax(0,1fr)}.bd{display:none}.kvs{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+</style>
+
+<div class="app">
+<header class="bar">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="5" r="2" fill="var(--mW)"/><circle cx="16.7" cy="9.1" r="2" fill="var(--mU)"/><circle cx="14.5" cy="15.9" r="2" fill="var(--mB)"/><circle cx="7.5" cy="15.9" r="2" fill="var(--mR)"/><circle cx="5.3" cy="9.1" r="2" fill="var(--mG)"/></svg>
+    <h1>broken-stuff<small>Card explorer</small></h1>
+  </div>
+  <nav class="sitenav" aria-label="Site"><a href="./"><span class="sn-l">Deck generator</span><span class="sn-s">Decks</span></a><a href="card.html" aria-current="page"><span class="sn-l">Card explorer</span><span class="sn-s">Cards</span></a></nav>
+  <div class="sources" aria-live="polite">
+    <span class="pill" id="pBulk"><span class="dot"></span>Cards: loading</span>
+    <span class="pill hidden" id="pCombo"><span class="dot"></span></span>
+  </div>
+  <div class="popwrap">
+    <button id="themeBtn" class="iconbtn" type="button" title="Appearance" aria-label="Appearance" aria-expanded="false" aria-controls="appearance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <div id="appearance" class="pop hidden" role="dialog" aria-label="Appearance">
+      <div><h3>Mode</h3><div class="seg" id="apMode"><button type="button" data-v="system">System</button><button type="button" data-v="light">Light</button><button type="button" data-v="dark">Dark</button></div></div>
+      <div><h3>Accent colour</h3><div class="swatches" id="apAccent">
+        <button type="button" data-v="" title="Ink" aria-label="Ink" style="background:var(--a-ink)"></button><button type="button" data-v="blue" title="Blue" aria-label="Blue" style="background:#2f66f5"></button><button type="button" data-v="violet" title="Violet" aria-label="Violet" style="background:#6c55f0"></button><button type="button" data-v="pink" title="Pink" aria-label="Pink" style="background:#e0457f"></button><button type="button" data-v="green" title="Green" aria-label="Green" style="background:#16893f"></button><button type="button" data-v="orange" title="Orange" aria-label="Orange" style="background:#e0631a"></button><button type="button" data-v="teal" title="Teal" aria-label="Teal" style="background:#0f8f8a"></button>
+      </div></div>
+      <div><h3>Text size</h3><div class="seg" id="apSize"><button type="button" data-v="0.93">S</button><button type="button" data-v="1">M</button><button type="button" data-v="1.12">L</button><button type="button" data-v="1.25">XL</button></div></div>
+      <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
+      <div><h3>Card images</h3><div class="seg" id="apImg"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div><p class="note" style="margin-top:4px">On loads pictures from cards.scryfall.io. Off shows a text card. Everything else stays on this site.</p></div>
+      <p class="note">Keys: / search · Esc close</p>
+    </div>
+  </div>
+</header>
+
+<div class="cx-top">
+  <div class="ac cx-search"><input type="search" id="q" autocomplete="off" placeholder="Search any card" aria-label="Search any card" aria-autocomplete="list" aria-controls="qL" aria-expanded="false"><ul class="hidden" role="listbox" id="qL"></ul></div>
+</div>
+<div id="statusBar" class="actions hidden"><span id="status" role="status" aria-live="polite"></span></div>
+
+<main class="cx empty-state" id="cx">
+  <section class="panel" id="cxInfo" aria-label="Card details"></section>
+  <section id="cxMid" aria-label="Card"></section>
+  <section class="panel" id="cxRecs" aria-label="Recommendations"></section>
+</main>
+</div>
