@@ -2075,8 +2075,10 @@ if (typeof module !== 'undefined') module.exports = Similar;
     return '<div class="art">' + art + '</div>' +
       '<div class="prices"><div><span>USD</span><b>' + usd(c.p.usd) + '</b></div><div><span>EUR</span><b>' + (c.p.eur == null ? '—' : '€' + c.p.eur.toFixed(2)) + '</b></div><div><span>MTGO</span><b>' + (c.p.tix == null ? '—' : c.p.tix.toFixed(2) + ' tix') + '</b></div></div>' +
       '<p class="note pnote">Lowest Scryfall price across printings in the loaded file.</p>' +
-      '<div class="row mid-acts">' + (faces && imgOn() && c.img ? '<button type="button" class="small" id="flipBtn">Flip</button>' : '') + (c.uri ? '<a class="small btnlink" href="' + esc(c.uri) + '" target="_blank" rel="noopener">Scryfall ↗</a>' : '') + '</div>';
+      '<div class="row mid-acts">' + (faces && imgOn() && c.img ? '<button type="button" class="small" id="flipBtn">Flip</button>' : '') + (Engine.commanderEligibility(c).ok ? '<a class="small btnlink" href="./#' + deckToken(c) + '">Build a deck with it</a>' : '') + (c.uri ? '<a class="small btnlink" href="' + esc(c.uri) + '" target="_blank" rel="noopener">Scryfall ↗</a>' : '') + '</div>';
   }
+  // deck generator link with this card as commander: the generator's plain (j) share token, base64url JSON of the settings
+  function deckToken(c) { const u = new TextEncoder().encode(JSON.stringify({ commanders: [c.n, ''] })); let b = ''; for (const x of u) b += String.fromCharCode(x); return 'j' + btoa(b).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
   function infoHTML(c) {
     const a = Engine.analyze(c), roles = Object.keys(a.roles).map(r => '<span class="chip">' + esc(Engine.SLOT_LABEL[r]) + '</span>').join('') +
       ['tutor', 'fast', 'stax', 'xturn', 'mld'].filter(f => a.flags[f]).map(f => '<span class="chip flag">' + esc(Engine.FLAGS[f].label) + '</span>').join('') + (c.gc ? '<span class="chip gc">Game Changer</span>' : '');
