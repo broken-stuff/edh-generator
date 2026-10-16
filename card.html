@@ -348,6 +348,24 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
 .primer h4{margin:8px 0 2px;font-size:calc(13px*var(--fz))}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 #printArea{display:none}
+.mrows b.mb{font-weight:inherit}
+@media (max-width:560px){.mrows b.mb{font-weight:600}}
+@media (max-width:640px){
+  .pop{position:fixed;left:12px;right:12px;top:68px;width:auto;max-width:none;max-height:calc(100vh - 84px);overflow:auto}
+}
+@media (max-width:560px){
+  table.mrows thead{display:none}
+  table.mrows tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:9px 0;border-bottom:1px solid var(--line)}
+  table.mrows td{display:block;border:0;padding:0;order:6;text-align:left}
+  table.mrows td:empty{display:none}
+  table.mrows td.m-1{order:1}
+  table.mrows td.m-2{order:2;flex:1 1 0;min-width:0}
+  table.mrows td.m-3{order:3;margin-left:auto}
+  table.mrows td.m-full{order:4;flex-basis:100%}
+  table.mrows td.m-full2{order:5;flex-basis:100%}
+  table.mrows td[data-l]::before{content:attr(data-l) " ";color:var(--muted);font-size:calc(11.5px*var(--fz))}
+  table.mrows tr.cbpanel td{flex-basis:100%}
+}
 @media (max-width:560px){
   table.deck thead{display:none}
   table.deck tr{display:grid;grid-template-columns:30px minmax(0,1fr) auto;column-gap:6px;align-items:center;border-bottom:1px solid var(--line);padding:6px 0}
