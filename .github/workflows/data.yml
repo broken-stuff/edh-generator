@@ -71,14 +71,17 @@ jobs:
           if [ "$EVENT" = push ] && ! ls data/oracle-cards-*.jsonl.gz >/dev/null 2>&1; then run=yes; fi
           echo "Refresh Scryfall: $run"
           [ "$run" = yes ] || exit 0
+          trap 'echo "::error::Scryfall refresh failed at line $LINENO"' ERR
           UA='broken-stuff-edh-generator/1.0 (GitHub Action; https://github.com/broken-stuff/edh-generator)'
-          url=$(curl -fsSL --retry 4 --retry-delay 10 -H "User-Agent: $UA" -H 'Accept: application/json' https://api.scryfall.com/bulk-data/oracle-cards | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).download_uri))')
+          curl -sSL --retry 4 --retry-delay 10 -H "User-Agent: $UA" -H 'Accept: application/json;q=0.9,*/*;q=0.8' -o "$RUNNER_TEMP/bulk.json" -w '%{http_code}' https://api.scryfall.com/bulk-data/oracle-cards > "$RUNNER_TEMP/code" || true
+          echo "::notice::Scryfall bulk-data HTTP $(cat "$RUNNER_TEMP/code"): $(head -c 300 "$RUNNER_TEMP/bulk.json" | tr '\n' ' ')"
+          url=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).download_uri)' "$RUNNER_TEMP/bulk.json")
           name=$(basename "$url" .json)          # e.g. oracle-cards-20261016090200
           echo "Newest: $name"
           case "$name" in oracle-cards-[0-9]*) ;; *) echo "Unexpected file name: $url"; exit 1;; esac
-          if [ -f "data/$name.jsonl.gz" ]; then echo "Already current."; exit 0; fi
+          if [ -f "data/$name.jsonl.gz" ]; then echo "::notice::Card data already current ($name)."; exit 0; fi
           curl -fsSL --retry 4 --retry-delay 10 --compressed -H "User-Agent: $UA" -o "$RUNNER_TEMP/oracle.json" "$url"
-          node tools/scryfall-slim.js "$RUNNER_TEMP/oracle.json" "$RUNNER_TEMP/$name.jsonl.gz"
+          echo "::notice::Downloaded $(stat -c %s "$RUNNER_TEMP/oracle.json") bytes; $(node tools/scryfall-slim.js "$RUNNER_TEMP/oracle.json" "$RUNNER_TEMP/$name.jsonl.gz")"
           git rm -q --ignore-unmatch data/oracle-cards-*.json data/oracle-cards-*.jsonl data/oracle-cards-*.json.gz data/oracle-cards-*.jsonl.gz
           mv "$RUNNER_TEMP/$name.jsonl.gz" data/
       - name: Index data/
