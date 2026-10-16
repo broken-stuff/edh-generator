@@ -1,0 +1,11 @@
+{
+ "format": "edhgen-data/1",
+ "files": [
+  {
+   "name": "oracle-cards-20261016090200.jsonl.gz",
+   "size": 24948905,
+   "sha256": "ea7abac9906633415553b585b32c4071c79d42ba23d7e3163a0c4e9c265a7483"
+  }
+ ],
+ "spellbook": null
+}

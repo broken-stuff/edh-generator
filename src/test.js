@@ -104,7 +104,15 @@ function legalCheck(R, label) {
   R = await E.generate(db, Object.assign({}, base, { commanders: ['Synth Mono Lord'], owned: { mode: 'only', list: '1 Synth G 0-0\n1 Synth G 0-3' } }));
   legalCheck(R, 'owned only'); console.log(R.warnings);
   // combos local
-  const prov = E.localComboProvider(E.slimVariants([{ id: 'x', uses: [{ card: { name: 'Synth G 1-0' } }, { card: { name: 'Synth G 1-3' } }], produces: [{ feature: { name: 'Infinite mana' } }], requires: [] }]));
+  // Spellbook rows as written by tools/spellbook-shard.js: [id, cards, features, templates, identity, mv, bracketTag, popularity, flags]
+  const sbTables = { cards: ['Synth G 1-0', 'Synth G 1-3', 'Synth Mono Lord', 'Synth G 0-0'], features: ['Infinite mana', 'Infinite lifegain'], templates: ['Sacrifice outlet'] };
+  const sbVars = E.spellbookVariants(sbTables, [['x', [0, 1], [0], [], 'G', 2, 'S', 10, 0], ['t', [0, 3], [1], [0], 'G', 2, 'O', 5, 0], ['c', [-3, 3], [1], [], 'G', 3, 'O', 5, 0]], db);
+  const prov = E.localComboProvider(sbVars);
+  assert(sbVars[0].inf && sbVars[0].c.join('+') === 'Synth G 1-0+Synth G 1-3' && sbVars[2].cmd[0] === 'Synth Mono Lord', 'spellbook rows decode');
+  assert((await prov.find(['Synth G 1-0', 'Synth G 0-0'])).length === 0, 'template variant never counted as assembled');
+  assert((await prov.find(['Synth Mono Lord', 'Synth G 0-0'], [])).length === 0, 'must-be-commander variant needs that commander');
+  assert((await prov.find(['Synth Mono Lord', 'Synth G 0-0'], ['Synth Mono Lord'])).map(v => v.id).join() === 'c', 'must-be-commander variant found with that commander');
+  assert(prov.completes('Synth G 1-3', n => n === 'Synth G 1-0').length === 1 && prov.completes('Synth G 1-3', []).length === 0, 'completes with predicate');
   R = await E.generate(db, Object.assign({}, base, { commanders: ['Synth Mono Lord'], bracket: 2, bl: E.bracketDefaults(2), include: 'Synth G 1-0' }), { combos: prov });
   legalCheck(R, 'combo bracket 2'); assert(!R.deck.some(e => e.c.n === 'Synth G 1-3'), 'combo partner excluded at bracket 2');
   R = await E.generate(db, Object.assign({}, base, { commanders: ['Synth Mono Lord'], filters: { combos: 'prefer' }, exclude: 'Synth G 1-3' }), { combos: prov });

@@ -316,45 +316,51 @@ const Engine = (function () {
     return { ok: false, msg: a.n + ' and ' + b.n + ' cannot be paired: no shared Partner, Partner with, Friends forever, Background or Doctor\'s companion relationship in their oracle text.' };
   }
 
-  /* ---------- combos ---------- */
-  function slimVariants(list) {
-    const out = [];
-    for (const v of list || []) {
-      if (!v) continue;
-      const cards = (v.uses || v.cards || []).map(u => (u && u.card && u.card.name) || (u && u.name) || (typeof u === 'string' ? u : null)).filter(Boolean);
-      if (!cards.length) continue;
-      const prod = (v.produces || []).map(p => (p && p.feature && p.feature.name) || (p && p.name) || (typeof p === 'string' ? p : '')).filter(Boolean);
-      const req = (v.requires || v.templates || []).length;
-      if (v.status && v.status !== 'OK' && v.status !== 'E') continue;
-      if (v.legalities && v.legalities.commander === false) continue;
-      out.push({ id: String(v.id || cards.join('+')), c: cards, r: req, p: prod.slice(0, 6), inf: prod.some(x => /infinite/i.test(x)), bt: v.bracketTag || v.bracket_tag || '', mv: typeof v.manaValueNeeded === 'number' ? v.manaValueNeeded : null });
+  /* ---------- combos (Commander Spellbook) ---------- */
+  // Decodes the site's compact Spellbook files (tools/spellbook-shard.js) into variant objects:
+  // { id, c: card names, cmd: names that must be the commander, p: produced features, t: required templates, r: template count,
+  //   inf, bt: bracket tag, mv: mana value needed, ci: colour identity, pop: popularity, ex: example variant }
+  // db (optional) maps Spellbook names onto the loaded card names so lookups are exact.
+  function spellbookVariants(tables, rows, db) {
+    const canon = tables.cards.map(n => { const c = db ? lookup(db, n) || lookup(db, String(n).split(' // ')[0]) : null; return c ? c.n : n; });
+    const out = new Array(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const [id, cards, feats, tmpl, ci, mv, bt, pop, flags] = rows[i];
+      const c = [], cmd = [];
+      for (const k of cards) { const n = canon[k < 0 ? -k - 1 : k]; c.push(n); if (k < 0) cmd.push(n); }
+      const p = feats.map(k => tables.features[k]), t = tmpl.map(k => tables.templates[k]);
+      out[i] = { id, c, cmd, p, t, r: t.length, inf: p.some(x => /infinite/i.test(x)), bt: bt || '', mv, ci: ci || '', pop, ex: !!(flags & 1) };
     }
     return out;
   }
+  const NO_VARIANTS = Object.freeze([]);
+  // names: an array of card names, a Set, or a predicate n => boolean. cmds: commander names (variants that need a card
+  // to be the commander only count when it is). Variants that also need a non-card template are listed but never
+  // counted as assembled, because the template cannot be checked against the list.
   function localComboProvider(variants, meta) {
     const by = new Map();
-    for (const v of variants) for (const n of v.c) { const k = nameKey(n); if (!by.has(k)) by.set(k, []); by.get(k).push(v); }
-    const keysOf = names => { const s = new Set(); for (const n of names) { s.add(nameKey(n)); s.add(nameKey(String(n).split(' // ')[0])); } return s; };
-    const has = (set, n) => set.has(nameKey(n)) || set.has(nameKey(String(n).split(' // ')[0]));
+    for (const v of variants) for (const n of new Set(v.c)) { let l = by.get(n); if (!l) by.set(n, l = []); l.push(v); }
+    const asHas = names => typeof names === 'function' ? names : names instanceof Set ? n => names.has(n) : (st => n => st.has(n))(new Set(names));
+    const cmdOk = (v, cmds) => !v.cmd.length || (cmds && v.cmd.every(n => cmds.has ? cmds.has(n) : cmds.includes(n)));
     return {
-      kind: 'local', meta: meta || {}, count: variants.length,
-      async find(names) {
-        const set = keysOf(names), seen = new Set(), out = [];
-        for (const k of set) for (const v of by.get(k) || []) { if (seen.has(v.id)) continue; seen.add(v.id); if (v.r === 0 && v.c.every(n => has(set, n))) out.push(v); }
+      kind: 'local', meta: meta || {}, count: variants.length, variants, byCard: by,
+      async find(names, cmdNames) {
+        const has = asHas(names), cmds = new Set(cmdNames || []), seen = new Set(), out = [];
+        for (const n of names) for (const v of by.get(n) || NO_VARIANTS) { if (seen.has(v.id)) continue; seen.add(v.id); if (v.r === 0 && cmdOk(v, cmds) && v.c.every(has)) out.push(v); }
         return out;
       },
-      completes(cardName, names) {
-        const set = keysOf(names); set.add(nameKey(cardName));
-        const out = [];
-        for (const v of by.get(nameKey(cardName)) || by.get(nameKey(String(cardName).split(' // ')[0])) || []) if (v.r === 0 && v.c.every(n => has(set, n))) out.push(v);
+      completes(cardName, names, cmdNames) {
+        const list = by.get(cardName); if (!list) return NO_VARIANTS;
+        const has = asHas(names), cmds = cmdNames ? (cmdNames instanceof Set ? cmdNames : new Set(cmdNames)) : null, out = [];
+        for (const v of list) if (v.r === 0 && cmdOk(v, cmds) && v.c.every(n => n === cardName || has(n))) out.push(v);
         return out;
       },
-      async almost(names, poolNames) {
-        const set = keysOf(names), pool = keysOf(poolNames), seen = new Set(), out = [];
-        for (const k of set) for (const v of by.get(k) || []) {
-          if (seen.has(v.id) || v.r !== 0 || v.c.length > 3) continue; seen.add(v.id);
-          const missing = v.c.filter(n => !has(set, n));
-          if (missing.length >= 1 && missing.length <= 2 && missing.every(n => has(pool, n))) out.push({ v, missing });
+      async almost(names, poolNames, maxMissing) {
+        const has = asHas(names), pool = asHas(poolNames), seen = new Set(), out = [], mm = maxMissing || 2;
+        for (const n of names) for (const v of by.get(n) || NO_VARIANTS) {
+          if (seen.has(v.id) || v.r !== 0 || v.c.length > 4) continue; seen.add(v.id);
+          const missing = v.c.filter(x => !has(x));
+          if (missing.length >= 1 && missing.length <= mm && missing.every(pool)) out.push({ v, missing });
         }
         return out;
       }
@@ -575,6 +581,7 @@ const Engine = (function () {
     };
     R.comboStatus = combos ? (combos.kind === 'local' ? 'local' : 'api') : 'unavailable';
     const deckNames = () => cmds.map(c => c.n).concat(deck.map(e => e.c.n));
+    const cmdSet = new Set(cmds.map(c => c.n));
     function canAdd(c, opts) {
       opts = opts || {};
       if (st.names.has(c.n) && analyze(c).exempt <= 1) return 'duplicate';
@@ -590,8 +597,10 @@ const Engine = (function () {
       for (const k of ['gc', 'mld', 'xturn', 'tutor']) if (a.flags[k] && st.cnt[k] - (rm && rm.flags[k] ? 1 : 0) >= lim[k]) return 'bracket limit (' + FLAGS[k].label + ')';
       if (a.creature && cmax != null && st.creatures - (rm && rm.creature ? 1 : 0) >= cmax) return 'creature maximum';
       if (combos && combos.completes) {
-        const others = deckNames().filter(n => !opts.replacing || n !== opts.replacing.c.n);
-        for (const v of combos.completes(c.n, others)) {
+        const repl = opts.replacing ? opts.replacing.c.n : null, inDeck = n => n !== repl && st.names.has(n);
+        const vs = combos.completes(c.n, inDeck, cmdSet);
+        const others = vs.length ? deckNames().filter(n => n !== repl) : null;
+        for (const v of vs) {
           if (comboForbidden(v)) return 'combo filter';
           if (v.inf && v.c.length <= 2 && lim.combo2 < 999) {
             if (countTwoInf(others) >= lim.combo2) return 'bracket limit (2-card infinite)';
@@ -603,7 +612,7 @@ const Engine = (function () {
     function countTwoInf(names) {
       if (!combos || !combos.completes) return 0;
       const seen = new Set(); let n = 0;
-      for (const nm of names) for (const v of combos.completes(nm, names)) if (v.inf && v.c.length <= 2 && !seen.has(v.id)) { seen.add(v.id); n++; }
+      for (const nm of names) for (const v of combos.completes(nm, names, cmdSet)) if (v.inf && v.c.length <= 2 && !seen.has(v.id)) { seen.add(v.id); n++; }
       return n;
     }
     function reason(c, slot, extra) {
@@ -1132,6 +1141,6 @@ const Engine = (function () {
 
   return { cardPower, POWER_PREF, PAIRS, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
     norm, buildDB, lookup, nameKey, parseList, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
-    slimVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes };
+    spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;

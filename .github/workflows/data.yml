@@ -1,0 +1,66 @@
+# Keeps data/ loadable by the page without any API calls:
+#  - data/spellbook/: Commander Spellbook combos, rebuilt weekly (and on demand) from variants.json into small files
+#  - data/index.json: list of files in data/, rebuilt after every push that touches data/
+name: Data files
+on:
+  schedule:
+    - cron: '23 6 * * 1'          # Mondays 06:23 UTC: refresh Commander Spellbook
+  workflow_dispatch:
+    inputs:
+      spellbook:
+        description: 'Refresh Commander Spellbook combos'
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths:
+      - 'data/**'
+      - 'tools/**'
+      - '.github/workflows/data.yml'
+permissions:
+  contents: write
+concurrency:
+  group: data-files
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Download and split Commander Spellbook variants.json
+        # Scheduled and manual runs refresh; a push refreshes only when the converter or this workflow changed,
+        # or when no Spellbook files exist yet.
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          REFRESH: ${{ github.event.inputs.spellbook }}
+        run: |
+          run=no
+          if [ "$EVENT" = schedule ]; then run=yes; fi
+          if [ "$EVENT" = workflow_dispatch ] && [ "$REFRESH" != false ]; then run=yes; fi
+          if [ "$EVENT" = push ]; then
+            if [ ! -f data/spellbook/manifest.json ]; then run=yes
+            elif git diff --name-only "$BEFORE" HEAD 2>/dev/null | grep -qE '^(tools/spellbook-shard\.js|\.github/workflows/data\.yml)$'; then run=yes; fi
+          fi
+          echo "Refresh Spellbook: $run"
+          [ "$run" = yes ] || exit 0
+          curl -fsSL --retry 4 --retry-delay 10 --compressed -o "$RUNNER_TEMP/variants.json" https://json.commanderspellbook.com/variants.json
+          ls -l "$RUNNER_TEMP/variants.json"
+          node tools/spellbook-shard.js "$RUNNER_TEMP/variants.json" data/spellbook
+      - name: Index data/
+        run: node tools/data-index.js data
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          git add data/index.json data/spellbook
+          if git diff --cached --quiet; then echo "No data changes."; exit 0; fi
+          git commit -m "Update data files (Spellbook combos and data index)"
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && exit 0; sleep 5; done
+          exit 1

@@ -2,7 +2,7 @@
 
 A Commander (EDH) deck builder and analyser that runs entirely in the browser from Scryfall's bulk card data. Pick a commander, a bracket, a game plan, themes and a budget. It builds a legal 100-card deck from every eligible card in the file, optimises it, and scores the result.
 
-Live site: GitHub Pages serves `index.html` from this repository. No server or API calls are needed for deck building; the only network requests are for the card file in `data/`.
+Live site: GitHub Pages serves `index.html` from this repository. The page makes no API calls; it only requests static files from `data/` on the same site (card data and Commander Spellbook combos).
 
 ## How a deck is built
 
@@ -42,7 +42,7 @@ The result is a local optimum of the deck score above, checked by brute force: r
 
 ## Layout
 
-The left menu has three groups: Build (Setup, Deck, Primer, History), Evaluate (Analysis, Stats, By role) and Output and checks (Export, Validation, Log, Tests). Setup holds the commander, budget and game plan; generating a deck opens the Deck page. On phones the menu becomes a scrolling tab strip.
+The left menu has three groups: Build (Setup, Deck, Primer, History), Evaluate (Analysis, Combos, Stats, By role) and Output and checks (Export, Validation, Log, Tests). Setup holds the commander, budget and game plan; generating a deck opens the Deck page. On phones the menu becomes a scrolling tab strip.
 
 **Appearance** (gear button, top right) sets light, dark or system mode, an accent colour (ink, blue, violet, pink, green, orange, teal), text size (S, M, L, XL) and serif or sans headings. The choice is stored in the browser.
 
@@ -75,16 +75,51 @@ The History tab keeps the last 25 decks and revisions in the browser (IndexedDB)
 
 ## Data files
 
-The site loads the newest Scryfall bulk file in `data/` automatically:
+Everything the page loads comes from this site's `data/` folder. The page makes no API calls.
 
-| File | Source |
+| Path | What it is | How it gets there |
+|---|---|---|
+| `data/oracle-cards-*.jsonl.gz` (also `.json`, `.jsonl`, `.json.gz`; `default-cards-*` accepted) | Scryfall bulk card data: https://scryfall.com/docs/api/bulk-data | Upload by hand; delete the old file. GitHub rejects files over 100 MB, so keep the `.gz`. |
+| `data/index.json` | List of files in `data/` with size and SHA-256 | Written by the **Data files** workflow after every push to `data/`. |
+| `data/spellbook/` | Commander Spellbook combos in compact form | Rebuilt by the **Data files** workflow every Monday, or on demand. |
+
+- **Finding the card file.** The page reads `data/index.json` and picks the newest Scryfall file. If the index is missing, it falls back to the GitHub contents API, then to `data/cards.json.gz`, `data/cards.json` and `data/cards.jsonl.gz`.
+- **Caching.** Card and combo files are downloaded only when their hash or manifest changes. Otherwise the copy stored in the browser (IndexedDB) is used.
+- **Your own card file.** Anyone can load their own file under Card data (`.json`, `.jsonl` or `.gz`).
+
+### Commander Spellbook combos
+
+Spellbook publishes every combo in one file, `https://json.commanderspellbook.com/variants.json`. It is several hundred MB because each combo repeats full card records with image links and step-by-step text. The `.gz` copy is served with `Content-Encoding: gzip`, so browsers and many download tools unpack it on arrival and save plain JSON under a `.gz` name, which then fails to open as gzip.
+
+`tools/spellbook-shard.js` streams that file (plain or gzip, detected from the bytes rather than the name). It keeps what the generator and the Combos page use and writes:
+
+| File | Contents |
 |---|---|
-| `data/oracle-cards-*.jsonl.gz` (also `.json`, `.jsonl`, `.json.gz`; `default-cards-*` accepted) | Scryfall bulk data: https://scryfall.com/docs/api/bulk-data |
+| `manifest.json` | Source, Spellbook timestamp and version, counts, list of shards |
+| `tables.json` | Card, result ("feature") and requirement ("template") names |
+| `variants-NNN.json` | 20,000 combos per file, as `[id, cards, results, requirements, colour identity, mana value, bracket tag, popularity, flags]` using indices into the tables |
 
-- **How the newest file is found.** The page lists `data/` through the GitHub contents API, which allows 60 requests an hour per visitor IP. If that fails, it tries `data/cards.json.gz`, `data/cards.json` and `data/cards.jsonl.gz`.
-- **Caching.** A file is downloaded only when its Git hash changes. Otherwise the copy stored in the browser (IndexedDB) is used.
-- **Updating.** Upload the new Scryfall file to `data/` and delete the old one. Pages redeploys on its own. GitHub rejects files over 100 MB, so keep the `.gz` form.
-- **Your own file.** Anyone can load their own file under Data source (`.json`, `.jsonl` or `.gz`).
+Only combos with status OK or Example that are legal in Commander are kept. On a 316 MB test file in the export format, the output was four shards of about 1.1 MB each, and every row matched the source field by field.
+
+The step-by-step text is not kept. The Combos page links each combo to commanderspellbook.com for its steps; that is a link, not a request the page makes.
+
+**Workflow.** `.github/workflows/data.yml` runs on GitHub, not in the browser. It downloads `variants.json`, runs the converter, rewrites `data/index.json` and commits any changes. To refresh now: Actions → Data files → Run workflow.
+
+**Running it locally:**
+
+```sh
+curl -L --compressed -o variants.json https://json.commanderspellbook.com/variants.json
+node tools/spellbook-shard.js variants.json data/spellbook
+node tools/data-index.js data
+```
+
+### How combos are used
+
+- **Generation** follows the bracket's 2-card-infinite limit and the Combos filter (allow, prefer, exclude).
+- **Analysis** counts combo families toward the threat score and the minimum bracket.
+- **Combos page** lists combos complete in the deck and combos one card away, with the missing card and its price. Its search covers every combo by card name or result, filtered by colour identity, number of cards and infinite-only.
+
+A combo counts as assembled only when every card is in the list. Combos that also need a card *type* (for example "a sacrifice outlet") are shown in search but never counted, because that requirement can't be checked automatically. Combos that need a specific card as commander count only when it is the commander.
 
 ## Publishing (once)
 
@@ -99,5 +134,6 @@ cd src
 sh build.sh                     # src/edh-deck-generator.html (single file)
 sh build-site.sh && mv site/index.html ../index.html && rm -r site
 node test.js && node atest.js   # engine and analysis tests on synthetic cards
+node ../tools/spellbook-shard.js variants.json ../data/spellbook   # combo files (see Commander Spellbook combos)
 node sens.js                    # sensitivity of scores to bracket, budget and game plan
 ```

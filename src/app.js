@@ -48,20 +48,23 @@
       const { cards, parsed } = await parseBulkFile(file, f => { prog.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; });
       if (!cards.length) throw new Error('No Scryfall card objects found (' + parsed + ' records parsed).');
       const meta = { source: 'Scryfall bulk file', ...(extra || {}), file: file.name, fileModified: file.lastModified ? new Date(file.lastModified).toISOString() : null, loadedAt: new Date().toISOString(), records: parsed };
-      App.bulk = Engine.buildDB(cards, meta); App.cmdIndex = null; $('secData').open = false;
+      App.bulk = Engine.buildDB(cards, meta); App.cmdIndex = null; $('secData').open = false; buildComboProvider();
       setStatus('Loaded ' + App.bulk.all.length + ' unique cards from ' + file.name + '.');
       IDB.put('bulk', { cards, meta }).then(ok => { $('idbNote').textContent = ok ? 'Stored in this browser for next visit.' : ''; });
     } catch (e) { setStatus('Bulk file error: ' + e.message); showMsgs([e.message], []); }
     prog.classList.add('hidden'); renderSources();
   }
   /* ---------- data in the site's repo (GitHub Pages): the newest Scryfall bulk file in data/ ----------
-     Finds it via the GitHub contents API (owner/repo from the Pages URL), else a server directory listing, else fixed names.
+     Finds it via data/index.json (written by the repo's "Data files" workflow), else the GitHub contents API (owner/repo
+     from the Pages URL) when the index is missing, else a server directory listing, else fixed names.
      Accepts .json, .jsonl and their .gz forms, e.g. oracle-cards-20261016090200.jsonl.gz as downloaded from Scryfall.
      Reloads only when the file's sha / ETag changes; otherwise uses the copy stored in this browser. */
   const BULK_RE = /^(?:oracle-cards|default-cards|all-cards|unique-artwork|cards)[\w.-]*\.jsonl?(?:\.gz)?$/i;
   const pickNewest = files => { const ok = files.filter(f => BULK_RE.test(f.name)); const rank = n => /^oracle/i.test(n) ? 0 : /^default/i.test(n) ? 1 : 2; ok.sort((a, b) => rank(a.name) - rank(b.name) || (a.name < b.name ? 1 : -1)); return ok[0] || null; };
   async function repoFile() {
     if (!window.EDH_SITE || !/^https?:$/.test(location.protocol)) return null; // only the site build sets EDH_SITE
+    const ix = await dataIndex();
+    if (ix) { const f = pickNewest(ix.files.map(x => ({ name: x.name, size: x.size, sha: x.sha256 }))); if (f) return { url: 'data/' + f.name, tag: f.sha, size: f.size }; }
     const m = location.hostname.match(/^([\w-]+)\.github\.io$/i);
     if (m) {
       const seg = location.pathname.split('/').filter(Boolean)[0];
@@ -77,6 +80,44 @@
     } catch (e) { }
     for (const n of ['data/cards.json.gz', 'data/cards.json', 'data/cards.jsonl.gz']) { const h = await headInfo(n); if (h) return h; }
     return null;
+  }
+  async function dataIndex() {
+    if (App.dataIndex !== undefined) return App.dataIndex;
+    let ix = null;
+    try { const r = await fetch('data/index.json', { cache: 'no-cache' }); if (r.ok) ix = await r.json(); } catch (e) { }
+    return (App.dataIndex = ix && Array.isArray(ix.files) ? ix : null);
+  }
+  /* ---------- Commander Spellbook combos: data/spellbook/ (manifest, name tables, row shards from tools/spellbook-shard.js).
+     Static files from this site only. Downloaded when the manifest changes, otherwise read from this browser.
+     Card data loads first and never depends on this step; a failure here only leaves combos unavailable. ---------- */
+  const SB_FORMAT = 'edhgen-spellbook/1';
+  async function loadSpellbook() {
+    if (!window.EDH_SITE || !/^https?:$/.test(location.protocol)) return;
+    App.combosLoading = true; renderSources();
+    try {
+      let man = null;
+      try { const r = await fetch('data/spellbook/manifest.json', { cache: 'no-cache' }); if (r.ok) man = await r.json(); } catch (e) { }
+      if (man && man.format !== SB_FORMAT) { setStatus('Combo data has an unknown format (' + man.format + '); combos are off.'); man = null; }
+      const stored = await IDB.get('combos');
+      const tag = man ? [man.format, man.timestamp, man.variants, man.tables.bytes].concat(man.shards.map(x => x.bytes)).join('|') : null;
+      let data = stored && stored.format === SB_FORMAT && (!man || stored.tag === tag) ? stored : null;
+      if (!data && man) {
+        setStatus('Loading Commander Spellbook combos (' + man.variants.toLocaleString() + ')…');
+        const get = async f => { const r = await fetch('data/spellbook/' + f, { cache: 'no-cache' }); if (!r.ok) throw new Error(f + ': HTTP ' + r.status); return r.json(); };
+        const [tables, ...shards] = await Promise.all([get(man.tables.file)].concat(man.shards.map(x => get(x.file))));
+        const rows = [].concat(...shards.map(x => x.rows));
+        if (rows.length !== man.variants) throw new Error('expected ' + man.variants + ' combos, files hold ' + rows.length);
+        data = { format: SB_FORMAT, tag, tables, rows, meta: { source: 'Commander Spellbook', timestamp: man.timestamp, version: man.version, count: man.variants } };
+        IDB.put('combos', data);
+        setStatus('Loaded ' + rows.length.toLocaleString() + ' Commander Spellbook combos.');
+      }
+      App.sbData = data; buildComboProvider();
+    } catch (e) { App.bulkCombos = null; setStatus('Combo data not loaded: ' + e.message + '. Decks still build; combo checks are off.'); }
+    App.combosLoading = false; renderSources(); renderView();
+  }
+  function buildComboProvider() {
+    const d = App.sbData; App.bulkCombos = null; if (!d) return;
+    App.bulkCombos = Engine.localComboProvider(Engine.spellbookVariants(d.tables, d.rows, App.bulk), d.meta);
   }
   async function headInfo(n) {
     try { const h = await fetch(n, { method: 'HEAD', cache: 'no-cache' }); if (h.ok) return { url: n, tag: h.headers.get('etag') || h.headers.get('last-modified') || '', size: +h.headers.get('content-length') || 0 }; } catch (e) { }
@@ -98,6 +139,7 @@
     if (rc && !fresh(bulk, rc)) { try { await fromRepo(rc, loadBulk); } catch (e) { setStatus('Site card data: ' + e.message); } }
     if (!App.bulk && bulk && bulk.cards && bulk.cards.length) { App.bulk = Engine.buildDB(bulk.cards, bulk.meta); $('idbNote').textContent = 'Using stored card data: ' + (bulk.meta.file || '') + '.'; }
     renderSources(); renderView();
+    await loadSpellbook();
   }
 
   /* ---------- data state ---------- */
@@ -106,10 +148,16 @@
     const set = (id, cls, text) => { const el = $(id); el.innerHTML = '<span class="dot ' + cls + '"></span>' + esc(text); };
     set('pBulk', App.bulk ? 'ok' : '', App.bulk ? App.bulk.all.length.toLocaleString() + ' cards' : 'Card data not loaded');
     $('pBulk').title = App.bulk ? (App.bulk.meta.file || 'stored data') : '';
-    $('railData').innerHTML = App.bulk ? '<span>Card data</span><b>' + App.bulk.all.length.toLocaleString() + ' cards</b><span style="overflow-wrap:anywhere">' + esc(App.bulk.meta.file || 'stored data') + '</span>' : '<span>Card data</span><b>Not loaded</b>';
+    $('railData').innerHTML = (App.bulk ? '<span>Card data</span><b>' + App.bulk.all.length.toLocaleString() + ' cards</b><span style="overflow-wrap:anywhere">' + esc(App.bulk.meta.file || 'stored data') + '</span>' : '<span>Card data</span><b>Not loaded</b>') +
+      (App.bulkCombos ? '<span style="margin-top:6px">Combos</span><b>' + App.bulkCombos.count.toLocaleString() + '</b><span>Commander Spellbook ' + esc((App.bulkCombos.meta.timestamp || '').slice(0, 10)) + '</span>' : '');
     $('dataHint').textContent = App.bulk ? (App.bulk.meta.file || 'loaded') : 'load a file';
     if (!App.bulk) $('secData').open = true;
-    $('genBtn').disabled = App.busy || !App.bulk;
+    $('genBtn').disabled = App.busy || !App.bulk || !!App.combosLoading;
+    $('qGen').disabled = $('genBtn').disabled;
+    const cb = App.bulkCombos;
+    $('pCombo').classList.toggle('hidden', !cb && !App.combosLoading);
+    $('pCombo').innerHTML = '<span class="dot ' + (cb ? 'ok' : 'warn') + '"></span>' + (cb ? cb.count.toLocaleString() + ' combos' : 'Loading combos…');
+    $('pCombo').title = cb ? 'Commander Spellbook, ' + (cb.meta.timestamp || '').slice(0, 10) : '';
     $('testBtn').disabled = App.busy || !App.bulk;
     if (!App.R && App.tab !== 'setup') renderView();
   }
@@ -691,6 +739,7 @@
     const PH = { deck: ['Deck list', 'Grouped by card type. Lock a card to keep it on rebuild; Swap shows the five best alternatives.'], role: ['By role', 'Cards grouped by the role slot they fill.'],
       analysis: ['Analysis', 'Power level, fundamentals and swap recommendations from simulated games.'], primer: ['Primer', 'How to play this list, from its own simulation and card roles.'],
       stats: ['Stats', 'Mana curve, role counts against targets, price and combos.'], valid: ['Validation', 'Every deck-building rule and whether this list passes it.'],
+      combos: ['Combos', 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.'],
       log: ['Build log', 'Each step the generator and optimiser took.'], export: ['Export', 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.'],
       history: ['History', 'The last 25 decks and revisions in this browser.'], tests: ['Acceptance tests', 'Checks the generator against the loaded card data.'] }[App.tab];
     $('pageHead').classList.toggle('hidden', setup || !PH);
@@ -700,6 +749,7 @@
     if (App.tab === 'analysis') return renderAnalysis();
     if (App.tab === 'history') return void renderHistory();
     if (App.tab === 'primer') return void renderPrimer();
+    if (App.tab === 'combos') return void renderCombos();
     if (!App.R || !App.R.stats) { $('view').innerHTML = emptyView(); return; }
     switch (App.tab) {
       case 'deck': $('view').innerHTML = renderDeckTable(false); break;
@@ -719,7 +769,7 @@
     const q = quickStats();
     const e = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), kind, label,
       settings: JSON.parse(JSON.stringify(App.chain.settings)), env: JSON.parse(JSON.stringify(App.chain.env)), ops: App.chain.ops.slice(),
-      cmds: R.commanders.map(c => c.n), names: R.deck.map(x => x.qty + ' ' + x.c.n).sort(), file: (R.dbMeta && R.dbMeta.file) || '',
+      cmds: R.commanders.map(c => c.n), names: R.deck.map(x => x.qty + ' ' + x.c.n).sort(), file: ((R.dbMeta && R.dbMeta.file) || '') + (App.bulkCombos ? ' + Spellbook ' + (App.bulkCombos.meta.timestamp || '').slice(0, 10) : ''),
       m: { price: R.stats.total, cur: R.settings.budget.cur, cap: R.settings.budget.total, bracket: R.settings.bracket, pl: q && q.pl, fund: q && q.fund, score: q && q.score } };
     const h = await histLoad();
     // an unchanged rebuild (same settings, same cards) refreshes the newest entry instead of adding a duplicate
@@ -744,7 +794,7 @@
       App.chain = { settings: e.settings, env: e.env, ops: e.ops.slice() };
       const now = R.deck.map(x => x.qty + ' ' + x.c.n).sort(), same = now.join('|') === e.names.join('|');
       App.AN = null; App.QS = null; App.tab = 'deck'; renderAll();
-      setStatus(same ? 'Restored "' + e.label + '" from ' + new Date(e.at).toLocaleString() + ' (identical card list).' : 'Restored "' + e.label + '", but ' + now.filter(n => !e.names.includes(n)).length + ' card(s) differ: the card data changed since it was saved (' + (e.file || 'unknown file') + ' → ' + ((R.dbMeta && R.dbMeta.file) || 'current') + ').');
+      setStatus(same ? 'Restored "' + e.label + '" from ' + new Date(e.at).toLocaleString() + ' (identical card list).' : 'Restored "' + e.label + '", but ' + now.filter(n => !e.names.includes(n)).length + ' card(s) differ: the card or combo data changed since it was saved (' + (e.file || 'unknown file') + ' → ' + ((R.dbMeta && R.dbMeta.file) || 'current') + (App.bulkCombos ? ' + Spellbook ' + (App.bulkCombos.meta.timestamp || '').slice(0, 10) : '') + ').');
     } finally { App.restoring = false; }
   }
   async function renderHistory() {
@@ -821,6 +871,58 @@
     const weak = li(vec.slice(0, 2).map(v => esc(v.label) + ' ' + v.score + '/100 is the weakest power axis.').concat([X.overall < 70 ? 'Fundamentals ' + X.overall + '/100: see Analysis → Overview for swaps.' : '']));
     $('view').innerHTML = '<div class="primer-wrap">' + sec('Game plan', plan) + (cmdSec || '') + sec('Mulligan', mull) + sec('Turn by turn', turns) + sec('Interaction and protection', inter) + keySec + sec('Weak spots', weak) + '</div>' +
       '<p class="note">Every number is from this deck: ' + sim.games.toLocaleString() + ' seeded goldfish games on the play (no opponents), exact hypergeometric odds, and the rules-text role tags shown on the Deck tab. Win turns are goldfish estimates and run later against interaction.</p>';
+  }
+
+  /* ---------- combos page: Commander Spellbook data loaded from the site (no API) ---------- */
+  const BT = { R: 'Ruthless', S: 'Spicy', P: 'Powerful', O: 'Oddball', C: 'Core', E: 'Exhibition', B: 'Banned' };
+  const sbLink = v => 'https://commanderspellbook.com/combo/' + encodeURIComponent(v.id) + '/';
+  function comboRows(list, opts) {
+    opts = opts || {}; const R = App.R, inDeck = R ? new Set(R.commanders.map(c => c.n).concat(R.deck.map(e => e.c.n))) : new Set();
+    const cardHTML = v => v.c.map(n => { const miss = opts.missing && opts.missing.includes(n), c = App.bulk && Engine.lookup(App.bulk, n);
+      return '<span class="' + (miss ? 'pup' : inDeck.has(n) ? '' : 'note') + '">' + esc(n) + (v.cmd.includes(n) ? ' <span class="chip">commander</span>' : '') + (miss && c ? ' <span class="note">' + fmtP(c.p[(R ? R.settings : App.S).budget.cur]) + '</span>' : '') + '</span>'; }).join(' + ');
+    return '<div class="scroll"><table class="t compact"><thead><tr><th>Cards</th><th>Produces</th><th>Bracket tag</th><th class="n">MV</th><th class="n">Popularity</th><th></th></tr></thead><tbody>' +
+      list.map(x => { const v = x.v || x; return '<tr><td>' + cardHTML(v) + (v.t.length ? '<div class="note">Also needs: ' + esc(v.t.join(', ')) + '</div>' : '') + '</td><td class="why">' + esc(v.p.join(', ')) + '</td><td>' + (v.bt ? '<span class="chip">' + esc(BT[v.bt] || v.bt) + '</span>' : '') + '</td><td class="n">' + (v.mv != null ? v.mv : '') + '</td><td class="n">' + (v.pop != null ? v.pop.toLocaleString() : '') + '</td><td class="nw"><a href="' + sbLink(v) + '" target="_blank" rel="noopener">Steps ↗</a></td></tr>'; }).join('') +
+      '</tbody></table></div>';
+  }
+  async function renderCombos() {
+    const cb = App.bulkCombos, R = App.R;
+    if (!cb) { $('view').innerHTML = '<div class="empty"><h2>' + (App.combosLoading ? 'Loading combos…' : 'No combo data') + '</h2><p>Combos come from Commander Spellbook files in the site\'s <code>data/spellbook/</code> folder, refreshed weekly by the repository\'s Data files workflow. The single-file version has no data folder, so combos are only available on the site.</p></div>'; return; }
+    const ciOf = () => R ? R.CI : (App.S.commanders || []).map(n => n && App.bulk && Engine.lookup(App.bulk, n)).filter(Boolean).map(c => c.ci).join('');
+    let h = '<p class="note">' + cb.count.toLocaleString() + ' combos from Commander Spellbook (' + esc((cb.meta.timestamp || '').slice(0, 10)) + '), read from this site. "Steps" opens the combo on commanderspellbook.com.</p>';
+    if (R && R.stats) {
+      const names = R.commanders.map(c => c.n).concat(R.deck.map(e => e.c.n)), cmds = R.commanders.map(c => c.n);
+      const found = (await cb.find(names, cmds)).sort((a, b) => (b.pop || 0) - (a.pop || 0));
+      const CI = R.CI, inCI = c => [...c.ci].every(x => CI.includes(x)), have = new Set(names);
+      const pool = n => { if (have.has(n)) return false; const c = Engine.lookup(App.bulk, n); return !!c && c.leg === 'legal' && inCI(c); };
+      const near = (await cb.almost(names, pool, 1)).filter(x => !x.v.cmd.length || x.v.cmd.every(n => cmds.includes(n))).sort((a, b) => (b.v.pop || 0) - (a.v.pop || 0)).slice(0, 40);
+      h += '<h3 class="an-sec">In this deck (' + found.length + ')</h3>' + (found.length ? comboRows(found) : '<p class="note">No complete Spellbook combo in this list.' + (R.settings.bracket <= 2 ? ' Brackets 1–2 exclude 2-card infinite combos.' : '') + '</p>');
+      h += '<h3 class="an-sec">One card away (' + near.length + (near.length === 40 ? '+' : '') + ')</h3>' + (near.length ? '<p class="note">The missing card is in red with its price. Adding it may break bracket limits (2-card infinites) or the budget.</p>' + comboRows(near.map(x => ({ v: x.v })), { missing: [].concat(...near.map(x => x.missing)) }) : '<p class="note">None.</p>');
+    }
+    const ci = ciOf();
+    h += '<h3 class="an-sec">Search all combos</h3><div class="row" style="gap:10px;align-items:flex-end"><label class="f" style="flex:1 1 260px">Cards or results (all words must match)<input type="search" id="cbQ" placeholder="e.g. Thassa\'s Oracle, infinite mana" value="' + esc(App.cbQ || '') + '"></label>' +
+      '<label class="f" style="width:130px">Cards in combo<select id="cbN"><option value="">Any</option><option value="2">2</option><option value="3">3</option><option value="4">4+</option></select></label>' +
+      '<label class="c"><input type="checkbox" id="cbCI"' + (ci ? ' checked' : ' disabled') + '> Commander colours' + (ci ? ' (' + pipsHTML(ci) + ')' : '') + '</label><label class="c"><input type="checkbox" id="cbInf"> Infinite only</label></div><div id="cbRes" style="margin-top:10px"></div>';
+    $('view').innerHTML = h;
+    if (App.cbN) $('cbN').value = App.cbN;
+    const run = () => {
+      const q = ($('cbQ').value || '').toLowerCase().split(/[,\s]+/).filter(Boolean), n = $('cbN').value, useCI = $('cbCI').checked && ci, inf = $('cbInf').checked;
+      App.cbQ = $('cbQ').value; App.cbN = n;
+      if (!cb.hay) cb.hay = cb.variants.map(v => (v.c.join(' | ') + ' || ' + v.p.join(' | ') + ' || ' + v.t.join(' | ')).toLowerCase());
+      const out = []; let total = 0;
+      for (let i = 0; i < cb.variants.length; i++) {
+        const v = cb.variants[i];
+        if (n && (n === '4' ? v.c.length < 4 : v.c.length !== +n)) continue;
+        if (inf && !v.inf) continue;
+        if (useCI && ![...(v.ci === 'C' ? '' : v.ci)].every(x => ci.includes(x))) continue;
+        if (q.length && !q.every(w => cb.hay[i].includes(w))) continue;
+        total++; out.push(v);
+      }
+      out.sort((a, b) => (b.pop || 0) - (a.pop || 0));
+      $('cbRes').innerHTML = '<p class="note">' + total.toLocaleString() + ' match' + (total === 1 ? '' : 'es') + (total > 100 ? '; showing the 100 most popular' : '') + '.</p>' + (total ? comboRows(out.slice(0, 100)) : '');
+    };
+    let tm; $('cbQ').addEventListener('input', () => { clearTimeout(tm); tm = setTimeout(run, 150); });
+    for (const id of ['cbN', 'cbCI', 'cbInf']) $(id).addEventListener('change', run);
+    run();
   }
 
   /* ---------- score bar: always-visible headline numbers for the current deck ---------- */
