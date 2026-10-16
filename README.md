@@ -119,7 +119,7 @@ Everything the page loads comes from this site's `data/` folder. The page makes 
 
 ### Scryfall card data
 
-`tools/scryfall-slim.js` streams Scryfall's Oracle Cards file and keeps only the fields `Engine.norm()` reads (name, cost, type, rules text, P/T, loyalty, colour identity, Commander legality, prices, EDHREC rank, Game Changer and reserved flags, set, dates, keywords, produced mana, the Scryfall link and the "normal" image path). On the 16 Oct 2026 file it went from 25 MB to 7.1 MB gzipped (38,751 cards), and the page builds identical card records from either file apart from the tracking suffix on Scryfall links. The workflow asks `api.scryfall.com/bulk-data/oracle-cards` for the current file name, downloads it only if it is new, slims it, replaces the old file and commits. Weekly commits of about 7 MB grow the repository by roughly 350 MB a year.
+`tools/scryfall-slim.js` streams Scryfall's Oracle Cards file and keeps only the fields `Engine.norm()` reads (name, cost, type, rules text, P/T, loyalty, colour identity, Commander legality, prices, EDHREC rank, Game Changer and reserved flags, set, dates, keywords, produced mana, the Scryfall link and the "normal" image path). On the 16 Oct 2026 file it went from 25 MB to 7.1 MB gzipped (38,751 cards), and the page builds identical card records from either file apart from the tracking suffix on Scryfall links. The workflow asks `api.scryfall.com/bulk-data/oracle-cards` for the current file name (`jsonl_download_uri`), downloads it only if it is new, slims it, replaces the old file and commits. Weekly commits of about 7 MB grow the repository by roughly 350 MB a year.
 
 ```sh
 node tools/scryfall-slim.js oracle-cards-20261016090200.json data/oracle-cards-20261016090200.jsonl.gz
@@ -141,7 +141,7 @@ Only combos with status OK or Example that are legal in Commander are kept. On a
 
 The step-by-step text is not kept. The Combos page links each combo to commanderspellbook.com for its steps; that is a link, not a request the page makes.
 
-**Workflow.** `.github/workflows/data.yml` runs on GitHub, not in the browser. It refreshes the Scryfall file (above), downloads `variants.json`, runs the converter, rewrites `data/index.json` and commits any changes. To refresh now: Actions → Data files → Run workflow (both boxes are ticked by default).
+**Workflow.** `.github/workflows/data.yml` runs on GitHub, not in the browser. It refreshes the Scryfall file (above), downloads `variants.json`, runs the converter, rewrites `data/index.json` and commits any changes. To refresh now: Actions → Data files → Run workflow. Scryfall and Spellbook are ticked by default; "Re-download Scryfall card data" fetches the card file even when its name hasn't changed.
 
 **Running it locally:**
 
