@@ -40,9 +40,15 @@ The result is a local optimum of the deck score above, checked by brute force: r
 - the score is only as good as its inputs (popularity rank, rules-text patterns, hand-set weights);
 - swaps of three or more cards at once are not searched.
 
-## Score bar
+## Layout
 
-A bar above the tabs shows, for the current deck: power level, fundamentals, deck score (the optimiser's objective), total price against the budget cap, bracket (flagged when the cards imply a higher one) and typical win turn. It updates after every edit.
+The left menu has three groups: Build (Setup, Deck, Primer, History), Evaluate (Analysis, Stats, By role) and Output and checks (Export, Validation, Log, Tests). Setup holds the commander, budget and game plan; generating a deck opens the Deck page. On phones the menu becomes a scrolling tab strip.
+
+**Appearance** (gear button, top right) sets light, dark or system mode, an accent colour (ink, blue, violet, pink, green, orange, teal), text size (S, M, L, XL) and serif or sans headings. The choice is stored in the browser.
+
+## Score cards
+
+Six cards above every page show, for the current deck: power level, fundamentals, deck score (the optimiser's objective), total price against the budget cap, bracket (flagged when the cards imply a higher one) and typical win turn. It updates after every edit.
 
 ## Analysis
 

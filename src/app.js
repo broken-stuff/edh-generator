@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const uiDefaults = () => { const d = Engine.defaults(); delete d.apiPages; return d; };
-  const App = { S: uiDefaults(), bulk: null, bulkCombos: null, R: null, tab: 'deck', groupBy: 'type', openSwap: null, busy: false, tests: null, cmdIndex: null };
+  const App = { S: uiDefaults(), bulk: null, bulkCombos: null, R: null, tab: 'setup', groupBy: 'type', openSwap: null, busy: false, tests: null, cmdIndex: null };
   window.EDHApp = App;
 
   /* ---------- storage helpers (optional conveniences) ---------- */
@@ -104,12 +104,14 @@
   function comboProvider() { return App.bulkCombos || null; }
   function renderSources() {
     const set = (id, cls, text) => { const el = $(id); el.innerHTML = '<span class="dot ' + cls + '"></span>' + esc(text); };
-    set('pBulk', App.bulk ? 'ok' : '', 'Cards: ' + (App.bulk ? App.bulk.all.length.toLocaleString() + ' (' + (App.bulk.meta.file || 'stored') + ')' : 'not loaded'));
-    $('dataHint').textContent = App.bulk ? 'loaded' : 'load a file';
+    set('pBulk', App.bulk ? 'ok' : '', App.bulk ? App.bulk.all.length.toLocaleString() + ' cards' : 'Card data not loaded');
+    $('pBulk').title = App.bulk ? (App.bulk.meta.file || 'stored data') : '';
+    $('railData').innerHTML = App.bulk ? '<span>Card data</span><b>' + App.bulk.all.length.toLocaleString() + ' cards</b><span style="overflow-wrap:anywhere">' + esc(App.bulk.meta.file || 'stored data') + '</span>' : '<span>Card data</span><b>Not loaded</b>';
+    $('dataHint').textContent = App.bulk ? (App.bulk.meta.file || 'loaded') : 'load a file';
     if (!App.bulk) $('secData').open = true;
     $('genBtn').disabled = App.busy || !App.bulk;
     $('testBtn').disabled = App.busy || !App.bulk;
-    if (!App.R && App.tab === 'deck') renderView();
+    if (!App.R && App.tab !== 'setup') renderView();
   }
 
   /* ---------- form binding ---------- */
@@ -160,7 +162,7 @@
       writeForm(App.S); persistSettings();
     });
     $('qBudget').addEventListener('click', e => { const b = e.target.closest('button[data-b]'); if (!b) return; App.S.budget.total = b.dataset.b === '' ? '' : +b.dataset.b; writeForm(App.S); persistSettings(); });
-    $('qGen').addEventListener('click', () => { $('genBtn').click(); if (window.matchMedia('(max-width: 720px)').matches) document.querySelector('.results').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    $('qGen').addEventListener('click', () => $('genBtn').click());
   }
   function onFormChange(ev) {
     const el = ev.target; if (!el.dataset || !el.dataset.k) return;
@@ -254,7 +256,8 @@
     return esc(mc).replace(/\{([^}]+)\}/g, (m, s) => { const cols = s.split('/').filter(x => 'WUBRG'.includes(x)); const cls = cols.length === 1 ? cols[0] : ''; return '<span class="ms ' + cls + '">' + s.replace('/', '') + '</span>'; });
   }
   const fmtP = (v) => Engine.fmt(v, App.R ? App.R.settings.budget.cur : App.S.budget.cur);
-  function setStatus(t) { $('status').textContent = t || ''; }
+  function setStatus(t) { $('status').textContent = t || ''; syncActions(); }
+  function syncActions() { const has = App.R && App.R.stats; $('regenBtn').classList.toggle('hidden', !has); document.querySelector('.actions').classList.toggle('hidden', !has && !$('status').textContent && App.tab !== 'tests'); }
   function setProg(f) { const p = $('genProg'); if (f == null) { p.classList.add('hidden'); return; } p.classList.remove('hidden'); p.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; }
   function showMsgs(errors, warnings, extraHTML) {
     let h = '';
@@ -579,13 +582,11 @@
     if (!R || !R.stats) { el.classList.add('hidden'); return; }
     const s = R.stats, v = R.validation;
     const fails = v.rules.filter(r => r.pass === false).length;
-    el.classList.remove('hidden');
     el.innerHTML = [
       ['Commander', R.commanders.map(c => esc(c.n)).join(' + ') + ' ' + pipsHTML(R.CI)],
       ['Cards', (R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0))],
-      ['Total price', fmtP(s.total) + (s.unknown.length ? ' <span class="note">(' + s.unknown.length + ' unpriced)</span>' : '')],
       ['Avg MV', s.avgMV.toFixed(2)],
-      ['Bracket', R.settings.bracket + ' · ' + esc(Engine.BRACKETS[R.settings.bracket].name)],
+      ['Unpriced', s.unknown.length],
       ['Game Changers', s.gcs.length],
       ['Validation', fails ? '<span class="st fail">' + fails + ' FAIL</span>' : '<span class="st pass">PASS</span>'],
       ['Seed', '<span class="mono">' + esc(R.seedUsed) + '</span>']
@@ -593,7 +594,7 @@
   }
   function emptyView() {
     const about = '<p>Builds a legal 100-card Commander deck from every card in the Scryfall file, then optimises it. A first pass fills lands, role slots (ramp, draw, removal, wipes, protection, recursion, win conditions) and your themes. The optimiser then scores every card in the deck against every legal candidate and keeps making the best swap until no swap raises the deck score, staying inside your bracket, budget and filters. The Analysis tab rates the result (power level, speed, consistency, interaction, mana) with 100,000 simulated games, and Compare scores any other list the same way.</p>';
-    if (App.bulk) return '<div class="empty"><h2>Ready</h2><p>' + App.bulk.all.length.toLocaleString() + ' unique cards loaded from ' + esc(App.bulk.meta.file || 'stored data') + '. Pick a commander, a game plan and any themes, then Generate deck.</p>' + about + '</div>';
+    if (App.bulk) return '<div class="empty"><h2>No deck yet</h2><p>' + App.bulk.all.length.toLocaleString() + ' unique cards loaded from ' + esc(App.bulk.meta.file || 'stored data') + '. Pick a commander, a budget and a plan under Setup, then Generate deck.</p><div class="row"><button type="button" class="primary" data-goto="setup">Go to Setup</button></div>' + about + '</div>';
     return '<div class="empty"><h2>Card data</h2>' + about + (window.EDH_SITE ? '<p>Card data loads from this site automatically. If it does not appear, load a Scryfall bulk file under Data source.</p>' :
       '<ol><li>Download <b>Oracle Cards</b> from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a> (.json, .jsonl or .gz).</li><li>Load it under Data source. It is read in this browser and kept for the next visit.</li><li>Pick a commander, then Generate deck.</li></ol>') + '</div>';
   }
@@ -683,6 +684,18 @@
   }
   function renderView() {
     document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === App.tab));
+    const setup = App.tab === 'setup';
+    $('setupView').classList.toggle('hidden', !setup); $('view').classList.toggle('hidden', setup);
+    $('summary').classList.toggle('hidden', setup || !(App.tab === 'deck' || App.tab === 'role') || !App.R || !App.R.stats);
+    $('testBtn').classList.toggle('hidden', App.tab !== 'tests'); syncActions();
+    const PH = { deck: ['Deck list', 'Grouped by card type. Lock a card to keep it on rebuild; Swap shows the five best alternatives.'], role: ['By role', 'Cards grouped by the role slot they fill.'],
+      analysis: ['Analysis', 'Power level, fundamentals and swap recommendations from simulated games.'], primer: ['Primer', 'How to play this list, from its own simulation and card roles.'],
+      stats: ['Stats', 'Mana curve, role counts against targets, price and combos.'], valid: ['Validation', 'Every deck-building rule and whether this list passes it.'],
+      log: ['Build log', 'Each step the generator and optimiser took.'], export: ['Export', 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.'],
+      history: ['History', 'The last 25 decks and revisions in this browser.'], tests: ['Acceptance tests', 'Checks the generator against the loaded card data.'] }[App.tab];
+    $('pageHead').classList.toggle('hidden', setup || !PH);
+    if (PH) $('pageHead').innerHTML = '<h2>' + PH[0] + '</h2><p class="note">' + PH[1] + '</p>';
+    if (setup) return;
     if (App.tab === 'tests') return renderTests();
     if (App.tab === 'analysis') return renderAnalysis();
     if (App.tab === 'history') return void renderHistory();
@@ -818,26 +831,41 @@
     if (App.QS && App.QS.key === key) return App.QS;
     const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label === 'Generated deck' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
     const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, games: 4000 });
-    App.QS = { key, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, score: R.deckScore ? R.deckScore() : null, games: X.sim.games };
+    App.QS = { key, pl: X.power.pl, plLabel: X.power.label, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, winBest: X.power.win.best, winCont: X.power.win.contested, arch: X.power.primary, score: R.deckScore ? R.deckScore() : null, games: X.sim.games };
     return App.QS;
   }
+  const KI = {
+    power: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', fund: '<path d="M3 12h4l3-8 4 16 3-8h4"/>', price: '<circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/>',
+    bracket: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>', win: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>', score: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'
+  };
   function renderScorebar() {
-    const el = $('scorebar'); const R = App.R;
-    if (!R || !R.stats) { el.classList.add('hidden'); return; }
-    const q = quickStats(); if (!q) { el.classList.add('hidden'); return; }
+    const el = $('kpis'), mini = $('scorebar'); const R = App.R;
+    const off = () => { el.classList.add('hidden'); mini.classList.add('hidden'); };
+    if (!R || !R.stats) return off();
+    const q = quickStats(); if (!q) return off();
     const cap = R.settings.budget.total, cur = R.settings.budget.cur, total = R.stats.total;
-    const over = cap != null && cap !== '' && total > +cap + 1e-9;
-    const items = [
-      ['Power', q.pl.toFixed(1)], ['Fundamentals', q.fund], ['Deck score', q.score != null ? q.score.toFixed(1) : '—'],
-      ['Price', Engine.fmt(total, cur) + (cap != null && cap !== '' ? '<span class="note"> / ' + Engine.fmt(+cap, cur) + '</span>' : ''), over ? 'bad' : ''],
-      ['Bracket', 'B' + R.settings.bracket + (q.minB > R.settings.bracket ? '<span class="note"> · plays like B' + q.minB + '</span>' : ''), q.minB > R.settings.bracket ? 'warn' : ''],
-      ['Win turn', '~T' + q.win]
+    const hasCap = cap != null && cap !== '', over = hasCap && total > +cap + 1e-9, hi = q.minB > R.settings.bracket;
+    const used = hasCap && +cap > 0 ? Math.min(1, total / +cap) : null;
+    const K = [
+      ['power', 'Power level', 'var(--i-violet)', q.pl.toFixed(1) + '<small> /10</small>', esc(q.plLabel || '')],
+      ['fund', 'Fundamentals', 'var(--i-green)', q.fund + '<small> /100</small>', esc(q.arch || '')],
+      ['price', 'Total price', 'var(--i-orange)', Engine.fmt(total, cur), hasCap ? (over ? 'over the ' : 'of ') + Engine.fmt(+cap, cur) + ' cap' + (used != null ? ' · ' + Math.round(total / +cap * 100) + '%' : '') : 'no budget cap', over ? 'bad' : '', used],
+      ['bracket', 'Bracket', 'var(--i-blue)', 'B' + R.settings.bracket + '<small> ' + esc(Engine.BRACKETS[R.settings.bracket].name) + '</small>', hi ? 'cards play like B' + q.minB : 'cards fit B' + R.settings.bracket, hi ? 'warn' : ''],
+      ['win', 'Win turn', 'var(--i-pink)', 'T' + q.win, 'best T' + q.winBest + ' · contested T' + q.winCont],
+      ['score', 'Deck score', 'var(--i-teal)', q.score != null ? q.score.toFixed(1) : '—', 'optimiser objective']
     ];
-    el.innerHTML = items.map(([k, v, cls]) => '<div class="sb' + (cls ? ' ' + cls : '') + '"><span>' + k + '</span><b>' + v + '</b></div>').join('');
+    el.innerHTML = K.map(([k, l, c, v, sub, cls, bar]) => '<div class="kpi' + (cls ? ' ' + cls : '') + '"><div class="kh"><span class="ki" style="background:' + c + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + KI[k] + '</svg></span><span class="kl">' + l + '</span></div><div class="kv2">' + v + '</div>' +
+      (bar != null ? '<div class="kbar"><i style="width:' + (bar * 100).toFixed(1) + '%"></i></div>' : '') + '<div class="ks">' + sub + '</div></div>').join('');
     el.title = 'Power, fundamentals, bracket and win turn from ' + q.games.toLocaleString() + ' simulated games; deck score is the optimiser\'s objective for the current list.';
-    el.classList.remove('hidden');
+    mini.innerHTML = [['Power', q.pl.toFixed(1)], ['Fund.', q.fund], ['Price', Engine.fmt(total, cur) + (hasCap ? ' / ' + Engine.fmt(+cap, cur) : ''), over ? 'bad' : ''], ['Bracket', 'B' + R.settings.bracket + (hi ? ' (plays B' + q.minB + ')' : ''), hi ? 'warn' : ''], ['Win', 'T' + q.win], ['Score', q.score != null ? q.score.toFixed(1) : '—']]
+      .map(([k, v, c]) => '<div' + (c ? ' class="' + c + '"' : '') + '><span>' + k + '</span><b>' + v + '</b></div>').join('');
+    el.classList.remove('hidden'); syncMini();
   }
-  function renderAll() { renderSummary(); renderScorebar(); renderView(); $('regenBtn').disabled = !App.R || !App.R.stats || App.busy; }
+  // compact copy of the KPI cards that pins to the top once the cards scroll out of view
+  let kpiVisible = true;
+  function syncMini() { $('scorebar').classList.toggle('hidden', kpiVisible || $('kpis').classList.contains('hidden')); }
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => { kpiVisible = es[0].isIntersecting; syncMini(); }, { rootMargin: '-60px 0px 0px 0px' }).observe($('kpis'));
+  function renderAll() { renderSummary(); renderScorebar(); renderView(); $('regenBtn').disabled = !App.R || !App.R.stats || App.busy; syncActions(); }
 
   /* ---------- clipboard / files ---------- */
   async function copyText(text, ta, note) {
@@ -880,6 +908,7 @@
       if (R.errors.length) { App.R = null; showMsgs(R.errors, R.warnings); setStatus('Not generated.'); }
       else {
         App.R = R; App.openSwap = null; App.QS = null; if (App.anSource !== 'paste') App.AN = null;
+        if (App.tab === 'setup' && !App.restoring) { App.tab = 'deck'; window.scrollTo({ top: 0 }); }
         if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
         const O = R.optimize;
@@ -973,7 +1002,7 @@
       runGenerate({ locks, bans: App.R.bans || [] });
     });
     $('testBtn').addEventListener('click', runTests);
-    document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; App.tab = b.dataset.tab; renderView(); if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis(); });
+    document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; App.tab = b.dataset.tab; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 }); if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis(); });
     $('view').addEventListener('input', e => { if (e.target.id === 'anText') App.anText = e.target.value; });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
@@ -984,6 +1013,7 @@
       if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); App.AN = null; if (App.anSource !== 'paste') renderAll(); App.tab = 'analysis'; renderView(); runAnalysis(); }
     });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
+    $('view').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-hist]'); if (!b) return;
       const v = b.dataset.hist, h = await histLoad();
@@ -1013,11 +1043,25 @@
     $('copyTok').addEventListener('click', () => copyText($('shareTok').value, $('shareTok'), null));
     $('applyTok').addEventListener('click', async () => { try { applySettings(await decodeSettings($('shareTok').value)); setStatus('Token applied.'); checkCommanders(); } catch (err) { setStatus('Token error: ' + err.message); } });
     $('resetSet').addEventListener('click', () => { applySettings({}); setStatus('Defaults restored.'); });
-    const themes = ['system', 'light', 'dark'];
-    const applyTheme = t => { if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); $('themeBtn').textContent = 'Theme: ' + t; };
-    let theme = LS.get('edhgen.theme') || 'system'; applyTheme(theme);
+    // appearance: mode, accent colour, text size, heading font (stored per browser)
+    let AP = { mode: 'system', accent: '', size: '1', head: 'serif' };
+    try { AP = Object.assign(AP, JSON.parse(LS.get('edhgen.appearance') || '{}')); } catch (e) { }
+    const legacy = LS.get('edhgen.theme'); if (legacy && !LS.get('edhgen.appearance')) AP.mode = legacy;
+    const root = document.documentElement;
+    const applyAP = () => {
+      if (AP.mode === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', AP.mode);
+      if (AP.accent) root.setAttribute('data-accent', AP.accent); else root.removeAttribute('data-accent');
+      root.style.setProperty('--fz', AP.size); root.setAttribute('data-headings', AP.head);
+      for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head']]) $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(AP[k])));
+    };
+    applyAP();
+    for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head']])
+      $(id).addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; AP[k] = b.dataset.v; applyAP(); LS.set('edhgen.appearance', JSON.stringify(AP)); });
+    const pop = $('appearance'), setPop = open => { pop.classList.toggle('hidden', !open); $('themeBtn').setAttribute('aria-expanded', open); };
+    $('themeBtn').addEventListener('click', e => { e.stopPropagation(); setPop(pop.classList.contains('hidden')); });
+    document.addEventListener('click', e => { if (!pop.classList.contains('hidden') && !e.target.closest('.popwrap')) setPop(false); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') setPop(false); });
     App.anGames = +(LS.get('edhgen.anGames') || 100000); App.anSub = LS.get('edhgen.anSub') || 'overview';
-    $('themeBtn').addEventListener('click', () => { theme = themes[(themes.indexOf(theme) + 1) % 3]; applyTheme(theme); LS.set('edhgen.theme', theme); });
     setupAC('cmd1', 'cmd1L'); setupAC('cmd2', 'cmd2L');
     wireQuick(); syncQuick(App.S);
   }
