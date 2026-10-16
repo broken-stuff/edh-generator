@@ -56,6 +56,9 @@ const Engine = (function () {
   function bracketDefaults(b) { return Object.assign({}, BRACKETS[b] || BRACKETS[3]); }
 
   /* ---------- normalization of Scryfall card objects ---------- */
+  // P/T, loyalty or defense for display; image path on cards.scryfall.io (shown only when the user turns images on)
+  const ptOf = f => f.power != null ? f.power + '/' + f.toughness : f.loyalty != null ? 'Loyalty ' + f.loyalty : f.defense != null ? 'Defense ' + f.defense : '';
+  function imgOf(u) { const m = u && typeof u.normal === 'string' && /^https:\/\/cards\.scryfall\.io\/normal\/(front\/[0-9a-f]\/[0-9a-f]\/[0-9a-f-]+\.jpg)/.exec(u.normal); return m ? m[1] : ''; }
   function norm(c) {
     if (!c || typeof c !== 'object' || !c.name || c.object === 'list') return null;
     if (SKIP_LAYOUTS.has(c.layout)) return null;
@@ -80,7 +83,8 @@ const Engine = (function () {
       rl: !!c.reserved, bc: c.border_color || '', stamp: c.security_stamp || '', stype: c.set_type || '',
       sets: c.set ? [c.set] : [], first: c.released_at || '', last: c.released_at || '',
       kw: (c.keywords || []).map(k => String(k).toLowerCase()), pm: Array.isArray(c.produced_mana) ? c.produced_mana : [],
-      pow: pnum(pw), uri: c.scryfall_uri || '', otags: []
+      pow: pnum(pw), uri: c.scryfall_uri || '', otags: [],
+      pt: ptOf(c.power != null || c.loyalty != null || c.defense != null ? c : (faces && faces[0]) || {}), img: imgOf(c.image_uris || (faces && faces[0] && faces[0].image_uris))
     };
   }
   function mergeCard(a, b) {

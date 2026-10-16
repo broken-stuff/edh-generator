@@ -1,12 +1,17 @@
 # Keeps data/ loadable by the page without any API calls:
+#  - data/oracle-cards-*.jsonl.gz: Scryfall Oracle Cards, refreshed weekly (and on demand), cut to the fields the page reads
 #  - data/spellbook/: Commander Spellbook combos, rebuilt weekly (and on demand) from variants.json into small files
 #  - data/index.json: list of files in data/, rebuilt after every push that touches data/
 name: Data files
 on:
   schedule:
-    - cron: '23 6 * * 1'          # Mondays 06:23 UTC: refresh Commander Spellbook
+    - cron: '23 6 * * 1'          # Mondays 06:23 UTC: refresh Scryfall card data and Commander Spellbook
   workflow_dispatch:
     inputs:
+      scryfall:
+        description: 'Refresh Scryfall card data'
+        type: boolean
+        default: true
       spellbook:
         description: 'Refresh Commander Spellbook combos'
         type: boolean
@@ -53,14 +58,37 @@ jobs:
           curl -fsSL --retry 4 --retry-delay 10 --compressed -o "$RUNNER_TEMP/variants.json" https://json.commanderspellbook.com/variants.json
           ls -l "$RUNNER_TEMP/variants.json"
           node tools/spellbook-shard.js "$RUNNER_TEMP/variants.json" data/spellbook
+      - name: Download and slim Scryfall Oracle Cards
+        # Scheduled and manual runs check Scryfall's bulk-data list; a push does so only when no card file exists yet.
+        # A new file is written only when Scryfall has published a newer one; the old file is removed.
+        env:
+          EVENT: ${{ github.event_name }}
+          REFRESH: ${{ github.event.inputs.scryfall }}
+        run: |
+          run=no
+          if [ "$EVENT" = schedule ]; then run=yes; fi
+          if [ "$EVENT" = workflow_dispatch ] && [ "$REFRESH" != false ]; then run=yes; fi
+          if [ "$EVENT" = push ] && ! ls data/oracle-cards-*.jsonl.gz >/dev/null 2>&1; then run=yes; fi
+          echo "Refresh Scryfall: $run"
+          [ "$run" = yes ] || exit 0
+          UA='broken-stuff-edh-generator/1.0 (GitHub Action; https://github.com/broken-stuff/edh-generator)'
+          url=$(curl -fsSL --retry 4 --retry-delay 10 -H "User-Agent: $UA" -H 'Accept: application/json' https://api.scryfall.com/bulk-data/oracle-cards | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).download_uri))')
+          name=$(basename "$url" .json)          # e.g. oracle-cards-20261016090200
+          echo "Newest: $name"
+          case "$name" in oracle-cards-[0-9]*) ;; *) echo "Unexpected file name: $url"; exit 1;; esac
+          if [ -f "data/$name.jsonl.gz" ]; then echo "Already current."; exit 0; fi
+          curl -fsSL --retry 4 --retry-delay 10 --compressed -H "User-Agent: $UA" -o "$RUNNER_TEMP/oracle.json" "$url"
+          node tools/scryfall-slim.js "$RUNNER_TEMP/oracle.json" "$RUNNER_TEMP/$name.jsonl.gz"
+          git rm -q --ignore-unmatch data/oracle-cards-*.json data/oracle-cards-*.jsonl data/oracle-cards-*.json.gz data/oracle-cards-*.jsonl.gz
+          mv "$RUNNER_TEMP/$name.jsonl.gz" data/
       - name: Index data/
         run: node tools/data-index.js data
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898+github-actions[bot]@users.noreply.github.com"
-          git add data/index.json data/spellbook
+          git add -A data
           if git diff --cached --quiet; then echo "No data changes."; exit 0; fi
-          git commit -m "Update data files (Spellbook combos and data index)"
+          git commit -m "Update data files (card data, Spellbook combos, data index)"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && exit 0; sleep 5; done
           exit 1

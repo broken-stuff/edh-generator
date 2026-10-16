@@ -119,4 +119,11 @@ function legalCheck(R, label) {
   legalCheck(R, 'combo prefer w/ exclude');
   R = await E.generate(db, Object.assign({}, base, { commanders: ['Synth Mono Lord'], filters: { combos: 'prefer' } }), { combos: prov });
   console.log('combos found', R.combos.map(v => v.c.join('+')));
+  // Scryfall slimmer keeps everything norm() reads; norm() keeps P/T and the image path
+  const { slim } = require('../tools/scryfall-slim.js');
+  const full = card({ name: 'Slim Test', power: '2', toughness: '3', scryfall_uri: 'https://scryfall.com/card/x/1/slim-test?utm_source=api', image_uris: { small: 'https://cards.scryfall.io/small/front/a/b/ab12-cd.jpg?1', normal: 'https://cards.scryfall.io/normal/front/a/b/ab12-cd.jpg?1' }, legalities: { commander: 'legal', modern: 'legal' }, artist: 'X', all_parts: [] });
+  const n1 = E.norm(full), n2 = E.norm(slim(full));
+  assert(n1.pt === '2/3' && n1.img === 'front/a/b/ab12-cd.jpg', 'norm keeps P/T and image path');
+  assert(JSON.stringify(Object.assign({}, n1, { uri: '' })) === JSON.stringify(Object.assign({}, n2, { uri: '' })) && n2.uri === 'https://scryfall.com/card/x/1/slim-test', 'slimmed card normalises the same');
+  assert(E.norm(card({ name: 'Bad Img', image_uris: { normal: 'https://evil.example/x.jpg' } })).img === '', 'image path only from cards.scryfall.io');
 })();

@@ -319,6 +319,66 @@ table.swaps td{vertical-align:top}
   .seg.wide button,.chips button{min-height:40px}
 }
 @media (max-width:440px){.brand h1{display:none}}
+
+/* card names, popover, sample hand, commander browser, print */
+a.cl{color:inherit;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;cursor:pointer}
+a.cl:hover{text-decoration-color:currentColor}
+#cardPop{position:fixed;z-index:60;width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--pop-shadow,0 16px 48px -10px rgba(16,24,40,.25));padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:calc(13px*var(--fz))}
+#cardPop .cimg{width:100%;aspect-ratio:488/680;border-radius:10px;background:var(--card-2);object-fit:cover}
+#cardPop .cp-h{display:flex;gap:8px;align-items:baseline}#cardPop .cp-h b{flex:1}
+#cardPop .iconx{border:0;background:none;padding:0 2px;color:var(--muted);font-size:calc(13px*var(--fz));cursor:pointer;min-height:0}
+#cardPop .cp-ot{white-space:normal;line-height:1.45}
+#cardPop .cp-m{color:var(--muted)}
+#cardPop .cp-why{border-top:1px solid var(--line);padding-top:6px}
+.hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px;margin:14px 0}
+.hcard{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-height:150px;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card-2);text-align:left;font:inherit;color:inherit;cursor:pointer}
+.hcard.land{background:var(--card)}
+.hcard .hn{font-weight:600;line-height:1.25}
+.hcard.pic{padding:0;min-height:0;border:0;background:none}
+.hcard .himg{width:100%;aspect-ratio:488/680;border-radius:10px;display:block}
+.cmdtable td{vertical-align:top}
+.seg button .ms{margin:0}
+.good{color:var(--ok)} .badc{color:var(--bad)}
+ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
+.primer h4{margin:8px 0 2px;font-size:calc(13px*var(--fz))}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+#printArea{display:none}
+@media (max-width:560px){
+  table.deck thead{display:none}
+  table.deck tr{display:grid;grid-template-columns:30px minmax(0,1fr) auto;column-gap:6px;align-items:center;border-bottom:1px solid var(--line);padding:6px 0}
+  table.deck tr.grp{display:block;padding:0}
+  table.deck td{display:block;border:0;padding:1px 0}
+  table.deck td:nth-child(1){grid-column:1;grid-row:1/3}
+  table.deck td:nth-child(2){grid-column:2;grid-row:1}
+  table.deck td:nth-child(3){grid-column:3;grid-row:1;text-align:right}
+  table.deck td:nth-child(4){display:none}
+  table.deck td:nth-child(5){grid-column:3;grid-row:2;text-align:right}
+  table.deck td:nth-child(6){grid-column:2;grid-row:2}
+  table.deck td:nth-child(7){grid-column:2/4;grid-row:3;font-size:calc(12px*var(--fz))}
+  table.deck td:nth-child(8){grid-column:2/4;grid-row:4}
+  table.deck td:nth-child(8):empty{display:none}
+  ul.dl{columns:1}
+}
+@media print{
+  @page{margin:6mm}
+  body.printing{background:#fff}
+  body.printing > *:not(#printArea){display:none!important}
+  body.printing #printArea{display:block;color:#000;font:9.5pt/1.35 var(--f-ui)}
+  #printArea h1{font:600 16pt var(--f-ui);margin:0 0 2mm}
+  #printArea h2{font:600 12pt var(--f-ui);margin:4mm 0 2mm}
+  #printArea .pcols{column-count:3;column-gap:6mm}
+  #printArea .pg{break-inside:avoid;margin-bottom:3mm}
+  #printArea .pmc{color:#555;font-size:8pt}
+  #printArea .an-card{border:0;padding:0;margin:0 0 3mm;box-shadow:none;background:none;break-inside:avoid}
+  #printArea .ms{box-shadow:none;border:0.2mm solid #888}
+  #printArea a{color:#000;text-decoration:none}
+  #printArea .pxgrid{display:grid;grid-template-columns:repeat(3,63mm);grid-auto-rows:88mm;gap:0}
+  #printArea .px{border:0.3mm solid #000;padding:3mm;overflow:hidden;break-inside:avoid;display:flex;flex-direction:column;gap:1.5mm;font-size:7.5pt;line-height:1.3}
+  #printArea .px-h{display:flex;justify-content:space-between;gap:2mm;font-size:8.5pt}
+  #printArea .px-t{border-bottom:0.2mm solid #000;padding-bottom:1mm;font-style:italic}
+  #printArea .px-o{flex:1}
+  #printArea .px-pt{align-self:flex-end;font-weight:600;font-size:9pt}
+}
 @media (max-width:560px){table.swaps thead{display:none}table.swaps tr{display:grid;grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--line);padding:6px 0}table.swaps td{display:block;border:0;padding:2px 4px}table.swaps td:last-child{grid-column:1/-1}}
 </style>
 
@@ -342,6 +402,8 @@ table.swaps td{vertical-align:top}
       </div></div>
       <div><h3>Text size</h3><div class="seg" id="apSize"><button type="button" data-v="0.93">S</button><button type="button" data-v="1">M</button><button type="button" data-v="1.12">L</button><button type="button" data-v="1.25">XL</button></div></div>
       <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
+      <div><h3>Card images</h3><div class="seg" id="apImg"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div><p class="note" style="margin-top:4px">On loads pictures from cards.scryfall.io when a card is shown. Everything else stays on this site.</p></div>
+      <p class="note">Keys: 1–9, 0 pages · G generate · / search · U undo · ? help</p>
     </div>
   </div>
   <button type="button" id="clearBtn" title="Clear the deck and settings and start over">Clear</button>
@@ -353,11 +415,13 @@ table.swaps td{vertical-align:top}
   <div class="hello">Commander<br>deck builder</div>
   <div class="grp-h">Build</div>
   <button role="tab" aria-selected="true" data-tab="setup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Setup</span></button>
+  <button role="tab" aria-selected="false" data-tab="commanders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4 4 5-7 5 7 4-4-2 11H5z"/></svg><span>Commanders</span></button>
   <button role="tab" aria-selected="false" data-tab="deck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg><span>Deck</span></button>
   <button role="tab" aria-selected="false" data-tab="primer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
   <button role="tab" aria-selected="false" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg><span>History</span></button>
   <div class="grp-h">Evaluate</div>
   <button role="tab" aria-selected="false" data-tab="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analysis</span></button>
+  <button role="tab" aria-selected="false" data-tab="hand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="9" height="13" rx="1.5" transform="rotate(-10 7.5 12.5)"/><rect x="11" y="5" width="9" height="13" rx="1.5" transform="rotate(8 15.5 11.5)"/></svg><span>Sample hand</span></button>
   <button role="tab" aria-selected="false" data-tab="combos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7.5a4.5 4.5 0 1 0 0 9M15 7.5a4.5 4.5 0 1 1 0 9"/><path d="M9 7.5h6M9 16.5h6"/></svg><span>Combos</span></button>
   <button role="tab" aria-selected="false" data-tab="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg><span>Stats</span></button>
   <button role="tab" aria-selected="false" data-tab="role"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>By role</span></button>
@@ -374,6 +438,7 @@ table.swaps td{vertical-align:top}
   <div id="scorebar" class="mini hidden" aria-hidden="true"></div>
   <div class="actions">
     <span id="status" role="status" aria-live="polite"></span>
+    <button type="button" id="undoBtn" class="small hidden">Undo</button>
     <button type="button" id="regenBtn" class="small" disabled title="Rebuild keeping the cards you locked and leaving out the ones you removed">Rebuild around locks</button>
     <button type="button" id="testBtn" class="small hidden">Run acceptance tests</button>
   </div>
@@ -532,6 +597,7 @@ table.swaps td{vertical-align:top}
   <section class="panel" id="view"></section>
 </main>
 </div>
+<div id="cardPop" class="hidden" role="tooltip"></div>
 </div>
 <script>
 /* ===== Engine: pure deck-generation logic (no DOM, no network) ===== */
@@ -592,6 +658,9 @@ const Engine = (function () {
   function bracketDefaults(b) { return Object.assign({}, BRACKETS[b] || BRACKETS[3]); }
 
   /* ---------- normalization of Scryfall card objects ---------- */
+  // P/T, loyalty or defense for display; image path on cards.scryfall.io (shown only when the user turns images on)
+  const ptOf = f => f.power != null ? f.power + '/' + f.toughness : f.loyalty != null ? 'Loyalty ' + f.loyalty : f.defense != null ? 'Defense ' + f.defense : '';
+  function imgOf(u) { const m = u && typeof u.normal === 'string' && /^https:\/\/cards\.scryfall\.io\/normal\/(front\/[0-9a-f]\/[0-9a-f]\/[0-9a-f-]+\.jpg)/.exec(u.normal); return m ? m[1] : ''; }
   function norm(c) {
     if (!c || typeof c !== 'object' || !c.name || c.object === 'list') return null;
     if (SKIP_LAYOUTS.has(c.layout)) return null;
@@ -616,7 +685,8 @@ const Engine = (function () {
       rl: !!c.reserved, bc: c.border_color || '', stamp: c.security_stamp || '', stype: c.set_type || '',
       sets: c.set ? [c.set] : [], first: c.released_at || '', last: c.released_at || '',
       kw: (c.keywords || []).map(k => String(k).toLowerCase()), pm: Array.isArray(c.produced_mana) ? c.produced_mana : [],
-      pow: pnum(pw), uri: c.scryfall_uri || '', otags: []
+      pow: pnum(pw), uri: c.scryfall_uri || '', otags: [],
+      pt: ptOf(c.power != null || c.loyalty != null || c.defense != null ? c : (faces && faces[0]) || {}), img: imgOf(c.image_uris || (faces && faces[0] && faces[0].image_uris))
     };
   }
   function mergeCard(a, b) {
@@ -2276,13 +2346,14 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     onProgress(1);
     return { cards: out, parsed };
   }
+  const NORM_V = 2; // 2: card P/T and image path
   async function loadBulk(file, extra) {
     const prog = $('bulkProg'); prog.classList.remove('hidden');
     setStatus('Reading ' + file.name + '…');
     try {
       const { cards, parsed } = await parseBulkFile(file, f => { prog.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; });
       if (!cards.length) throw new Error('No Scryfall card objects found (' + parsed + ' records parsed).');
-      const meta = { source: 'Scryfall bulk file', ...(extra || {}), file: file.name, fileModified: file.lastModified ? new Date(file.lastModified).toISOString() : null, loadedAt: new Date().toISOString(), records: parsed };
+      const meta = { source: 'Scryfall bulk file', ...(extra || {}), nv: NORM_V, file: file.name, fileModified: file.lastModified ? new Date(file.lastModified).toISOString() : null, loadedAt: new Date().toISOString(), records: parsed };
       App.bulk = Engine.buildDB(cards, meta); App.cmdIndex = null; $('secData').open = false; buildComboProvider();
       setStatus('Loaded ' + App.bulk.all.length + ' unique cards from ' + file.name + '.');
       IDB.put('bulk', { cards, meta }).then(ok => { $('idbNote').textContent = ok ? 'Stored in this browser for next visit.' : ''; });
@@ -2370,7 +2441,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   async function autoload() {
     const bulk = await IDB.get('bulk');
     const rc = await repoFile();
-    const fresh = (stored, f) => stored && stored.meta && f && f.tag && stored.meta.tag === f.tag;
+    const fresh = (stored, f) => stored && stored.meta && f && f.tag && stored.meta.tag === f.tag && stored.meta.nv === NORM_V; // NORM_V: stored cards predate a change to Engine.norm
     if (rc && !fresh(bulk, rc)) { try { await fromRepo(rc, loadBulk); } catch (e) { setStatus('Site card data: ' + e.message); } }
     if (!App.bulk && bulk && bulk.cards && bulk.cards.length) { App.bulk = Engine.buildDB(bulk.cards, bulk.meta); $('idbNote').textContent = 'Using stored card data: ' + (bulk.meta.file || '') + '.'; }
     renderSources(); renderView();
@@ -2540,7 +2611,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   }
   const fmtP = (v) => Engine.fmt(v, App.R ? App.R.settings.budget.cur : App.S.budget.cur);
   function setStatus(t) { $('status').textContent = t || ''; syncActions(); }
-  function syncActions() { const has = App.R && App.R.stats; $('regenBtn').classList.toggle('hidden', !has); document.querySelector('.actions').classList.toggle('hidden', !has && !$('status').textContent && App.tab !== 'tests'); }
+  function syncActions() { const has = App.R && App.R.stats; $('regenBtn').classList.toggle('hidden', !has); const ops = has && App.chain ? App.chain.ops : []; $('undoBtn').classList.toggle('hidden', !ops.length); $('undoBtn').disabled = !!App.busy; if (ops.length) $('undoBtn').title = 'Undo ' + opLabel(ops[ops.length - 1]) + ' (U or Ctrl+Z)'; document.querySelector('.actions').classList.toggle('hidden', !has && !$('status').textContent && App.tab !== 'tests'); }
   function setProg(f) { const p = $('genProg'); if (f == null) { p.classList.add('hidden'); return; } p.classList.remove('hidden'); p.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; }
   function showMsgs(errors, warnings, extraHTML) {
     let h = '';
@@ -2897,13 +2968,13 @@ if (typeof module !== 'undefined') module.exports = Analysis;
         const p = e.c.p[R.settings.budget.cur];
         h += '<tr class="' + (e.locked ? 'locked' : '') + '">' +
           '<td>' + (idx >= 0 ? '<button type="button" class="small lockbtn" data-act="lock" data-i="' + idx + '" aria-pressed="' + e.locked + '" title="' + (e.locked ? 'Unlock' : 'Lock') + '">' + (e.locked ? '■' : '□') + '</button>' : '') + '</td>' +
-          '<td class="nm">' + (e.qty > 1 ? '<span class="mono">' + e.qty + '×</span> ' : '') + (e.c.uri ? '<a href="' + esc(e.c.uri) + '" target="_blank" rel="noopener">' + esc(e.c.n) + '</a>' : esc(e.c.n)) + '</td>' +
+          '<td class="nm">' + (e.qty > 1 ? '<span class="mono">' + e.qty + '×</span> ' : '') + cardLink(e.c) + '</td>' +
           '<td class="cost">' + manaHTML(e.c.mc) + '</td><td class="n">' + e.c.cmc + '</td><td class="n">' + (p == null ? '—' : fmtP(p * e.qty)) + '</td>' +
           '<td>' + roles + '</td><td class="why">' + esc(e.why) + '</td>' +
           '<td>' + (idx >= 0 && !Engine.isBasic(e.c) ? '<div class="acts"><button type="button" class="small" data-act="swap" data-i="' + idx + '">Swap</button><button type="button" class="small" data-act="remove" data-i="' + idx + '">Remove</button></div>' : '') + '</td></tr>';
         if (App.openSwap === e) {
           const alts = R.alternatives(e, 5);
-          h += alts.length ? alts.map((x, j) => '<tr class="alt"><td></td><td class="nm">' + esc(x.c.n) + '</td><td>' + manaHTML(x.c.mc) + '</td><td class="n">' + x.c.cmc + '</td><td class="n">' + fmtP(x.c.p[R.settings.budget.cur]) + '</td><td class="n">score ' + x.s.toFixed(2) + '</td><td class="why">' + esc(x.why) + '</td><td><button type="button" class="small" data-act="use" data-i="' + idx + '" data-j="' + j + '">Use</button></td></tr>').join('')
+          h += alts.length ? alts.map((x, j) => '<tr class="alt"><td></td><td class="nm">' + cardLink(x.c) + '</td><td>' + manaHTML(x.c.mc) + '</td><td class="n">' + x.c.cmc + '</td><td class="n">' + fmtP(x.c.p[R.settings.budget.cur]) + '</td><td class="n">score ' + x.s.toFixed(2) + '</td><td class="why">' + esc(x.why) + '</td><td><button type="button" class="small" data-act="use" data-i="' + idx + '" data-j="' + j + '">Use</button></td></tr>').join('')
             : '<tr class="alt"><td></td><td colspan="7">No eligible alternative within current constraints.</td></tr>';
         }
       }
@@ -2913,12 +2984,12 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   function renderDeckTable(byRole) {
     const R = App.R;
     const head = '<tr><th></th><th>Name</th><th>Cost</th><th class="n">MV</th><th class="n">Price</th><th>Roles / flags</th><th>Reason (data)</th><th></th></tr>';
-    const cmdRows = R.commanders.map(c => '<tr><td></td><td class="nm"><a href="' + esc(c.uri) + '" target="_blank" rel="noopener">' + esc(c.n) + '</a></td><td class="cost">' + manaHTML(c.mc) + '</td><td class="n">' + c.cmc + '</td><td class="n">' + fmtP(c.p[R.settings.budget.cur]) + '</td><td>' + (c.gc ? '<span class="chip gc">Game Changer</span>' : '') + '</td><td class="why">Commander' + (R.pairKind ? ' (' + esc(R.pairKind) + ')' : '') + ' · ' + (c.rank ? 'EDHREC #' + c.rank : 'no rank') + '</td><td></td></tr>').join('');
+    const cmdRows = R.commanders.map(c => '<tr><td></td><td class="nm">' + cardLink(c) + '</td><td class="cost">' + manaHTML(c.mc) + '</td><td class="n">' + c.cmc + '</td><td class="n">' + fmtP(c.p[R.settings.budget.cur]) + '</td><td>' + (c.gc ? '<span class="chip gc">Game Changer</span>' : '') + '</td><td class="why">Commander' + (R.pairKind ? ' (' + esc(R.pairKind) + ')' : '') + ' · ' + (c.rank ? 'EDHREC #' + c.rank : 'no rank') + '</td><td></td></tr>').join('');
     const order = byRole ? ['include', 'locked', 'land', 'basic', 'ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon', 'combo', 'synergy', 'flex'] : ['Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Land', 'Other'];
     const key = byRole ? (e => Engine.SLOT_LABEL[e.slot] || e.slot) : (e => Engine.typeGroup(e.c));
     const sorted = R.deck.slice().sort((a, b) => { const ka = byRole ? order.indexOf(a.slot) : order.indexOf(Engine.typeGroup(a.c)); const kb = byRole ? order.indexOf(b.slot) : order.indexOf(Engine.typeGroup(b.c)); return ka - kb; });
     return '<div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="note">' + sourceLine(R) + '</span></div>' +
-      '<div class="scroll"><table class="t"><thead>' + head + '</thead><tbody><tr class="grp"><td colspan="8">Commander (' + R.commanders.length + ')</td></tr>' + cmdRows + deckRows(sorted, key) + '</tbody></table></div>';
+      '<div class="scroll"><table class="t deck"><thead>' + head + '</thead><tbody><tr class="grp"><td colspan="8">Commander (' + R.commanders.length + ')</td></tr>' + cmdRows + deckRows(sorted, key) + '</tbody></table></div>';
   }
   function curveSVG(curve) {
     const W = 360, H = 150, pl = 26, pb = 22, pt = 10, max = Math.max(4, ...curve), step = max > 20 ? 10 : max > 10 ? 5 : 2;
@@ -2939,7 +3010,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const combos = R.combos && R.combos.length ? '<ul>' + R.combos.map(v => '<li>' + esc(v.c.join(' + ')) + ' → ' + esc(v.p.join(', ')) + (v.bt ? ' <span class="chip">' + esc(v.bt) + '</span>' : '') + '</li>').join('') + '</ul>' : '<p class="note">' + (R.comboStatus === 'unavailable' ? 'No Commander Spellbook file loaded, so combos were not checked.' : 'No complete combos detected.') + '</p>';
     $('view').innerHTML = '<div class="statsgrid">' +
       '<div><h3>Mana curve (nonland, excl. commander)</h3>' + curveSVG(s.curve) + '<p class="note">Average MV ' + s.avgMV.toFixed(2) + ' (target ' + (+R.settings.mana.avgMV).toFixed(1) + '). Creatures: ' + s.creatures + '.</p></div>' +
-      '<div><h3>Color pips and sources</h3>' + pipRow + '</div>' +
+      '<div><h3>Color pips and sources</h3>' + pipRow + '</div>' + colourCheckHTML(R) +
       '<div><h3>Category counts vs targets</h3><div style="display:flex;flex-direction:column;gap:6px">' + meters + '</div><p class="note">A card counts toward every role its tags match.</p></div>' +
       '<div><h3>Price</h3><p class="num">Total ' + fmtP(s.total) + (R.settings.budget.total != null ? ' / cap ' + fmtP(+R.settings.budget.total) : '') + '</p>' + (s.unknown.length ? '<p class="note">No price: ' + esc(s.unknown.join(', ')) + '</p>' : '') + '<h3 style="margin-top:8px">Game Changers (' + s.gcs.length + ')</h3><p>' + (s.gcs.length ? esc(s.gcs.join(', ')) : '<span class="note">None</span>') + '</p>' +
       '<h3 style="margin-top:8px">Detected combos</h3>' + combos + '</div>' +
@@ -2976,7 +3047,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       stats: ['Stats', 'Mana curve, role counts against targets, price and combos.'], valid: ['Validation', 'Every deck-building rule and whether this list passes it.'],
       combos: ['Combos', 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.'],
       log: ['Build log', 'Each step the generator and optimiser took.'], export: ['Export', 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.'],
-      history: ['History', 'The last 25 decks and revisions in this browser.'], tests: ['Acceptance tests', 'Checks the generator against the loaded card data.'] }[App.tab];
+      history: ['History', 'The last 25 decks and revisions in this browser. Tick two to compare them.'],
+      hand: ['Sample hand', 'Draw opening hands from this list, mulligan and draw on.'], commanders: ['Commanders', 'Every legal commander in the card data, by colour, theme and popularity.'], tests: ['Acceptance tests', 'Checks the generator against the loaded card data.'] }[App.tab];
     $('pageHead').classList.toggle('hidden', setup || !PH);
     if (PH) $('pageHead').innerHTML = '<h2>' + PH[0] + '</h2><p class="note">' + PH[1] + '</p>';
     if (setup) return;
@@ -2985,6 +3057,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     if (App.tab === 'history') return void renderHistory();
     if (App.tab === 'primer') return void renderPrimer();
     if (App.tab === 'combos') return void renderCombos();
+    if (App.tab === 'commanders') return renderCommanders();
+    if (App.tab === 'hand') return renderHand();
     if (!App.R || !App.R.stats) { $('view').innerHTML = emptyView(); return; }
     switch (App.tab) {
       case 'deck': $('view').innerHTML = renderDeckTable(false); break;
@@ -3015,29 +3089,19 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   function histOp(op) { if (App.chain && !App.restoring) App.chain.ops.push(op); }
   async function histOpen(id) {
     const e = (await histLoad()).find(x => x.id === id); if (!e || App.busy) return;
-    App.restoring = true;
-    try {
-      App.S = deepAssign(uiDefaults(), e.settings); writeForm(App.S); persistSettings();
-      await runGenerate(e.env);
-      const R = App.R; if (!R) return;
-      for (const op of e.ops) {
-        const cut = op.cut && R.deck.find(x => x.c.n === op.cut), add = op.add && Engine.lookup(App.bulk, op.add);
-        if (op.op === 'swap' && cut && add) await R.swapOne(cut, add);
-        else if (op.op === 'replace' && cut && add) await R.replace(cut, add, op.locked);
-        else if (op.op === 'remove' && cut) await R.remove(cut);
-      }
-      App.chain = { settings: e.settings, env: e.env, ops: e.ops.slice() };
-      const now = R.deck.map(x => x.qty + ' ' + x.c.n).sort(), same = now.join('|') === e.names.join('|');
-      App.AN = null; App.QS = null; App.tab = 'deck'; renderAll();
-      setStatus(same ? 'Restored "' + e.label + '" from ' + new Date(e.at).toLocaleString() + ' (identical card list).' : 'Restored "' + e.label + '", but ' + now.filter(n => !e.names.includes(n)).length + ' card(s) differ: the card or combo data changed since it was saved (' + (e.file || 'unknown file') + ' → ' + ((R.dbMeta && R.dbMeta.file) || 'current') + (App.bulkCombos ? ' + Spellbook ' + (App.bulkCombos.meta.timestamp || '').slice(0, 10) : '') + ').');
-    } finally { App.restoring = false; }
+    if (!(await replayChain({ settings: e.settings, env: e.env }, e.ops))) return;
+    const R = App.R, now = R.deck.map(x => x.qty + ' ' + x.c.n).sort(), same = now.join('|') === e.names.join('|');
+    App.AN = null; App.QS = null; App.tab = 'deck'; renderAll();
+    setStatus(same ? 'Restored "' + e.label + '" from ' + new Date(e.at).toLocaleString() + ' (identical card list).' : 'Restored "' + e.label + '", but ' + now.filter(n => !e.names.includes(n)).length + ' card(s) differ: the card or combo data changed since it was saved (' + (e.file || 'unknown file') + ' → ' + ((R.dbMeta && R.dbMeta.file) || 'current') + (App.bulkCombos ? ' + Spellbook ' + (App.bulkCombos.meta.timestamp || '').slice(0, 10) : '') + ').');
   }
   async function renderHistory() {
     const h = await histLoad(); if (App.tab !== 'history') return;
     if (!h.length) { $('view').innerHTML = '<p class="note">No saved decks yet. Each generated deck and each accepted change is saved here (last ' + HIST_MAX + ', in this browser).</p>'; return; }
-    $('view').innerHTML = '<div class="scroll"><table class="t compact"><thead><tr><th>When</th><th>Deck</th><th>Change</th><th class="n">Bracket</th><th class="n">Price</th><th class="n">Power</th><th class="n">Score</th><th></th></tr></thead><tbody>' +
-      h.map(e => '<tr><td class="nw">' + esc(new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</td><td>' + esc(e.cmds.join(' + ')) + '</td><td class="why">' + esc(e.label) + '</td><td class="n">B' + e.m.bracket + '</td><td class="n nw">' + Engine.fmt(e.m.price, e.m.cur || 'usd') + (e.m.cap != null && e.m.cap !== '' ? '<span class="note"> / ' + Engine.fmt(+e.m.cap, e.m.cur || 'usd') + '</span>' : '') + '</td><td class="n">' + (e.m.pl != null ? e.m.pl.toFixed(1) : '—') + '</td><td class="n">' + (e.m.score != null ? e.m.score.toFixed(1) : '—') + '</td><td class="nw"><button type="button" class="small" data-hist="open" data-id="' + e.id + '">Open</button> <button type="button" class="small" data-hist="del" data-id="' + e.id + '" aria-label="Delete">✕</button></td></tr>').join('') +
-      '</tbody></table></div><div class="row" style="margin-top:8px"><span class="note">Opening an entry rebuilds it from its settings and replays its edits; it flags any difference if the card data has changed since.</span><button type="button" class="small" data-hist="clear">Clear history</button></div>';
+    const sel = (App.hsel = (App.hsel || []).filter(id => h.some(x => x.id === id)));
+    $('view').innerHTML = '<div class="scroll"><table class="t compact"><thead><tr><th><span class="sr">Select</span></th><th>When</th><th>Deck</th><th>Change</th><th class="n">Bracket</th><th class="n">Price</th><th class="n">Power</th><th class="n">Score</th><th></th></tr></thead><tbody>' +
+      h.map(e => '<tr><td><input type="checkbox" data-hsel="' + e.id + '" aria-label="Select for compare"' + (sel.includes(e.id) ? ' checked' : '') + '></td><td class="nw">' + esc(new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</td><td>' + esc(e.cmds.join(' + ')) + '</td><td class="why">' + esc(e.label) + '</td><td class="n">B' + e.m.bracket + '</td><td class="n nw">' + Engine.fmt(e.m.price, e.m.cur || 'usd') + (e.m.cap != null && e.m.cap !== '' ? '<span class="note"> / ' + Engine.fmt(+e.m.cap, e.m.cur || 'usd') + '</span>' : '') + '</td><td class="n">' + (e.m.pl != null ? e.m.pl.toFixed(1) : '—') + '</td><td class="n">' + (e.m.score != null ? e.m.score.toFixed(1) : '—') + '</td><td class="nw"><button type="button" class="small" data-hist="open" data-id="' + e.id + '">Open</button> <button type="button" class="small" data-hist="del" data-id="' + e.id + '" aria-label="Delete">✕</button></td></tr>').join('') +
+      '</tbody></table></div><div class="row" style="margin-top:8px"><button type="button" class="small primary" data-hist="diff"' + (sel.length === 2 ? '' : ' disabled') + '>Compare selected (' + sel.length + '/2)</button><span class="note">Opening an entry rebuilds it from its settings and replays its edits; it flags any difference if the card data has changed since.</span><button type="button" class="small" data-hist="clear">Clear history</button></div>' +
+      (sel.length === 2 && App.hdiff ? '<div id="hdiff" style="margin-top:14px">' + histDiffHTML(h.find(x => x.id === sel[0]), h.find(x => x.id === sel[1])) + '</div>' : '');
   }
 
   /* ---------- primer: a play guide derived from the deck's analysis (simulation, exact odds, card roles) ---------- */
@@ -3104,7 +3168,15 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const key = X.synergy.perCard.filter(x => x.links >= 3).slice(0, 10);
     const keySec = key.length ? sec('Key synergy pieces', '<p>Cards linked to the most other cards in the list (commander and theme links). Protect these and prioritise them in tutor targets.</p>' + li(key.map(x => '<b>' + esc(x.c.n) + '</b>: ' + x.links + ' links (' + esc(x.why.slice(0, 3).join(', ')) + ')'))) : '';
     const weak = li(vec.slice(0, 2).map(v => esc(v.label) + ' ' + v.score + '/100 is the weakest power axis.').concat([X.overall < 70 ? 'Fundamentals ' + X.overall + '/100: see Analysis → Overview for swaps.' : '']));
-    $('view').innerHTML = '<div class="primer-wrap">' + sec('Game plan', plan) + (cmdSec || '') + sec('Mulligan', mull) + sec('Turn by turn', turns) + sec('Interaction and protection', inter) + keySec + sec('Weak spots', weak) + '</div>' +
+    const feel = tableFeel(R), has = feel.filter(r => r[3].length), none = feel.filter(r => !r[3].length && r[2]), q = quickStats();
+    const orList = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' or ' + a[a.length - 1];
+    const talk = '<p><b>Say before the game:</b> Bracket ' + R.settings.bracket + ' (' + esc(Engine.BRACKETS[R.settings.bracket].name) + ')' + (q && q.minB > R.settings.bracket ? ', though the cards play like Bracket ' + q.minB : '') + (q ? '; typical goldfish win T' + q.win : '') + '. ' +
+      (has.length ? 'Runs ' + has.map(r => r[3].length + ' ' + (r[3].length === 1 ? r[0] : r[1])).join(', ') + '.' : '') + (none.length ? ' No ' + orList(none.map(r => r[2])) + '.' : '') + '</p>' +
+      (has.length ? li(has.map(r => esc(r[1].charAt(0).toUpperCase() + r[1].slice(1)) + ': ' + r[3].slice(0, 12).map(n => n.includes(' + ') ? esc(n) : nameLink(n)).join(', ') + (r[3].length > 12 ? ' and ' + (r[3].length - 12) + ' more' : ''))) : '');
+    const T = tokensNeeded(R.commanders.concat(R.deck.map(e => e.c))), tl = arr => li(arr.map(t => '<b>' + esc(t.label) + '</b> <span class="note">from ' + t.from.slice(0, 4).map(nameLink).join(', ') + (t.from.length > 4 ? ' +' + (t.from.length - 4) : '') + '</span>'));
+    const tokSec = T.tokens.length || T.markers.length ? sec('Tokens, emblems and counters to bring', (T.tokens.length ? '<h4>Tokens</h4>' + tl(T.tokens) : '') + (T.markers.length ? '<h4>Markers and counters</h4>' + tl(T.markers) : '') + '<p class="note">Read from rules text with reminder text removed; check unusual wording on the card.</p>') : '';
+    $('view').innerHTML = '<div class="row noprint" style="justify-content:flex-end;gap:8px;margin-bottom:10px"><button type="button" class="small" data-print="primer">Print primer and list</button><button type="button" class="small" data-print="proxies">Print proxies</button></div>' +
+      '<div class="primer-wrap">' + sec('Table talk', talk) + sec('Game plan', plan) + (cmdSec || '') + sec('Mulligan', mull) + sec('Turn by turn', turns) + sec('Interaction and protection', inter) + keySec + tokSec + sec('Weak spots', weak) + '</div>' +
       '<p class="note">Every number is from this deck: ' + sim.games.toLocaleString() + ' seeded goldfish games on the play (no opponents), exact hypergeometric odds, and the rules-text role tags shown on the Deck tab. Win turns are goldfish estimates and run later against interaction.</p>';
   }
 
@@ -3116,7 +3188,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const CI = R && R.stats ? R.CI : null;
     const canAdd = (n, c) => CI != null && !inDeck.has(n) && c && c.leg === 'legal' && [...c.ci].every(x => CI.includes(x));
     const cardHTML = v => v.c.map(n => { const miss = opts.missing && opts.missing.includes(n), c = App.bulk && Engine.lookup(App.bulk, n);
-      return '<span class="cbcard"><span class="' + (miss ? 'pup' : inDeck.has(n) ? '' : 'note') + '">' + esc(n) + '</span>' + (v.cmd.includes(n) ? ' <span class="chip">commander</span>' : '') + (!inDeck.has(n) && c ? ' <span class="note">' + fmtP(c.p[(R ? R.settings : App.S).budget.cur]) + '</span>' : '') +
+      return '<span class="cbcard"><span class="' + (miss ? 'pup' : inDeck.has(n) ? '' : 'note') + '">' + (c ? cardLink(c, n) : esc(n)) + '</span>' + (v.cmd.includes(n) ? ' <span class="chip">commander</span>' : '') + (!inDeck.has(n) && c ? ' <span class="note">' + fmtP(c.p[(R ? R.settings : App.S).budget.cur]) + '</span>' : '') +
         (canAdd(n, c) && !v.cmd.includes(n) ? ' <button type="button" class="small addbtn" data-cbadd="' + esc(n) + '" data-vid="' + esc(v.id) + '" title="Add ' + esc(n) + ' to the deck">+ Add</button>' : '') + '</span>'; }).join(' <span class="note">+</span> ');
     return '<div class="scroll"><table class="t compact"><thead><tr><th>Cards</th><th>Produces</th><th>Bracket tag</th><th class="n">MV</th><th class="n">Popularity</th><th></th></tr></thead><tbody>' +
       list.map(x => { const v = x.v || x; return '<tr data-vrow="' + esc(v.id) + '"><td>' + cardHTML(v) + (v.t.length ? '<div class="note">Also needs: ' + esc(v.t.join(', ')) + '</div>' : '') + '</td><td class="why">' + esc(v.p.join(', ')) + '</td><td>' + (v.bt ? '<span class="chip">' + esc(BT[v.bt] || v.bt) + '</span>' : '') + '</td><td class="n">' + (v.mv != null ? v.mv : '') + '</td><td class="n">' + (v.pop != null ? v.pop.toLocaleString() : '') + '</td><td class="nw"><a href="' + sbLink(v) + '" target="_blank" rel="noopener">Steps ↗</a></td></tr>'; }).join('') +
@@ -3360,6 +3432,216 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   }
 
   /* ---------- event wiring ---------- */
+  /* ---------- card popover: rules text, price, roles and why a card is in the deck. Any element with data-card opens it
+     (hover with a mouse, tap or click anywhere). Pictures come from cards.scryfall.io only when the user turns them on. ---------- */
+  const IMG_BASE = 'https://cards.scryfall.io/normal/';
+  const imgOn = () => App.img === 'on';
+  const imgTag = (c, cls) => imgOn() && c && c.img ? '<img class="' + (cls || 'cimg') + '" src="' + IMG_BASE + esc(c.img) + '" alt="' + esc(c.n) + '" loading="lazy" referrerpolicy="no-referrer">' : '';
+  const cardLink = (c, label) => '<a class="cl" href="' + esc((c && c.uri) || '#') + '" target="_blank" rel="noopener" data-card="' + esc(c ? c.n : label) + '">' + esc(label || (c && c.n) || '') + '</a>';
+  const nameLink = n => { const c = App.bulk && Engine.lookup(App.bulk, n); return c ? cardLink(c, n) : esc(n); };
+  function popHTML(c) {
+    const R = App.R, a = Engine.analyze(c), e = R && R.deck ? R.deck.find(x => x.c.n === c.n) : null, p = c.p[(R ? R.settings : App.S).budget.cur];
+    const isCmd = R && R.commanders && R.commanders.some(x => x.n === c.n);
+    const chips = Object.keys(a.roles).map(r => '<span class="chip">' + esc(Engine.SLOT_LABEL[r]) + '</span>').join('') + (c.gc ? '<span class="chip gc">Game Changer</span>' : '') +
+      ['tutor', 'fast', 'stax', 'xturn', 'mld'].filter(f => a.flags[f]).map(f => '<span class="chip flag">' + esc(Engine.FLAGS[f].label) + '</span>').join('');
+    return imgTag(c) + '<div class="cp-h"><b>' + esc(c.n) + '</b><span class="cost">' + manaHTML(c.mc) + '</span><button type="button" class="iconx" data-popx="1" aria-label="Close">✕</button></div>' +
+      '<div class="note">' + esc(c.tl) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
+      (c.ot ? '<div class="cp-ot">' + manaHTML(c.ot).replace(/\n/g, '<br>') + '</div>' : '') +
+      '<div class="cp-m">' + (p != null ? fmtP(p) : 'no price') + (c.rank ? ' · EDHREC #' + c.rank.toLocaleString() : '') + (c.leg !== 'legal' ? ' · <span class="pup">' + esc(c.leg.replace('_', ' ')) + ' in Commander</span>' : '') + '</div>' +
+      (chips ? '<div>' + chips + '</div>' : '') +
+      (isCmd ? '<div class="cp-why"><b>Commander</b></div>' : e ? '<div class="cp-why"><b>Why it is in the deck:</b> ' + esc(e.why || Engine.SLOT_LABEL[e.slot] || e.slot || '') + (e.locked ? ' (locked)' : '') + '</div>' : '') +
+      (c.uri ? '<a href="' + esc(c.uri) + '" target="_blank" rel="noopener">Scryfall ↗</a>' : '');
+  }
+  let popT = 0, popFor = null, popPinned = false;
+  function showPop(el, pinned) {
+    const c = App.bulk && Engine.lookup(App.bulk, el.dataset.card); if (!c) return;
+    const pop = $('cardPop'); pop.innerHTML = popHTML(c); pop.classList.remove('hidden'); popFor = el; popPinned = !!pinned;
+    const r = el.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    let y = r.bottom + 6; if (y + h > innerHeight - 8) y = Math.max(8, r.top - h - 6);
+    pop.style.left = Math.min(Math.max(8, r.left), innerWidth - w - 8) + 'px'; pop.style.top = y + 'px';
+  }
+  function hidePop() { const p = $('cardPop'); if (p) p.classList.add('hidden'); popFor = null; popPinned = false; }
+
+  /* ---------- sample hand: draw 7, London mulligan (first one free in multiplayer), draw more. Uses the browser's random
+     generator, not the deck seed, so every hand is new. ---------- */
+  function shuffle(a) { const r = new Uint32Array(a.length); crypto.getRandomValues(r); for (let i = a.length - 1; i > 0; i--) { const j = r[i] % (i + 1); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  function shDeal(mull) {
+    const lib = []; for (const e of App.R.deck) for (let i = 0; i < e.qty; i++) lib.push(e.c);
+    shuffle(lib); App.SH = { lib, hand: lib.splice(0, 7), bottom: [], mull, need: Math.max(0, mull - 1), drawn: 0, key: deckKey(App.R) };
+  }
+  function renderHand() {
+    const R = App.R; if (!R || !R.stats) { $('view').innerHTML = emptyView(); return; }
+    if (!App.SH || App.SH.key !== deckKey(R)) shDeal(0);
+    const S = App.SH, isLand = c => Engine.analyze(c).isLand, lands = S.hand.filter(isLand).length, spells = S.hand.filter(c => !isLand(c));
+    const avg = spells.length ? spells.reduce((s, c) => s + c.cmc, 0) / spells.length : 0, pl = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+    const tile = (c, i) => '<button type="button" class="hcard' + (isLand(c) ? ' land' : '') + (imgOn() && c.img ? ' pic' : '') + '" data-hc="' + i + '" data-card="' + esc(c.n) + '">' +
+      (imgOn() && c.img ? imgTag(c, 'himg') : '<span class="hn">' + esc(c.n) + '</span><span class="cost">' + manaHTML(c.mc) + '</span><span class="note">' + esc(c.ft.split(' — ')[0]) + '</span>') + '</button>';
+    $('view').innerHTML = '<div class="row" style="gap:8px;align-items:center">' +
+      '<button type="button" class="primary small" data-sh="new">New hand</button><button type="button" class="small" data-sh="mull"' + (S.mull >= 6 ? ' disabled' : '') + '>Mulligan</button><button type="button" class="small" data-sh="draw"' + (S.need || !S.lib.length ? ' disabled' : '') + '>Draw a card</button>' +
+      '<span class="note">' + (S.drawn ? pl(S.drawn, 'card') + ' drawn after the opening hand' : 'Opening hand') + (S.mull ? ' · mulligan ' + S.mull + (S.mull === 1 ? ' (free)' : '') : '') + ' · ' + S.lib.length + ' in library</span></div>' +
+      (S.need ? '<div class="msg warn" style="margin-top:10px">Choose ' + pl(S.need, 'card') + ' to put on the bottom. London mulligan: draw 7, then bottom one card per mulligan after the free first one.</div>' : '') +
+      '<div class="hand">' + S.hand.map(tile).join('') + '</div>' +
+      '<p>' + S.hand.length + ' cards: ' + pl(lands, 'land') + ', ' + pl(spells.length, 'spell') + (spells.length ? ', average MV ' + avg.toFixed(1) : '') + '. Command zone: ' + R.commanders.map(c => cardLink(c)).join(', ') + '.' + (S.bottom.length ? ' On the bottom: ' + S.bottom.map(c => esc(c.n)).join(', ') + '.' : '') + '</p>' +
+      '<p class="note">' + (S.need ? 'Tap a card to put it on the bottom.' : 'Hover or tap a card to read it.') + ' Shuffled with the browser\'s random generator, so each hand is new. The Primer and Analysis use 10,000+ simulated games for the odds.</p>';
+  }
+
+  /* ---------- commander browser: every legal commander in the card data, filtered by colour, theme and text ---------- */
+  function cmdThemes(c) { return Object.keys(Engine.TAGS).filter(k => { const t = Engine.TAGS[k]; return (t.re && t.re.test(c.low)) || (t.type && t.type.test(c.tl)); }); }
+  function renderCommanders() {
+    if (!App.bulk) { $('view').innerHTML = emptyView(); return; }
+    const F = App.cbr || (App.cbr = { q: '', cols: '', mode: 'within', theme: '', sort: 'rank', n: 50 });
+    const opt = (v, t, cur) => '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + esc(t) + '</option>';
+    $('view').innerHTML = '<div class="row" style="gap:10px;align-items:flex-end">' +
+      '<label class="f" style="flex:1 1 220px">Name, type or rules text<input type="search" id="cbrQ" value="' + esc(F.q) + '" placeholder="e.g. dragon, landfall, Atraxa" autocomplete="off"></label>' +
+      '<div class="f"><span>Colours</span><div class="seg" id="cbrCols">' + 'WUBRG'.split('').map(x => '<button type="button" data-col="' + x + '" aria-pressed="' + F.cols.includes(x) + '" aria-label="' + x + '">' + pipsHTML(x) + '</button>').join('') + '</div></div>' +
+      '<label class="f">Match<select id="cbrMode">' + opt('within', 'Within these colours', F.mode) + opt('exact', 'Exactly these', F.mode) + opt('incl', 'Including these', F.mode) + '</select></label>' +
+      '<label class="f">Theme<select id="cbrTheme">' + opt('', 'Any', F.theme) + Object.keys(Engine.TAGS).map(k => opt(k, Engine.TAGS[k].label, F.theme)).join('') + '</select></label>' +
+      '<label class="f">Sort<select id="cbrSort">' + opt('rank', 'EDHREC popularity', F.sort) + opt('price', 'Price, low first', F.sort) + opt('mv', 'Mana value', F.sort) + opt('name', 'Name', F.sort) + '</select></label>' +
+      '</div><div id="cbrRes" style="margin-top:12px"></div>';
+    renderCmdResults();
+  }
+  function renderCmdResults() {
+    const F = App.cbr, el = $('cbrRes'); if (!el || !F) return;
+    const q = F.q.trim().toLowerCase(), want = F.cols, cur = App.S.budget.cur;
+    const colOK = c => !want && F.mode !== 'exact' ? true : F.mode === 'exact' ? c.ci === 'WUBRG'.split('').filter(x => want.includes(x)).join('') : F.mode === 'incl' ? [...want].every(x => c.ci.includes(x)) : [...c.ci].every(x => want.includes(x));
+    const t = F.theme && Engine.TAGS[F.theme];
+    let list = commanderIndex().filter(c => colOK(c) && (!q || c.n.toLowerCase().includes(q) || c.tl.toLowerCase().includes(q) || c.low.includes(q)) && (!t || (t.re && t.re.test(c.low)) || (t.type && t.type.test(c.tl))));
+    const price = c => c.p[cur] == null ? 1e9 : c.p[cur];
+    if (F.sort === 'price') list = list.slice().sort((a, b) => price(a) - price(b) || (a.rank || 1e9) - (b.rank || 1e9));
+    else if (F.sort === 'mv') list = list.slice().sort((a, b) => a.cmc - b.cmc || (a.rank || 1e9) - (b.rank || 1e9));
+    else if (F.sort === 'name') list = list.slice().sort((a, b) => a.n < b.n ? -1 : 1);
+    const pair = c => /\bpartner\b/i.test(c.ot) ? 'Partner' : /friends forever/i.test(c.ot) ? 'Friends forever' : /choose a background/i.test(c.ot) ? 'Background' : /doctor's companion/i.test(c.ot) ? 'Companion' : '';
+    const shown = list.slice(0, F.n);
+    el.innerHTML = '<p class="note">' + list.length.toLocaleString() + ' of ' + commanderIndex().length.toLocaleString() + ' commanders match.' + (list.length > shown.length ? ' Showing ' + shown.length + '.' : '') + '</p>' +
+      (shown.length ? '<div class="scroll"><table class="t compact cmdtable"><thead><tr><th>Commander</th><th>Cost</th><th>Colours</th><th>Themes</th><th class="n">EDHREC</th><th class="n">Price</th><th></th></tr></thead><tbody>' +
+        shown.map(c => '<tr><td>' + cardLink(c) + (pair(c) ? ' <span class="chip">' + pair(c) + '</span>' : '') + '<div class="note">' + esc(c.tl.replace(/^Legendary /, '')) + '</div></td><td class="cost">' + manaHTML(c.mc) + '</td><td class="nw">' + pipsHTML(c.ci) + '</td><td class="why">' + esc(cmdThemes(c).slice(0, 3).map(k => Engine.TAGS[k].label).join(', ')) + '</td><td class="n">' + (c.rank ? '#' + c.rank.toLocaleString() : '—') + '</td><td class="n">' + (c.p[cur] != null ? fmtP(c.p[cur]) : '—') + '</td><td><button type="button" class="small" data-cuse="' + esc(c.n) + '">Build</button></td></tr>').join('') +
+        '</tbody></table></div>' : '') +
+      (list.length > shown.length ? '<div class="row" style="margin-top:8px"><button type="button" class="small" data-cmore="1">Show 50 more</button></div>' : '') +
+      '<p class="note">Themes are the generator\'s own synergy tags matched against each commander\'s rules text. Build sets the commander under Setup; add a partner or background there.</p>';
+  }
+
+  /* ---------- table talk: what a playgroup asks about before a game, from the same flags the bracket rules use ---------- */
+  function tableFeel(R) {
+    const all = R.commanders.concat(R.deck.map(e => e.c)), by = f => all.filter(c => Engine.analyze(c).flags[f]).map(c => c.n);
+    const cmb = R.combos || [], two = cmb.filter(v => v.inf && v.c.length <= 2);
+    // [singular, plural, what "none" reads as, cards]
+    return [['Game Changer', 'Game Changers', 'Game Changers', all.filter(c => c.gc).map(c => c.n)], ['tutor', 'tutors', 'tutors', by('tutor')], ['fast mana card', 'fast mana cards', 'fast mana', by('fast')],
+      ['extra-turn card', 'extra-turn cards', 'extra turns', by('xturn')], ['mass land denial card', 'mass land denial cards', 'land denial', by('mld')], ['stax or tax piece', 'stax or tax pieces', 'stax', by('stax')],
+      ['2-card infinite combo', '2-card infinite combos', '2-card infinites', two.map(v => v.c.join(' + '))], ['other Spellbook combo', 'other Spellbook combos', '', cmb.filter(v => two.indexOf(v) < 0).map(v => v.c.join(' + '))]];
+  }
+  /* tokens, emblems and markers the deck makes, read from rules text (reminder text removed) */
+  const TOKEN_ART = /\b(treasure|food|clue|blood|map|powerstone|gold|incubator|junk|shard|walker|lander|mutagen|role|vehicle)\b/;
+  const MARKERS = [[/\binvestigate/, 'Clue'], [/\bincubate/, 'Incubator'], [/\bamass\b/, 'Army (creature, grows with counters)'], [/\bfabricate\b/, 'Servo (1/1 artifact creature)'], [/\b(?:embalm|eternalize|encore|myriad)\b/, 'Token copies'],
+    [/\bbecomes? the monarch|\bthe monarch\b/, 'Monarch card'], [/\binitiative\b/, 'Initiative (Undercity dungeon)'], [/venture into the dungeon/, 'Dungeon cards'], [/the ring tempts you/, 'The Ring emblem'],
+    [/\{e\}/, 'Energy counters'], [/\bdaybound\b|\bit becomes (?:day|night)\b/, 'Day/Night marker'], [/\bpoison counters?\b|\btoxic\b|\binfect\b/, 'Poison counters'], [/\bexperience counters?\b/, 'Experience counters'],
+    [/\+1\/\+1 counters?/, '+1/+1 counters (dice)'], [/-1\/-1 counters?/, '-1/-1 counters'], [/\byou get an emblem\b/, 'Emblem'], [/city's blessing|\bascend\b/, 'City\'s blessing'], [/\bstart your engines\b/, 'Speed tracker']];
+  function tokensNeeded(cards) {
+    const tok = new Map(), mk = new Map(), add = (m, k, n) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(n); };
+    for (const c of cards) {
+      const ot = (c.ot || '').replace(/\([^)]*\)/g, ''), low = ot.toLowerCase(), re = /\bcreates? ([^.;:]*?)\btokens?\b/gi; let m;
+      while ((m = re.exec(ot))) {
+        let s = m[1].trim(); const l = s.toLowerCase();
+        if (/\bcop(?:y|ies)\b/.test(l)) { add(tok, 'Token copies', c.n); continue; }
+        s = s.replace(/^(?:a number of|that many|twice that many|one or more|a|an|one|two|three|four|five|six|seven|eight|nine|ten|x|\d+)\s+/i, '').replace(/^(?:tapped|untapped)(?: and attacking)?\s+/i, '').replace(/^(?:and|or)\s+/i, '').trim();
+        if (!s || /^(?:a|an|one or more|that|those|\d+|x)$/i.test(s) || /\b(?:for each|under|instead)\b/i.test(s)) continue;
+        const art = TOKEN_ART.exec(s.toLowerCase());
+        let label = art && !/creature/i.test(s) ? art[1] : s.replace(/\s+/g, ' ');
+        label = label.charAt(0).toUpperCase() + label.slice(1); if (label.length > 60) label = label.slice(0, 57) + '…';
+        add(tok, label, c.n);
+      }
+      for (const [rx, label] of MARKERS) if (rx.test(low)) add(label === 'Clue' || label === 'Incubator' || /^(?:Army|Servo|Token copies)/.test(label) ? tok : mk, label, c.n);
+    }
+    const out = m => [...m].sort((a, b) => b[1].size - a[1].size || (a[0] < b[0] ? -1 : 1)).map(([k, s]) => ({ label: k, from: [...s] }));
+    return { tokens: out(tok), markers: out(mk) };
+  }
+
+  /* ---------- print: primer + list on paper, and a text proxy sheet (63 × 88 mm, nine per page) ---------- */
+  function printWith(html) {
+    let el = $('printArea'); if (!el) { el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
+    el.innerHTML = html; document.body.classList.add('printing');
+    const done = () => { document.body.classList.remove('printing'); el.innerHTML = ''; removeEventListener('afterprint', done); };
+    addEventListener('afterprint', done); setTimeout(() => window.print(), 60);
+  }
+  function printPrimer() {
+    const R = App.R, prim = document.querySelector('.primer-wrap'); if (!R || !prim) return;
+    const groups = new Map(); for (const e of R.deck) { const k = Engine.typeGroup(e.c); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
+    const q = quickStats();
+    const list = [...groups].map(([k, es]) => '<div class="pg"><b>' + esc(k) + ' (' + es.reduce((s, e) => s + e.qty, 0) + ')</b>' + es.sort((a, b) => a.c.cmc - b.c.cmc || (a.c.n < b.c.n ? -1 : 1)).map(e => '<div>' + e.qty + ' ' + esc(e.c.n) + ' <span class="pmc">' + esc(e.c.mc || '') + '</span></div>').join('') + '</div>').join('');
+    printWith('<h1>' + esc(R.commanders.map(c => c.n).join(' + ')) + '</h1><p>Bracket ' + R.settings.bracket + (q ? ' · power ' + q.pl.toFixed(1) + ' · typical win T' + q.win : '') + ' · ' + fmtP(R.stats.total) + ' · printed ' + esc(new Date().toLocaleDateString()) + '</p>' +
+      '<h2>Decklist</h2><div class="pcols">' + list + '</div><h2>Primer</h2>' + prim.outerHTML);
+  }
+  function printProxies() {
+    const R = App.R; if (!R) return;
+    const cards = R.commanders.slice(); for (const e of R.deck) if (!Engine.isBasic(e.c)) for (let i = 0; i < e.qty; i++) cards.push(e.c);
+    printWith('<div class="pxgrid">' + cards.map(c => '<div class="px"><div class="px-h"><b>' + esc(c.n) + '</b><span>' + esc(c.mc || '') + '</span></div><div class="px-t">' + esc(c.tl) + '</div><div class="px-o">' + esc(c.ot || '').replace(/\n/g, '<br>') + '</div>' + (c.pt ? '<div class="px-pt">' + esc(c.pt) + '</div>' : '') + '</div>').join('') + '</div>');
+  }
+
+  /* ---------- history diff: cards in and out and the change in price, power and score between two saved decks ---------- */
+  function histDiffHTML(a, b) {
+    if (new Date(a.at) > new Date(b.at)) { const t = a; a = b; b = t; }
+    const cnt = arr => { const m = new Map(); for (const s of arr) { const i = s.indexOf(' '), n = s.slice(i + 1); m.set(n, (m.get(n) || 0) + (+s.slice(0, i) || 1)); } return m; };
+    const A = cnt(a.names), B = cnt(b.names), diff = (X, Y) => { const r = []; for (const [n, q] of X) { const d = q - (Y.get(n) || 0); if (d > 0) r.push((d > 1 ? d + ' ' : '') + nameLink(n)); } return r; };
+    const out = diff(A, B), inn = diff(B, A);
+    const when = e => esc(new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+    const row = (l, x, y, f, better, fd) => { fd = fd || f; const d = x != null && y != null ? y - x : null; return '<tr><td>' + l + '</td><td class="n">' + (x != null ? f(x) : '—') + '</td><td class="n">' + (y != null ? f(y) : '—') + '</td><td class="n' + (d ? (d > 0) === better ? ' good' : ' badc' : '') + '">' + (d == null ? '—' : (d > 0 ? '+' : d < 0 ? '−' : '±') + fd(Math.abs(d))) + '</td></tr>'; };
+    const money = v => Engine.fmt(v, b.m.cur || 'usd');
+    return '<h3 class="an-sec">' + when(a) + ' → ' + when(b) + '</h3>' +
+      (a.cmds.join('|') !== b.cmds.join('|') ? '<p class="msg warn">Different commanders: ' + esc(a.cmds.join(' + ')) + ' → ' + esc(b.cmds.join(' + ')) + '.</p>' : '') +
+      '<table class="t compact" style="max-width:520px"><thead><tr><th></th><th class="n">Older</th><th class="n">Newer</th><th class="n">Change</th></tr></thead><tbody>' +
+      row('Price', a.m.price, b.m.price, money, false) + row('Power', a.m.pl, b.m.pl, v => v.toFixed(1), true) + row('Deck score', a.m.score, b.m.score, v => v.toFixed(1), true) + row('Fundamentals', a.m.fund, b.m.fund, v => String(Math.round(v)), true) + row('Bracket', a.m.bracket, b.m.bracket, v => 'B' + v, false, String) +
+      '</tbody></table><div class="grid2" style="margin-top:10px"><div><h3>Out (' + out.length + ')</h3>' + (out.length ? '<ul class="dl">' + out.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p class="note">None</p>') + '</div><div><h3>In (' + inn.length + ')</h3>' + (inn.length ? '<ul class="dl">' + inn.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p class="note">None</p>') + '</div></div>';
+  }
+
+  /* ---------- undo: rebuild the deck from its settings and replay every edit but the last (generation is deterministic) ---------- */
+  const opLabel = op => op.op === 'remove' ? 'removing ' + op.cut : op.cut + ' → ' + op.add;
+  async function replayChain(chain, ops) {
+    App.restoring = true;
+    try {
+      App.S = deepAssign(uiDefaults(), JSON.parse(JSON.stringify(chain.settings))); writeForm(App.S); persistSettings();
+      await runGenerate(chain.env);
+      const R = App.R; if (!R) return false;
+      for (const op of ops) {
+        const cut = op.cut && R.deck.find(x => x.c.n === op.cut), add = op.add && Engine.lookup(App.bulk, op.add);
+        if (op.op === 'swap' && cut && add) await R.swapOne(cut, add);
+        else if (op.op === 'replace' && cut && add) await R.replace(cut, add, op.locked);
+        else if (op.op === 'remove' && cut) await R.remove(cut);
+      }
+      App.chain = { settings: chain.settings, env: chain.env, ops: ops.slice() };
+      return true;
+    } finally { App.restoring = false; }
+  }
+  async function undoLast() {
+    const ch = App.chain; if (!ch || !ch.ops.length || App.busy || !App.R) return;
+    const last = ch.ops[ch.ops.length - 1], locked = new Set(App.R.deck.filter(e => e.locked).map(e => e.c.n)), tab = App.tab;
+    if (!(await replayChain(ch, ch.ops.slice(0, -1)))) return;
+    for (const e of App.R.deck) if (locked.has(e.c.n)) e.locked = true;
+    App.AN = null; App.QS = null; App.PR = null; App.SH = null; App.tab = tab === 'setup' ? 'deck' : tab; renderAll();
+    histPush('edit', 'Undid ' + opLabel(last)); setStatus('Undid ' + opLabel(last) + '.');
+  }
+
+  /* ---------- colour check: exact odds of having enough sources of each colour for its hardest card on curve ---------- */
+  function colourCheckHTML(R) {
+    const cols = (R.CI || '').split('').filter(x => 'WUBRG'.includes(x)); if (!cols.length) return '';
+    const N = R.deck.reduce((s, e) => s + e.qty, 0), atLeast = (K, n, k) => { let p = 0; for (let i = k; i <= Math.min(n, K); i++) p += Analysis.hyp(N, K, n, i); return Math.min(1, p); };
+    const cards = R.commanders.map(c => ({ c, cmd: true })).concat(R.deck.filter(e => !Engine.analyze(e.c).isLand).map(e => ({ c: e.c })));
+    const rows = cols.map(X => {
+      const K = R.stats.sources[X] || 0; let worst = null;
+      for (const { c, cmd } of cards) {
+        const mc = (c.mc || '').split(' // ')[0], k = (mc.match(new RegExp('\\{' + X + '\\}', 'g')) || []).length; if (!k) continue;
+        const t = Math.max(1, Math.round(c.cmc)), p = atLeast(K, Math.min(N, 7 + t - 1), k);
+        if (!worst || p < worst.p - 1e-9 || (Math.abs(p - worst.p) < 1e-9 && t < worst.t)) worst = { c, k, t, p, cmd };
+      }
+      return { X, K, worst };
+    }).filter(r => r.worst);
+    if (!rows.length) return '';
+    return '<div><h3>Colour check</h3><table class="t"><thead><tr><th>Colour</th><th class="n">Sources</th><th>Hardest on curve</th><th class="n">Needs</th><th class="n">P</th></tr></thead><tbody>' +
+      rows.map(r => '<tr><td>' + pipsHTML(r.X) + '</td><td class="n">' + r.K + '</td><td>' + cardLink(r.worst.c) + (r.worst.cmd ? ' <span class="chip">commander</span>' : '') + '</td><td class="n nw">' + r.worst.k + ' by T' + r.worst.t + '</td><td class="n' + (r.worst.p < 0.9 ? ' badc' : '') + '">' + Math.round(r.worst.p * 100) + '%</td></tr>').join('') +
+      '</tbody></table><p class="note">P is the exact hypergeometric chance of having drawn at least that many sources of the colour by that turn on the play (7 + turn − 1 cards from ' + N + '), ignoring mulligans and fetching. Frank Karsten\'s guideline is 90%; red is below it.</p></div>';
+  }
+
+  /* ---------- keyboard shortcuts ---------- */
+  const KEYS_HELP = 'Keys: 1–9 and 0 open pages in menu order · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
+
   function wire() {
     document.querySelector('.settings').addEventListener('input', onFormChange);
     document.querySelector('.settings').addEventListener('change', onFormChange);
@@ -3381,7 +3663,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       runGenerate({ locks, bans: App.R.bans || [] });
     });
     $('testBtn').addEventListener('click', runTests);
-    document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; App.tab = b.dataset.tab; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 }); if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis(); });
+    document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; hidePop(); App.tab = b.dataset.tab; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 }); if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis(); });
     $('view').addEventListener('input', e => { if (e.target.id === 'anText') App.anText = e.target.value; });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
@@ -3404,6 +3686,31 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       if (v === 'clear') { if (!confirm('Delete all ' + h.length + ' saved decks?')) return; h.length = 0; await IDB.put('history', h); renderHistory(); }
       else if (v === 'del') { const i = h.findIndex(x => x.id === b.dataset.id); if (i >= 0) h.splice(i, 1); await IDB.put('history', h); renderHistory(); }
       else if (v === 'open') histOpen(b.dataset.id);
+      else if (v === 'diff') { App.hdiff = true; await renderHistory(); const d = $('hdiff'); if (d) d.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    });
+    // history compare selection, sample hand, commander browser, print
+    $('view').addEventListener('change', e => {
+      const c = e.target.closest('input[data-hsel]'); if (!c) return;
+      let sel = (App.hsel || []).filter(id => id !== c.dataset.hsel); if (c.checked) { sel.push(c.dataset.hsel); if (sel.length > 2) sel = sel.slice(-2); }
+      App.hsel = sel; App.hdiff = false; renderHistory();
+    });
+    $('view').addEventListener('click', e => {
+      const b = e.target.closest('button[data-sh]'), t = e.target.closest('button[data-hc]');
+      if (b && App.R) { const v = b.dataset.sh, S = App.SH; if (v === 'new') shDeal(0); else if (v === 'mull') shDeal(Math.min(6, (S ? S.mull : 0) + 1)); else if (v === 'draw' && S && S.lib.length) { S.hand.push(S.lib.shift()); S.drawn++; } hidePop(); renderHand(); return; }
+      if (t && App.SH && App.SH.need) { e.stopPropagation(); e.preventDefault(); const S = App.SH, c = S.hand.splice(+t.dataset.hc, 1)[0]; if (c) { S.bottom.push(c); S.lib.push(c); S.need--; } hidePop(); renderHand(); }
+    });
+    let cbrT = 0;
+    $('view').addEventListener('input', e => { if (e.target.id === 'cbrQ' && App.cbr) { App.cbr.q = e.target.value; App.cbr.n = 50; clearTimeout(cbrT); cbrT = setTimeout(renderCmdResults, 150); } });
+    $('view').addEventListener('change', e => { const F = App.cbr, k = { cbrMode: 'mode', cbrTheme: 'theme', cbrSort: 'sort' }[e.target.id]; if (F && k) { F[k] = e.target.value; F.n = 50; renderCmdResults(); } });
+    $('view').addEventListener('click', e => {
+      const col = e.target.closest('button[data-col]'), use = e.target.closest('button[data-cuse]'), more = e.target.closest('button[data-cmore]'), pr = e.target.closest('button[data-print]'), F = App.cbr;
+      if (col && F) { const x = col.dataset.col; F.cols = F.cols.includes(x) ? F.cols.replace(x, '') : F.cols + x; col.setAttribute('aria-pressed', F.cols.includes(x)); F.n = 50; renderCmdResults(); }
+      else if (more && F) { F.n += 50; renderCmdResults(); }
+      else if (use) {
+        App.S.commanders = [use.dataset.cuse, '']; writeForm(App.S); persistSettings(); checkCommanders();
+        App.tab = 'setup'; renderView(); window.scrollTo({ top: 0 }); setStatus(use.dataset.cuse + ' set as commander. Choose a budget and plan, then Generate deck.');
+      }
+      else if (pr) pr.dataset.print === 'proxies' ? printProxies() : printPrimer();
     });
     $('view').addEventListener('click', e => { const b = e.target.closest('button[data-ansub]'); if (!b) return; App.anSub = b.dataset.ansub; try { localStorage.setItem('edhgen.anSub', App.anSub); } catch (x) { } renderAnalysis(); });
     $('view').addEventListener('click', e => {
@@ -3428,23 +3735,23 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     $('applyTok').addEventListener('click', async () => { try { applySettings(await decodeSettings($('shareTok').value)); setStatus('Token applied.'); checkCommanders(); } catch (err) { setStatus('Token error: ' + err.message); } });
     $('resetSet').addEventListener('click', () => { applySettings({}); setStatus('Defaults restored.'); });
     // appearance: mode, accent colour, text size, heading font (stored per browser)
-    let AP = { mode: 'system', accent: '', size: '1', head: 'serif' };
+    let AP = { mode: 'system', accent: '', size: '1', head: 'serif', img: 'off' };
     try { AP = Object.assign(AP, JSON.parse(LS.get('edhgen.appearance') || '{}')); } catch (e) { }
     const legacy = LS.get('edhgen.theme'); if (legacy && !LS.get('edhgen.appearance')) AP.mode = legacy;
     const root = document.documentElement;
     const applyAP = () => {
       if (AP.mode === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', AP.mode);
       if (AP.accent) root.setAttribute('data-accent', AP.accent); else root.removeAttribute('data-accent');
-      root.style.setProperty('--fz', AP.size); root.setAttribute('data-headings', AP.head);
-      for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head']]) $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(AP[k])));
+      root.style.setProperty('--fz', AP.size); root.setAttribute('data-headings', AP.head); App.img = AP.img;
+      for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head'], ['apImg', 'img']]) $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(AP[k])));
     };
     applyAP();
-    for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head']])
-      $(id).addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; AP[k] = b.dataset.v; applyAP(); LS.set('edhgen.appearance', JSON.stringify(AP)); });
+    for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head'], ['apImg', 'img']])
+      $(id).addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; AP[k] = b.dataset.v; applyAP(); LS.set('edhgen.appearance', JSON.stringify(AP)); if (k === 'img' && App.tab === 'hand') renderHand(); });
     $('clearBtn').addEventListener('click', () => {
       if (App.busy) return;
       if (!confirm('Start over? This clears the current deck and all settings. History, card data and appearance are kept.')) return;
-      App.R = null; App.AN = null; App.QS = null; App.PR = null; App.chain = null; App.accepted = []; App.denied = new Set(); App.anText = ''; App.anSource = 'deck'; App.openSwap = null; App.cbQ = ''; App.cbN = '';
+      App.R = null; App.AN = null; App.QS = null; App.PR = null; App.SH = null; App.hsel = []; App.hdiff = false; App.chain = null; App.accepted = []; App.denied = new Set(); App.anText = ''; App.anSource = 'deck'; App.openSwap = null; App.cbQ = ''; App.cbN = '';
       applySettings({}); try { history.replaceState(null, '', location.pathname + location.search); } catch (x) { }
       showMsgs([], []); App.tab = 'setup'; renderAll(); setStatus('Cleared. Pick a commander to start a new deck.'); window.scrollTo({ top: 0 });
       $('cmd1').focus();
@@ -3453,6 +3760,34 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     $('themeBtn').addEventListener('click', e => { e.stopPropagation(); setPop(pop.classList.contains('hidden')); });
     document.addEventListener('click', e => { if (!pop.classList.contains('hidden') && !e.target.closest('.popwrap')) setPop(false); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') setPop(false); });
+    // card popover: hover (mouse) or click/tap any card name
+    const fine = matchMedia('(hover: hover) and (pointer: fine)');
+    document.addEventListener('mouseover', e => {
+      if (!fine.matches || popPinned) return;
+      const el = e.target.closest('[data-card]'); clearTimeout(popT);
+      if (el) { if (el !== popFor) popT = setTimeout(() => showPop(el), 220); }
+      else if (!e.target.closest('#cardPop')) popT = setTimeout(hidePop, 120);
+    });
+    document.addEventListener('click', e => {
+      const el = e.target.closest('[data-card]');
+      if (el && !e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); if (popFor === el && popPinned) hidePop(); else showPop(el, true); return; }
+      if (!e.target.closest('#cardPop') || e.target.closest('[data-popx]')) hidePop();
+    });
+    addEventListener('scroll', () => { if (!popPinned) hidePop(); }, { passive: true });
+    $('undoBtn').addEventListener('click', undoLast);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { hidePop(); document.querySelectorAll('tr.cbpanel').forEach(x => x.remove()); return; }
+      const tg = e.target; if (e.altKey || (tg && (tg.isContentEditable || /^(?:INPUT|TEXTAREA|SELECT)$/.test(tg.tagName)))) return;
+      const k = e.key;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && k.toLowerCase() === 'z') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } return; }
+      if (e.ctrlKey || e.metaKey) return;
+      const tabs = [...document.querySelectorAll('.tabs button[data-tab]')];
+      if (/^[0-9]$/.test(k)) { const b = tabs[k === '0' ? 9 : +k - 1]; if (b) { e.preventDefault(); b.click(); } }
+      else if (k === 'g' || k === 'G') { if (!$('genBtn').disabled) { e.preventDefault(); $('genBtn').click(); } }
+      else if (k === 'u' || k === 'U') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } }
+      else if (k === '/') { e.preventDefault(); let f = $('cbQ') || $('cbrQ'); if (!f || f.offsetParent === null) { App.tab = 'setup'; renderView(); f = $('cmd1'); } f.focus(); }
+      else if (k === '?') { e.preventDefault(); setStatus(KEYS_HELP); }
+    });
     App.anGames = +(LS.get('edhgen.anGames') || 100000); App.anSub = LS.get('edhgen.anSub') || 'overview';
     setupAC('cmd1', 'cmd1L'); setupAC('cmd2', 'cmd2L');
     wireQuick(); syncQuick(App.S);

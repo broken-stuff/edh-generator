@@ -42,11 +42,29 @@ The result is a local optimum of the deck score above, checked by brute force: r
 
 ## Layout
 
-The left menu has three groups: Build (Setup, Deck, Primer, History), Evaluate (Analysis, Combos, Stats, By role) and Output and checks (Export, Validation, Log, Tests). Setup holds the commander, budget and game plan; generating a deck opens the Deck page. On phones the menu becomes a scrolling tab strip.
+The left menu has three groups: Build (Setup, Commanders, Deck, Primer, History), Evaluate (Analysis, Sample hand, Combos, Stats, By role) and Output and checks (Export, Validation, Log, Tests). Setup holds the commander, budget and game plan; generating a deck opens the Deck page. On phones the menu becomes a scrolling tab strip.
+
+**Card names.** Hover a card name (mouse) or tap it (touch) for its mana cost, type, rules text, P/T or loyalty, price, EDHREC rank, role tags, flags and, for cards in the deck, why the generator picked it. Ctrl/Cmd-click opens Scryfall.
+
+**Card images** are off by default. Appearance → Card images → On shows pictures in the popover and the sample hand. They load from `cards.scryfall.io`, Scryfall's image host; this is the only thing the page ever loads from outside the site, and only when turned on.
+
+**Keys:** 1–9 and 0 open pages in menu order, G generates, / jumps to search, U or Ctrl/Cmd+Z undoes the last edit, Esc closes popups, ? shows the list.
+
+**Undo** (next to Rebuild around locks) reverts the last swap, replacement, removal or combo add. It rebuilds the deck from its settings and replays every edit but the last, which gives the same list because generation is deterministic. Cards you locked by hand stay locked.
+
+On phones the deck list shows one card per row (name, cost, price, roles, reason, actions) instead of a wide table.
 
 **Clear** (top right) starts over: it removes the current deck, analysis and swap decisions and resets Setup to defaults. History, the loaded card and combo data and Appearance are kept.
 
 **Appearance** (gear button, top right) sets light, dark or system mode, an accent colour (ink, blue, violet, pink, green, orange, teal), text size (S, M, L, XL) and serif or sans headings. The choice is stored in the browser.
+
+## Commanders
+
+Lists every legal commander in the card data. Filter by name, type or rules text, by colour (within, exactly or including the chosen colours) and by theme (the generator's own synergy tags matched against the commander's text). Sort by EDHREC popularity, price or mana value. Build puts the commander into Setup.
+
+## Sample hand
+
+Draws a 7-card hand from the generated list with the browser's random generator, so each hand is new. Mulligan follows the London rule with the first mulligan free (multiplayer): draw 7, then tap one card per later mulligan to put it on the bottom. Draw a card continues from the library. The Primer and Analysis odds come from the seeded simulation, not from this page.
 
 ## Score cards
 
@@ -65,15 +83,25 @@ The Analysis tab scores any deck, whether generated or pasted. It is split into 
 - exact draw odds;
 - swap recommendations with projected effects, which you can accept or deny.
 
+## Stats
+
+Mana curve, colour pips against sources, role counts against targets, price, Game Changers, combos and synergy tags. **Colour check** finds, for each colour, the card that is hardest to cast on curve (most pips of that colour for its mana value) and gives the exact hypergeometric chance of having drawn that many sources by that turn on the play. Frank Karsten's guideline is 90%; lower values are shown in red.
+
 ## Primer
 
-The Primer tab is a play guide built only from the deck's own numbers: archetype, commander cast-turn distribution, strongest themes, mulligan odds, a turn-by-turn plan (which ramp, engines and win conditions to deploy, with expected lands and mana), interaction and protection to hold, one-sided versus symmetric wipes, Spellbook combos and the most-linked synergy pieces.
+The Primer tab is a play guide built only from the deck's own numbers. **Table talk** opens it: the bracket, typical win turn and counts of Game Changers, tutors, fast mana, extra turns, mass land denial, stax and Spellbook combos, for the pre-game conversation. Then: archetype, commander cast-turn distribution, strongest themes, mulligan odds, a turn-by-turn plan (which ramp, engines and win conditions to deploy, with expected lands and mana), interaction and protection to hold, one-sided versus symmetric wipes, Spellbook combos and the most-linked synergy pieces. **Tokens, emblems and counters to bring** lists token types (for example Treasure, 1/1 white Soldier creature), markers (monarch, initiative, energy, poison, day/night) and counters, read from rules text with reminder text removed.
+
+**Print primer and list** prints the decklist in three columns followed by the primer. **Print proxies** prints a text proxy for every card except basic lands at 63 × 88 mm, nine per page (Letter or A4): name, cost, type line, rules text and P/T.
 
 ## History
 
+
+
 The History tab keeps the last 25 decks and revisions in the browser (IndexedDB). Each generate and each accepted swap, replacement or removal is an entry with price, power and deck score. Opening an entry rebuilds it from its settings and replays its edits, then confirms the card list is identical or reports how many cards differ because the card data has changed.
 
-**Compare** scores the generated deck and any pasted list side by side, with the same rules and the same random seed.
+**Compare two entries:** tick two rows and press Compare selected for the cards out and in and the change in price, power, deck score, fundamentals and bracket.
+
+**Compare** (Analysis) scores the generated deck and any pasted list side by side, with the same rules and the same random seed.
 
 ## Data files
 
@@ -81,13 +109,21 @@ Everything the page loads comes from this site's `data/` folder. The page makes 
 
 | Path | What it is | How it gets there |
 |---|---|---|
-| `data/oracle-cards-*.jsonl.gz` (also `.json`, `.jsonl`, `.json.gz`; `default-cards-*` accepted) | Scryfall bulk card data: https://scryfall.com/docs/api/bulk-data | Upload by hand; delete the old file. GitHub rejects files over 100 MB, so keep the `.gz`. |
+| `data/oracle-cards-*.jsonl.gz` (also `.json`, `.jsonl`, `.json.gz`; `default-cards-*` accepted) | Scryfall Oracle Cards (https://scryfall.com/docs/api/bulk-data), cut to the fields the page reads | Refreshed by the **Data files** workflow every Monday when Scryfall has published a newer file, or on demand. A hand upload of the full file also works; delete the old one. |
 | `data/index.json` | List of files in `data/` with size and SHA-256 | Written by the **Data files** workflow after every push to `data/`. |
 | `data/spellbook/` | Commander Spellbook combos in compact form | Rebuilt by the **Data files** workflow every Monday, or on demand. |
 
 - **Finding the card file.** The page reads `data/index.json` and picks the newest Scryfall file. If the index is missing, it falls back to the GitHub contents API, then to `data/cards.json.gz`, `data/cards.json` and `data/cards.jsonl.gz`.
 - **Caching.** Card and combo files are downloaded only when their hash or manifest changes. Otherwise the copy stored in the browser (IndexedDB) is used.
 - **Your own card file.** Anyone can load their own file under Card data (`.json`, `.jsonl` or `.gz`).
+
+### Scryfall card data
+
+`tools/scryfall-slim.js` streams Scryfall's Oracle Cards file and keeps only the fields `Engine.norm()` reads (name, cost, type, rules text, P/T, loyalty, colour identity, Commander legality, prices, EDHREC rank, Game Changer and reserved flags, set, dates, keywords, produced mana, the Scryfall link and the "normal" image path). On the 16 Oct 2026 file it went from 25 MB to 7.1 MB gzipped (38,751 cards), and the page builds identical card records from either file apart from the tracking suffix on Scryfall links. The workflow asks `api.scryfall.com/bulk-data/oracle-cards` for the current file name, downloads it only if it is new, slims it, replaces the old file and commits. Weekly commits of about 7 MB grow the repository by roughly 350 MB a year.
+
+```sh
+node tools/scryfall-slim.js oracle-cards-20261016090200.json data/oracle-cards-20261016090200.jsonl.gz
+```
 
 ### Commander Spellbook combos
 
@@ -105,7 +141,7 @@ Only combos with status OK or Example that are legal in Commander are kept. On a
 
 The step-by-step text is not kept. The Combos page links each combo to commanderspellbook.com for its steps; that is a link, not a request the page makes.
 
-**Workflow.** `.github/workflows/data.yml` runs on GitHub, not in the browser. It downloads `variants.json`, runs the converter, rewrites `data/index.json` and commits any changes. To refresh now: Actions → Data files → Run workflow.
+**Workflow.** `.github/workflows/data.yml` runs on GitHub, not in the browser. It refreshes the Scryfall file (above), downloads `variants.json`, runs the converter, rewrites `data/index.json` and commits any changes. To refresh now: Actions → Data files → Run workflow (both boxes are ticked by default).
 
 **Running it locally:**
 

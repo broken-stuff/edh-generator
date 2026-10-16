@@ -313,6 +313,66 @@ table.swaps td{vertical-align:top}
   .seg.wide button,.chips button{min-height:40px}
 }
 @media (max-width:440px){.brand h1{display:none}}
+
+/* card names, popover, sample hand, commander browser, print */
+a.cl{color:inherit;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;cursor:pointer}
+a.cl:hover{text-decoration-color:currentColor}
+#cardPop{position:fixed;z-index:60;width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--pop-shadow,0 16px 48px -10px rgba(16,24,40,.25));padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:calc(13px*var(--fz))}
+#cardPop .cimg{width:100%;aspect-ratio:488/680;border-radius:10px;background:var(--card-2);object-fit:cover}
+#cardPop .cp-h{display:flex;gap:8px;align-items:baseline}#cardPop .cp-h b{flex:1}
+#cardPop .iconx{border:0;background:none;padding:0 2px;color:var(--muted);font-size:calc(13px*var(--fz));cursor:pointer;min-height:0}
+#cardPop .cp-ot{white-space:normal;line-height:1.45}
+#cardPop .cp-m{color:var(--muted)}
+#cardPop .cp-why{border-top:1px solid var(--line);padding-top:6px}
+.hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px;margin:14px 0}
+.hcard{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-height:150px;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card-2);text-align:left;font:inherit;color:inherit;cursor:pointer}
+.hcard.land{background:var(--card)}
+.hcard .hn{font-weight:600;line-height:1.25}
+.hcard.pic{padding:0;min-height:0;border:0;background:none}
+.hcard .himg{width:100%;aspect-ratio:488/680;border-radius:10px;display:block}
+.cmdtable td{vertical-align:top}
+.seg button .ms{margin:0}
+.good{color:var(--ok)} .badc{color:var(--bad)}
+ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
+.primer h4{margin:8px 0 2px;font-size:calc(13px*var(--fz))}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+#printArea{display:none}
+@media (max-width:560px){
+  table.deck thead{display:none}
+  table.deck tr{display:grid;grid-template-columns:30px minmax(0,1fr) auto;column-gap:6px;align-items:center;border-bottom:1px solid var(--line);padding:6px 0}
+  table.deck tr.grp{display:block;padding:0}
+  table.deck td{display:block;border:0;padding:1px 0}
+  table.deck td:nth-child(1){grid-column:1;grid-row:1/3}
+  table.deck td:nth-child(2){grid-column:2;grid-row:1}
+  table.deck td:nth-child(3){grid-column:3;grid-row:1;text-align:right}
+  table.deck td:nth-child(4){display:none}
+  table.deck td:nth-child(5){grid-column:3;grid-row:2;text-align:right}
+  table.deck td:nth-child(6){grid-column:2;grid-row:2}
+  table.deck td:nth-child(7){grid-column:2/4;grid-row:3;font-size:calc(12px*var(--fz))}
+  table.deck td:nth-child(8){grid-column:2/4;grid-row:4}
+  table.deck td:nth-child(8):empty{display:none}
+  ul.dl{columns:1}
+}
+@media print{
+  @page{margin:6mm}
+  body.printing{background:#fff}
+  body.printing > *:not(#printArea){display:none!important}
+  body.printing #printArea{display:block;color:#000;font:9.5pt/1.35 var(--f-ui)}
+  #printArea h1{font:600 16pt var(--f-ui);margin:0 0 2mm}
+  #printArea h2{font:600 12pt var(--f-ui);margin:4mm 0 2mm}
+  #printArea .pcols{column-count:3;column-gap:6mm}
+  #printArea .pg{break-inside:avoid;margin-bottom:3mm}
+  #printArea .pmc{color:#555;font-size:8pt}
+  #printArea .an-card{border:0;padding:0;margin:0 0 3mm;box-shadow:none;background:none;break-inside:avoid}
+  #printArea .ms{box-shadow:none;border:0.2mm solid #888}
+  #printArea a{color:#000;text-decoration:none}
+  #printArea .pxgrid{display:grid;grid-template-columns:repeat(3,63mm);grid-auto-rows:88mm;gap:0}
+  #printArea .px{border:0.3mm solid #000;padding:3mm;overflow:hidden;break-inside:avoid;display:flex;flex-direction:column;gap:1.5mm;font-size:7.5pt;line-height:1.3}
+  #printArea .px-h{display:flex;justify-content:space-between;gap:2mm;font-size:8.5pt}
+  #printArea .px-t{border-bottom:0.2mm solid #000;padding-bottom:1mm;font-style:italic}
+  #printArea .px-o{flex:1}
+  #printArea .px-pt{align-self:flex-end;font-weight:600;font-size:9pt}
+}
 @media (max-width:560px){table.swaps thead{display:none}table.swaps tr{display:grid;grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--line);padding:6px 0}table.swaps td{display:block;border:0;padding:2px 4px}table.swaps td:last-child{grid-column:1/-1}}
 </style>
 
@@ -336,6 +396,8 @@ table.swaps td{vertical-align:top}
       </div></div>
       <div><h3>Text size</h3><div class="seg" id="apSize"><button type="button" data-v="0.93">S</button><button type="button" data-v="1">M</button><button type="button" data-v="1.12">L</button><button type="button" data-v="1.25">XL</button></div></div>
       <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
+      <div><h3>Card images</h3><div class="seg" id="apImg"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div><p class="note" style="margin-top:4px">On loads pictures from cards.scryfall.io when a card is shown. Everything else stays on this site.</p></div>
+      <p class="note">Keys: 1–9, 0 pages · G generate · / search · U undo · ? help</p>
     </div>
   </div>
   <button type="button" id="clearBtn" title="Clear the deck and settings and start over">Clear</button>
@@ -347,11 +409,13 @@ table.swaps td{vertical-align:top}
   <div class="hello">Commander<br>deck builder</div>
   <div class="grp-h">Build</div>
   <button role="tab" aria-selected="true" data-tab="setup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Setup</span></button>
+  <button role="tab" aria-selected="false" data-tab="commanders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4 4 5-7 5 7 4-4-2 11H5z"/></svg><span>Commanders</span></button>
   <button role="tab" aria-selected="false" data-tab="deck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg><span>Deck</span></button>
   <button role="tab" aria-selected="false" data-tab="primer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
   <button role="tab" aria-selected="false" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg><span>History</span></button>
   <div class="grp-h">Evaluate</div>
   <button role="tab" aria-selected="false" data-tab="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analysis</span></button>
+  <button role="tab" aria-selected="false" data-tab="hand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="9" height="13" rx="1.5" transform="rotate(-10 7.5 12.5)"/><rect x="11" y="5" width="9" height="13" rx="1.5" transform="rotate(8 15.5 11.5)"/></svg><span>Sample hand</span></button>
   <button role="tab" aria-selected="false" data-tab="combos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7.5a4.5 4.5 0 1 0 0 9M15 7.5a4.5 4.5 0 1 1 0 9"/><path d="M9 7.5h6M9 16.5h6"/></svg><span>Combos</span></button>
   <button role="tab" aria-selected="false" data-tab="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg><span>Stats</span></button>
   <button role="tab" aria-selected="false" data-tab="role"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>By role</span></button>
@@ -368,6 +432,7 @@ table.swaps td{vertical-align:top}
   <div id="scorebar" class="mini hidden" aria-hidden="true"></div>
   <div class="actions">
     <span id="status" role="status" aria-live="polite"></span>
+    <button type="button" id="undoBtn" class="small hidden">Undo</button>
     <button type="button" id="regenBtn" class="small" disabled title="Rebuild keeping the cards you locked and leaving out the ones you removed">Rebuild around locks</button>
     <button type="button" id="testBtn" class="small hidden">Run acceptance tests</button>
   </div>
@@ -526,4 +591,5 @@ table.swaps td{vertical-align:top}
   <section class="panel" id="view"></section>
 </main>
 </div>
+<div id="cardPop" class="hidden" role="tooltip"></div>
 </div>
