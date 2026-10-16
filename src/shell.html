@@ -215,6 +215,7 @@ tr.alt td{background:var(--card-2)}
 .meter .fill{position:absolute;inset:0 auto 0 0;background:var(--bar);border-radius:999px}
 .meter .fill.short{background:var(--warn)}
 .statsgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+.statsgrid>div{min-width:0}.statsgrid>.wide{grid-column:1/-1}.statsgrid table.t{width:100%}
 svg text{fill:var(--muted);font-family:var(--f-mono);font-size:calc(10px*var(--fz))}
 svg .lbl{fill:var(--ink)}
 svg .b{fill:var(--bar)}

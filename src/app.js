@@ -1329,9 +1329,9 @@
       return { X, K, worst };
     }).filter(r => r.worst);
     if (!rows.length) return '';
-    return '<div><h3>Colour check</h3><table class="t"><thead><tr><th>Colour</th><th class="n">Sources</th><th>Hardest on curve</th><th class="n">Needs</th><th class="n">P</th></tr></thead><tbody>' +
+    return '<div class="wide"><h3>Colour check</h3><div class="scroll"><table class="t"><thead><tr><th>Colour</th><th class="n">Sources</th><th>Hardest on curve</th><th class="n">Needs</th><th class="n">P</th></tr></thead><tbody>' +
       rows.map(r => '<tr><td>' + pipsHTML(r.X) + '</td><td class="n">' + r.K + '</td><td>' + cardLink(r.worst.c) + (r.worst.cmd ? ' <span class="chip">commander</span>' : '') + '</td><td class="n nw">' + r.worst.k + ' by T' + r.worst.t + '</td><td class="n' + (r.worst.p < 0.9 ? ' badc' : '') + '">' + Math.round(r.worst.p * 100) + '%</td></tr>').join('') +
-      '</tbody></table><p class="note">P is the exact hypergeometric chance of having drawn at least that many sources of the colour by that turn on the play (7 + turn − 1 cards from ' + N + '), ignoring mulligans and fetching. Frank Karsten\'s guideline is 90%; red is below it.</p></div>';
+      '</tbody></table></div><p class="note">P is the exact hypergeometric chance of having drawn at least that many sources of the colour by that turn on the play (7 + turn − 1 cards from ' + N + '), ignoring mulligans and fetching. Frank Karsten\'s guideline is 90%; red is below it.</p></div>';
   }
 
   /* ---------- keyboard shortcuts ---------- */
