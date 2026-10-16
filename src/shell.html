@@ -80,6 +80,8 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
 .dot.ok{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}.dot.bad{background:var(--bad);box-shadow:0 0 0 3px var(--bad-soft)}.dot.warn{background:var(--warn)}
 .bar #genBtn{white-space:nowrap}
+.cbcard{white-space:nowrap}.cbcard .addbtn{padding:1px 8px;margin-left:2px}
+#cbCut{max-width:100%}
 .iconbtn{width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--card)}
 .iconbtn svg{width:18px;height:18px}
 /* shell */
@@ -310,6 +312,7 @@ table.swaps td{vertical-align:top}
   .page-h h2{font-size:calc(24px*var(--fz))}
   .seg.wide button,.chips button{min-height:40px}
 }
+@media (max-width:440px){.brand h1{display:none}}
 @media (max-width:560px){table.swaps thead{display:none}table.swaps tr{display:grid;grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--line);padding:6px 0}table.swaps td{display:block;border:0;padding:2px 4px}table.swaps td:last-child{grid-column:1/-1}}
 </style>
 
@@ -335,6 +338,7 @@ table.swaps td{vertical-align:top}
       <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
     </div>
   </div>
+  <button type="button" id="clearBtn" title="Clear the deck and settings and start over">Clear</button>
   <button type="button" class="primary" id="genBtn">Generate deck</button>
 </header>
 

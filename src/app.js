@@ -878,11 +878,53 @@
   const sbLink = v => 'https://commanderspellbook.com/combo/' + encodeURIComponent(v.id) + '/';
   function comboRows(list, opts) {
     opts = opts || {}; const R = App.R, inDeck = R ? new Set(R.commanders.map(c => c.n).concat(R.deck.map(e => e.c.n))) : new Set();
+    const CI = R && R.stats ? R.CI : null;
+    const canAdd = (n, c) => CI != null && !inDeck.has(n) && c && c.leg === 'legal' && [...c.ci].every(x => CI.includes(x));
     const cardHTML = v => v.c.map(n => { const miss = opts.missing && opts.missing.includes(n), c = App.bulk && Engine.lookup(App.bulk, n);
-      return '<span class="' + (miss ? 'pup' : inDeck.has(n) ? '' : 'note') + '">' + esc(n) + (v.cmd.includes(n) ? ' <span class="chip">commander</span>' : '') + (miss && c ? ' <span class="note">' + fmtP(c.p[(R ? R.settings : App.S).budget.cur]) + '</span>' : '') + '</span>'; }).join(' + ');
+      return '<span class="cbcard"><span class="' + (miss ? 'pup' : inDeck.has(n) ? '' : 'note') + '">' + esc(n) + '</span>' + (v.cmd.includes(n) ? ' <span class="chip">commander</span>' : '') + (!inDeck.has(n) && c ? ' <span class="note">' + fmtP(c.p[(R ? R.settings : App.S).budget.cur]) + '</span>' : '') +
+        (canAdd(n, c) && !v.cmd.includes(n) ? ' <button type="button" class="small addbtn" data-cbadd="' + esc(n) + '" data-vid="' + esc(v.id) + '" title="Add ' + esc(n) + ' to the deck">+ Add</button>' : '') + '</span>'; }).join(' <span class="note">+</span> ');
     return '<div class="scroll"><table class="t compact"><thead><tr><th>Cards</th><th>Produces</th><th>Bracket tag</th><th class="n">MV</th><th class="n">Popularity</th><th></th></tr></thead><tbody>' +
-      list.map(x => { const v = x.v || x; return '<tr><td>' + cardHTML(v) + (v.t.length ? '<div class="note">Also needs: ' + esc(v.t.join(', ')) + '</div>' : '') + '</td><td class="why">' + esc(v.p.join(', ')) + '</td><td>' + (v.bt ? '<span class="chip">' + esc(BT[v.bt] || v.bt) + '</span>' : '') + '</td><td class="n">' + (v.mv != null ? v.mv : '') + '</td><td class="n">' + (v.pop != null ? v.pop.toLocaleString() : '') + '</td><td class="nw"><a href="' + sbLink(v) + '" target="_blank" rel="noopener">Steps ↗</a></td></tr>'; }).join('') +
+      list.map(x => { const v = x.v || x; return '<tr data-vrow="' + esc(v.id) + '"><td>' + cardHTML(v) + (v.t.length ? '<div class="note">Also needs: ' + esc(v.t.join(', ')) + '</div>' : '') + '</td><td class="why">' + esc(v.p.join(', ')) + '</td><td>' + (v.bt ? '<span class="chip">' + esc(BT[v.bt] || v.bt) + '</span>' : '') + '</td><td class="n">' + (v.mv != null ? v.mv : '') + '</td><td class="n">' + (v.pop != null ? v.pop.toLocaleString() : '') + '</td><td class="nw"><a href="' + sbLink(v) + '" target="_blank" rel="noopener">Steps ↗</a></td></tr>'; }).join('') +
       '</tbody></table></div>';
+  }
+  // Add a combo card to the generated deck: pick a card to replace (weakest first, never a piece of this combo),
+  // show budget and bracket effects, then replace and lock it (recorded in history like any other edit).
+  function comboAddPanel(btn) {
+    const R = App.R, cb = App.bulkCombos; if (!R || !cb) return;
+    document.querySelectorAll('tr.cbpanel').forEach(x => x.remove());
+    const name = btn.dataset.cbadd, card = Engine.lookup(App.bulk, name), v = cb.variants.find(x => x.id === btn.dataset.vid); if (!card) return;
+    const keep = new Set(v ? v.c : []), inCombo = new Set([].concat(...(R.combos || []).map(x => x.c)));
+    const cuts = R.deck.filter(e => !Engine.analyze(e.c).isLand && !keep.has(e.c.n) && !inCombo.has(e.c.n) && !e.inc)
+      .sort((a, b) => (a.locked - b.locked) || (a.score - b.score) || (a.c.n < b.c.n ? -1 : 1)).slice(0, 12);
+    const cur = R.settings.budget.cur, pr = c => c.p[cur] || 0, cap = R.settings.budget.total, hasCap = cap != null && cap !== '';
+    const roles = c => Object.keys(Engine.analyze(c).roles).map(r => Engine.SLOT_LABEL[r]).join(', ');
+    const opt = e => '<option value="' + esc(e.c.n) + '">' + esc(e.c.n) + ' · ' + fmtP(pr(e.c)) + (roles(e.c) ? ' · ' + esc(roles(e.c)) : '') + (e.locked ? ' · locked' : '') + '</option>';
+    const tr = document.createElement('tr'); tr.className = 'cbpanel alt';
+    tr.innerHTML = '<td colspan="6"><div class="row" style="gap:10px;align-items:flex-end"><label class="f" style="flex:1 1 320px"><span>Add <b>' + esc(name) + '</b> (' + fmtP(pr(card)) + ') in place of</span><select id="cbCut">' + cuts.map(opt).join('') + '</select></label>' +
+      '<button type="button" class="primary small" data-cbgo="' + esc(name) + '">Add and lock</button><button type="button" class="small" data-cbx="1">Cancel</button></div><div class="note" id="cbChk" style="margin-top:6px"></div></td>';
+    btn.closest('tr').after(tr);
+    const check = () => {
+      const cut = R.deck.find(e => e.c.n === $('cbCut').value); if (!cut) return;
+      const after = R.stats.total - pr(cut.c) + pr(card), names = new Set(R.commanders.map(c => c.n).concat(R.deck.map(e => e.c.n))); names.delete(cut.c.n);
+      const cmds = R.commanders.map(c => c.n), newTwo = cb.completes(card.n, n => names.has(n), cmds).filter(x => x.inf && x.c.length <= 2);
+      const twoNow = (R.combos || []).filter(x => x.inf && x.c.length <= 2 && !x.c.includes(cut.c.n)).length, lim2 = R.lim ? R.lim.combo2 : 999;
+      const gcNow = R.stats.gcs.filter(n => n !== cut.c.n).length + (card.gc ? 1 : 0), limGc = R.lim ? R.lim.gc : 999;
+      const msgs = ['Price after: ' + fmtP(after) + (hasCap ? ' of ' + fmtP(+cap) + (after > +cap + 1e-9 ? ' <b class="pup">(over budget)</b>' : '') : '') + '.'];
+      if (newTwo.length && twoNow + newTwo.length > lim2) msgs.push('<b class="pup">Adds a 2-card infinite; Bracket ' + R.settings.bracket + ' allows ' + lim2 + '.</b>');
+      if (card.gc && gcNow > limGc) msgs.push('<b class="pup">Game Changer ' + gcNow + ' of ' + limGc + ' allowed at Bracket ' + R.settings.bracket + '.</b>');
+      const lost = Object.keys(Engine.analyze(cut.c).roles).filter(r => !Engine.analyze(card).roles[r]);
+      if (lost.length) msgs.push('Removes a ' + lost.map(r => Engine.SLOT_LABEL[r].toLowerCase()).join(', ') + ' card.');
+      $('cbChk').innerHTML = msgs.join(' ') + ' Validation shows any rule this breaks.';
+    };
+    $('cbCut').addEventListener('change', check); check();
+  }
+  async function comboAddGo(name) {
+    const R = App.R, cut = R && R.deck.find(e => e.c.n === $('cbCut').value), card = Engine.lookup(App.bulk, name); if (!cut || !card) return;
+    const cutName = cut.c.n;
+    await R.replace(cut, card, true);
+    histOp({ op: 'replace', cut: cutName, add: card.n, locked: true }); App.QS = null; App.PR = null; if (App.anSource !== 'paste') App.AN = null;
+    renderAll(); histPush('edit', cutName + ' → ' + card.n + ' (combo)');
+    setStatus('Added ' + card.n + ' in place of ' + cutName + ' (locked).' + (R.ok ? '' : ' Validation now reports a failed rule.'));
   }
   async function renderCombos() {
     const cb = App.bulkCombos, R = App.R;
@@ -896,7 +938,7 @@
       const pool = n => { if (have.has(n)) return false; const c = Engine.lookup(App.bulk, n); return !!c && c.leg === 'legal' && inCI(c); };
       const near = (await cb.almost(names, pool, 1)).filter(x => !x.v.cmd.length || x.v.cmd.every(n => cmds.includes(n))).sort((a, b) => (b.v.pop || 0) - (a.v.pop || 0)).slice(0, 40);
       h += '<h3 class="an-sec">In this deck (' + found.length + ')</h3>' + (found.length ? comboRows(found) : '<p class="note">No complete Spellbook combo in this list.' + (R.settings.bracket <= 2 ? ' Brackets 1–2 exclude 2-card infinite combos.' : '') + '</p>');
-      h += '<h3 class="an-sec">One card away (' + near.length + (near.length === 40 ? '+' : '') + ')</h3>' + (near.length ? '<p class="note">The missing card is in red with its price. Adding it may break bracket limits (2-card infinites) or the budget.</p>' + comboRows(near.map(x => ({ v: x.v })), { missing: [].concat(...near.map(x => x.missing)) }) : '<p class="note">None.</p>');
+      h += '<h3 class="an-sec">One card away (' + near.length + (near.length === 40 ? '+' : '') + ')</h3>' + (near.length ? '<p class="note">The missing card is in red with its price. + Add puts it in the deck in place of a card you choose and locks it.</p>' + comboRows(near.map(x => ({ v: x.v })), { missing: [].concat(...near.map(x => x.missing)) }) : '<p class="note">None.</p>');
     }
     const ci = ciOf();
     h += '<h3 class="an-sec">Search all combos</h3><div class="row" style="gap:10px;align-items:flex-end"><label class="f" style="flex:1 1 260px">Cards or results (all words must match)<input type="search" id="cbQ" placeholder="e.g. Thassa\'s Oracle, infinite mana" value="' + esc(App.cbQ || '') + '"></label>' +
@@ -1115,6 +1157,11 @@
       if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); App.AN = null; if (App.anSource !== 'paste') renderAll(); App.tab = 'analysis'; renderView(); runAnalysis(); }
     });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
+    $('view').addEventListener('click', e => {
+      const a = e.target.closest('button[data-cbadd]'); if (a) return comboAddPanel(a);
+      const g = e.target.closest('button[data-cbgo]'); if (g) { g.disabled = true; return comboAddGo(g.dataset.cbgo); }
+      if (e.target.closest('button[data-cbx]')) document.querySelectorAll('tr.cbpanel').forEach(x => x.remove());
+    });
     $('view').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-hist]'); if (!b) return;
@@ -1159,6 +1206,14 @@
     applyAP();
     for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head']])
       $(id).addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; AP[k] = b.dataset.v; applyAP(); LS.set('edhgen.appearance', JSON.stringify(AP)); });
+    $('clearBtn').addEventListener('click', () => {
+      if (App.busy) return;
+      if (!confirm('Start over? This clears the current deck and all settings. History, card data and appearance are kept.')) return;
+      App.R = null; App.AN = null; App.QS = null; App.PR = null; App.chain = null; App.accepted = []; App.denied = new Set(); App.anText = ''; App.anSource = 'deck'; App.openSwap = null; App.cbQ = ''; App.cbN = '';
+      applySettings({}); try { history.replaceState(null, '', location.pathname + location.search); } catch (x) { }
+      showMsgs([], []); App.tab = 'setup'; renderAll(); setStatus('Cleared. Pick a commander to start a new deck.'); window.scrollTo({ top: 0 });
+      $('cmd1').focus();
+    });
     const pop = $('appearance'), setPop = open => { pop.classList.toggle('hidden', !open); $('themeBtn').setAttribute('aria-expanded', open); };
     $('themeBtn').addEventListener('click', e => { e.stopPropagation(); setPop(pop.classList.contains('hidden')); });
     document.addEventListener('click', e => { if (!pop.classList.contains('hidden') && !e.target.closest('.popwrap')) setPop(false); });

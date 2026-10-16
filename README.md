@@ -44,6 +44,8 @@ The result is a local optimum of the deck score above, checked by brute force: r
 
 The left menu has three groups: Build (Setup, Deck, Primer, History), Evaluate (Analysis, Combos, Stats, By role) and Output and checks (Export, Validation, Log, Tests). Setup holds the commander, budget and game plan; generating a deck opens the Deck page. On phones the menu becomes a scrolling tab strip.
 
+**Clear** (top right) starts over: it removes the current deck, analysis and swap decisions and resets Setup to defaults. History, the loaded card and combo data and Appearance are kept.
+
 **Appearance** (gear button, top right) sets light, dark or system mode, an accent colour (ink, blue, violet, pink, green, orange, teal), text size (S, M, L, XL) and serif or sans headings. The choice is stored in the browser.
 
 ## Score cards
@@ -117,7 +119,7 @@ node tools/data-index.js data
 
 - **Generation** follows the bracket's 2-card-infinite limit and the Combos filter (allow, prefer, exclude).
 - **Analysis** counts combo families toward the threat score and the minimum bracket.
-- **Combos page** lists combos complete in the deck and combos one card away, with the missing card and its price. Its search covers every combo by card name or result, filtered by colour identity, number of cards and infinite-only.
+- **Combos page** lists combos complete in the deck and combos one card away, with the missing card and its price. **+ Add** next to a missing card opens a picker for the card to cut (nonland cards outside every found combo, locked-out and includes excluded, weakest first) and shows the price after the swap, a warning if it adds a 2-card infinite or Game Changer the bracket doesn't allow, and any role it removes. **Add and lock** makes the swap, locks the new card and records it in History. Its search covers every combo by card name or result, filtered by colour identity, number of cards and infinite-only.
 
 A combo counts as assembled only when every card is in the list. Combos that also need a card *type* (for example "a sacrifice outlet") are shown in search but never counted, because that requirement can't be checked automatically. Combos that need a specific card as commander count only when it is the commander.
 
