@@ -76,9 +76,9 @@ jobs:
           curl -sSL --retry 4 --retry-delay 10 -H "User-Agent: $UA" -H 'Accept: application/json;q=0.9,*/*;q=0.8' -o "$RUNNER_TEMP/bulk.json" -w '%{http_code}' https://api.scryfall.com/bulk-data/oracle-cards > "$RUNNER_TEMP/code" || true
           echo "::notice::Scryfall bulk-data HTTP $(cat "$RUNNER_TEMP/code"): $(head -c 300 "$RUNNER_TEMP/bulk.json" | tr '\n' ' ')"
           url=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).download_uri)' "$RUNNER_TEMP/bulk.json")
-          name=$(basename "$url" .json)          # e.g. oracle-cards-20261016090200
-          echo "Newest: $name"
-          case "$name" in oracle-cards-[0-9]*) ;; *) echo "Unexpected file name: $url"; exit 1;; esac
+          name=$(basename "$url" | sed -E 's/\.jsonl?(\.gz)?$//')   # e.g. oracle-cards-20261016090200
+          echo "::notice::Newest Scryfall file: $url"
+          case "$name" in oracle-cards-[0-9]*) ;; *) echo "::error::Unexpected file name: $url"; exit 1;; esac
           if [ -f "data/$name.jsonl.gz" ]; then echo "::notice::Card data already current ($name)."; exit 0; fi
           curl -fsSL --retry 4 --retry-delay 10 --compressed -H "User-Agent: $UA" -o "$RUNNER_TEMP/oracle.json" "$url"
           echo "::notice::Downloaded $(stat -c %s "$RUNNER_TEMP/oracle.json") bytes; $(node tools/scryfall-slim.js "$RUNNER_TEMP/oracle.json" "$RUNNER_TEMP/$name.jsonl.gz")"
