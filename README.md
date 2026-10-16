@@ -58,6 +58,23 @@ On phones the deck list shows one card per row (name, cost, price, roles, reason
 
 **Appearance** (gear button, top right) sets light, dark or system mode, an accent colour (ink, blue, violet, pink, green, orange, teal), text size (S, M, L, XL) and serif or sans headings. The choice is stored in the browser.
 
+## Card explorer
+
+`card.html` (linked from the header of both pages) looks up any card. Search by name; the card is shown in the middle (picture from `cards.scryfall.io`, or a text card when Appearance → Card images is Off), its rules text, mana value, colour identity, EDHREC rank, legality, printings, keywords, deck roles and detected mechanics on the left, and recommendations on the right. The card name is kept in the URL (`card.html#Sol%20Ring`), so Back and shared links work. It reads the same `data/` files and the same stored browser copy as the generator, and makes no API calls.
+
+**Similar cards** ranks every other card by a match from 0 to 100%, the weighted mean of four parts:
+
+| Part | Default weight | How it is measured |
+|---|---|---|
+| Mechanics | 60 | ½ cosine similarity of rules text (words and word pairs, TF-IDF weighted, card names replaced) + ½ IDF-weighted overlap of detected mechanics: keywords, triggers (enters, dies, attacks, cast, upkeep…), counters, token types, the generator's role, flag and theme rules |
+| Mana cost | 20 | 60% mana value (−25% per point of difference), 40% colour identity overlap |
+| Type | 12 | 70% card types, 20% subtypes, 10% legendary or not |
+| Stats | 8 | power and toughness (−12.5% per point) or loyalty (−20% per point); left out for cards without them |
+
+Each result shows its price, EDHREC rank, the mechanics it shares and a bar split by part. **Focus** (or clicking a mechanic on the left) keeps only cards with that mechanic and scores them ½ on how alike their lines with that mechanic are, ½ on the overall match. Filters: colours (any, within the card's identity, same identity), shares a card type, maximum price, Commander-legal only; sort by match, price or EDHREC rank; the four weights are adjustable. Indexing the rules text of ~35,000 cards takes a few seconds after the card data loads.
+
+**2-card combos** lists every Commander Spellbook combo made of the card and one other card, most played first, with what it produces, any extra requirement, both prices and a link to the steps.
+
 ## Commanders
 
 Lists every legal commander in the card data. Filter by name, type or rules text, by colour (within, exactly or including the chosen colours) and by theme (the generator's own synergy tags matched against the commander's text). Sort by EDHREC popularity, price or mana value. Build puts the commander into Setup.
@@ -165,13 +182,14 @@ Settings → Pages → Build and deployment → Source: *Deploy from a branch* �
 
 ## Source and build
 
-`index.html` is generated. Edit the files in `src/`, then:
+`index.html` and `card.html` are generated. Edit the files in `src/`, then:
 
 ```sh
 cd src
 sh build.sh                     # src/edh-deck-generator.html (single file)
 sh build-site.sh && mv site/index.html ../index.html && rm -r site
-node test.js && node atest.js   # engine and analysis tests on synthetic cards
+sh build-card.sh                # ../card.html (card explorer: engine.js + similar.js + card.js)
+node test.js && node atest.js && node stest.js   # engine, analysis and card-explorer tests on synthetic cards
 node ../tools/spellbook-shard.js variants.json ../data/spellbook   # combo files (see Commander Spellbook combos)
 node sens.js                    # sensitivity of scores to bracket, budget and game plan
 ```

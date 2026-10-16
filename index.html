@@ -286,6 +286,13 @@ table.swaps td{vertical-align:top}
 .eff{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:calc(12.5px*var(--fz));min-width:180px}
 .eff .up{color:var(--ok)}.eff .down{color:var(--bad)}.eff .warn-t{color:var(--warn)}
 .pup{color:var(--bad);font-weight:600}.pdown{color:var(--ok);font-weight:600}
+/* page links: deck generator and card explorer (card.html) */
+.sitenav{display:inline-flex;padding:3px;border-radius:999px;background:var(--card-2);border:1px solid var(--line);gap:2px}
+.sitenav a{border-radius:999px;padding:5px 12px;font-size:calc(12.5px*var(--fz));color:var(--muted);white-space:nowrap;font-weight:500}
+.sitenav a:hover{text-decoration:none;color:var(--ink)}
+.sitenav a[aria-current="page"]{background:var(--seg-on);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);font-weight:600}
+.sitenav .sn-s{display:none}
+@media (max-width:640px){.sitenav a[aria-current="page"],.sitenav .sn-l{display:none}.sitenav .sn-s{display:inline}}
 /* appearance popover */
 .popwrap{position:relative}
 .pop{position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:300px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--pop-shadow);padding:16px;display:flex;flex-direction:column;gap:14px}
@@ -390,6 +397,7 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
     <svg width="26" height="26" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="5" r="2" fill="var(--mW)"/><circle cx="16.7" cy="9.1" r="2" fill="var(--mU)"/><circle cx="14.5" cy="15.9" r="2" fill="var(--mB)"/><circle cx="7.5" cy="15.9" r="2" fill="var(--mR)"/><circle cx="5.3" cy="9.1" r="2" fill="var(--mG)"/></svg>
     <h1>broken-stuff<small>EDH generator</small></h1>
   </div>
+  <nav class="sitenav" aria-label="Site"><a href="./" aria-current="page"><span class="sn-l">Deck generator</span><span class="sn-s">Decks</span></a><a href="card.html"><span class="sn-l">Card explorer</span><span class="sn-s">Cards</span></a></nav>
   <div class="sources" id="sources" aria-live="polite">
     <span class="pill" id="pBulk"><span class="dot"></span>Cards: not loaded</span>
     <span class="pill hidden" id="pCombo"><span class="dot"></span></span>

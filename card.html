@@ -1,0 +1,2249 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 22 22%22%3E%3Ccircle cx=%2211%22 cy=%2211%22 r=%2210%22 fill=%22none%22 stroke=%22%23888%22 stroke-width=%221.5%22/%3E%3Ccircle cx=%2211%22 cy=%225%22 r=%222%22 fill=%22%23f8e7b9%22/%3E%3Ccircle cx=%2216.7%22 cy=%229.1%22 r=%222%22 fill=%22%23b3ceea%22/%3E%3Ccircle cx=%2214.5%22 cy=%2215.9%22 r=%222%22 fill=%22%23a69f9d%22/%3E%3Ccircle cx=%227.5%22 cy=%2215.9%22 r=%222%22 fill=%22%23eb9f82%22/%3E%3Ccircle cx=%225.3%22 cy=%229.1%22 r=%222%22 fill=%22%23c4d3ca%22/%3E%3C/svg%3E">
+<script>window.EDH_SITE = 1;</script>
+<style>
+/* Layout: dashboard. Header bar; left navigation rail; main column with KPI cards, a status strip and one page at a time.
+   Flat white cards on a light grey field (dark: near-black field, charcoal cards). Under 900px the rail becomes a scrolling tab strip. */
+:root{
+  --fz:1;
+  --bg:#f2f3f6; --card:#ffffff; --card-2:#f6f7f9; --field-in:#ffffff;
+  --line:#e6e8ec; --line-strong:#d6d9df; --hair:#e6e8ec; --hair-strong:#d6d9df;
+  --ink:#121418; --muted:#687080; --faint:#a0a6b2;
+  --shadow:0 1px 2px rgba(16,24,40,.04),0 2px 6px rgba(16,24,40,.03);
+  --pop-shadow:0 12px 40px -8px rgba(16,24,40,.22),0 2px 6px rgba(16,24,40,.06);
+  --ok:#157f3c; --ok-soft:#e6f6ec; --bad:#d4262c; --bad-soft:#fdeced; --warn:#a85a07; --warn-soft:#fff3e0;
+  --a-ink:#121418; --a-ink-on:#ffffff;
+  --accent:var(--a-ink); --accent-ink:var(--a-ink-on);
+  --accent-soft:color-mix(in srgb,var(--accent) 10%,transparent);
+  --focus:#4c6fff;
+  --bar:#7d8dfc; --bar-2:#f2679f;
+  --i-blue:#6f86ff; --i-green:#2fb466; --i-orange:#f2803a; --i-pink:#ef5d9a; --i-violet:#8e6cf6; --i-teal:#1aa6a0;
+  --pip-ink:#17130f; --mW:#f3ebc6; --mU:#aed0ee; --mB:#c0b7b2; --mR:#f0ad93; --mG:#a3d2ad; --mC:#d8d3cd;
+  --f-ui:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI",system-ui,Roboto,"Helvetica Neue",sans-serif;
+  --f-display:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Charter,"Bitstream Charter",Georgia,serif;
+  --f-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --r:16px; --r-sm:10px; --seg-on:#ffffff;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b0c0f; --card:#15171c; --card-2:#1c1f25; --field-in:#101216;
+    --line:#252931; --line-strong:#323741; --hair:#252931; --hair-strong:#323741;
+    --ink:#eceef2; --muted:#9aa1ad; --faint:#6c7380;
+    --shadow:0 1px 2px rgba(0,0,0,.3); --pop-shadow:0 16px 48px -10px rgba(0,0,0,.7);
+    --ok:#3ccf74; --ok-soft:rgba(60,207,116,.14); --bad:#ff6b6b; --bad-soft:rgba(255,107,107,.14); --warn:#f5b84a; --warn-soft:rgba(245,184,74,.14);
+    --a-ink:#eceef2; --a-ink-on:#121418;
+    --bar:#8796ff; --bar-2:#ff7aaf; --seg-on:#30343d;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b0c0f; --card:#15171c; --card-2:#1c1f25; --field-in:#101216;
+  --line:#252931; --line-strong:#323741; --hair:#252931; --hair-strong:#323741;
+  --ink:#eceef2; --muted:#9aa1ad; --faint:#6c7380;
+  --shadow:0 1px 2px rgba(0,0,0,.3); --pop-shadow:0 16px 48px -10px rgba(0,0,0,.7);
+  --ok:#3ccf74; --ok-soft:rgba(60,207,116,.14); --bad:#ff6b6b; --bad-soft:rgba(255,107,107,.14); --warn:#f5b84a; --warn-soft:rgba(245,184,74,.14);
+  --a-ink:#eceef2; --a-ink-on:#121418;
+  --bar:#8796ff; --bar-2:#ff7aaf; --seg-on:#30343d;
+  color-scheme:dark;
+}
+/* accent colours (Appearance) */
+:root[data-accent="blue"]{--accent:#2f66f5;--accent-ink:#fff;--bar:#2f66f5}
+:root[data-accent="violet"]{--accent:#6c55f0;--accent-ink:#fff;--bar:#7b66f3}
+:root[data-accent="pink"]{--accent:#e0457f;--accent-ink:#fff;--bar:#ea5f95}
+:root[data-accent="green"]{--accent:#16893f;--accent-ink:#fff;--bar:#25a557}
+:root[data-accent="orange"]{--accent:#e0631a;--accent-ink:#fff;--bar:#ef7a35}
+:root[data-accent="teal"]{--accent:#0f8f8a;--accent-ink:#fff;--bar:#18a39d}
+:root[data-headings="sans"]{--f-display:var(--f-ui)}
+*{box-sizing:border-box}
+html{background:var(--bg);overflow-anchor:none}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:calc(14px*var(--fz));line-height:1.45;-webkit-font-smoothing:antialiased;
+  padding:0 max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));min-height:100%}
+a{color:var(--accent);text-decoration:none}
+:root:not([data-accent]) a{color:var(--focus)}
+a:hover{text-decoration:underline}
+h1,h2,h3{margin:0;font-weight:600;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:calc(17px*var(--fz))}
+h2{font-size:calc(17px*var(--fz))}
+h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--ink)}
+.display{font-family:var(--f-display);font-weight:500;letter-spacing:-.01em}
+.num,td.n,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:calc(12.5px*var(--fz))}
+.card,details.sec,.panel,.ac ul,.actions{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
+/* header */
+.app{max-width:1480px;margin:0 auto}
+.bar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px 14px;padding:12px 4px;margin:0 0 4px;background:var(--bg)}
+.brand{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0}
+.brand h1{font-family:var(--f-display);font-size:calc(21px*var(--fz));font-weight:500;white-space:nowrap}
+.brand h1 small{font-family:var(--f-ui);font-size:calc(12px*var(--fz));color:var(--muted);font-weight:500;margin-left:6px;letter-spacing:0}
+.sources{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:calc(12px*var(--fz));background:var(--card);white-space:nowrap;color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+.dot.ok{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}.dot.bad{background:var(--bad);box-shadow:0 0 0 3px var(--bad-soft)}.dot.warn{background:var(--warn)}
+.bar #genBtn{white-space:nowrap}
+.cbcard{white-space:nowrap}.cbcard .addbtn{padding:1px 8px;margin-left:2px}
+#cbCut{max-width:100%}
+.iconbtn{width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--card)}
+.iconbtn svg{width:18px;height:18px}
+/* shell */
+.wrap{display:grid;grid-template-columns:228px minmax(0,1fr);gap:16px;align-items:start}
+.rail{position:sticky;top:70px;display:flex;flex-direction:column;gap:2px;padding:18px 12px 14px;border-radius:var(--r);background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);max-height:calc(100vh - 86px);overflow:auto}
+.rail .hello{font-family:var(--f-display);font-size:calc(22px*var(--fz));line-height:1.15;margin:0 6px 14px;font-weight:500;letter-spacing:-.01em}
+.rail .grp-h{font-size:calc(11px*var(--fz));font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:14px 10px 6px;padding-top:12px;border-top:1px solid var(--line)}
+.rail .grp-h:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.rail button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:transparent;box-shadow:none;border-radius:11px;padding:9px 10px;color:var(--muted);font-weight:500;font-size:calc(13.5px*var(--fz))}
+.rail button svg{width:18px;height:18px;flex:none}
+.rail button:hover{background:var(--card-2);color:var(--ink)}
+.rail button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.rail .datacard{margin-top:16px;padding:10px 12px;border-radius:12px;background:var(--card-2);font-size:calc(12px*var(--fz));color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.rail .datacard b{color:var(--ink);font-weight:600}
+.results{min-width:0;display:flex;flex-direction:column;gap:14px}
+/* KPI cards */
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.kpi{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:var(--r);padding:14px 14px 13px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpi .kh{display:flex;align-items:center;gap:9px;margin-bottom:10px;min-width:0}
+.kpi .ki{width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;color:#fff;flex:none;box-shadow:inset 0 -2px 0 rgba(0,0,0,.12)}
+.kpi .ki svg{width:16px;height:16px}
+.kpi .kl{font-size:calc(12.5px*var(--fz));font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .kv2{font-size:calc(25px*var(--fz));font-weight:600;letter-spacing:-.025em;font-variant-numeric:tabular-nums;line-height:1.1;white-space:nowrap}
+.kpi .kv2 small{font-size:calc(13px*var(--fz));font-weight:500;color:var(--muted);letter-spacing:0}
+.kpi .ks{font-size:calc(11.5px*var(--fz));color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi.bad .kv2{color:var(--bad)}.kpi.warn .kv2{color:var(--warn)}
+.kpi .kbar{height:4px;border-radius:999px;background:var(--card-2);overflow:hidden;margin:7px 0 3px}
+.kpi .kbar i{display:block;height:100%;border-radius:999px;background:var(--i-green)}
+.kpi.bad .kbar i{background:var(--bad)}
+.mini{position:sticky;top:62px;z-index:30;display:flex;flex-wrap:wrap;gap:4px 18px;align-items:center;padding:8px 14px;border-radius:999px;background:var(--card);border:1px solid var(--line);box-shadow:var(--pop-shadow);font-size:calc(12.5px*var(--fz))}
+.mini span{color:var(--muted)}.mini b{font-variant-numeric:tabular-nums;margin-left:4px}.mini .bad b{color:var(--bad)}.mini .warn b{color:var(--warn)}
+@media (max-width:1280px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+/* forms */
+.settings{display:flex;flex-direction:column;gap:14px;min-width:0}
+.page-h{display:flex;flex-direction:column;gap:4px;padding:4px 2px 0}
+.page-h h2{font-family:var(--f-display);font-weight:500;font-size:calc(28px*var(--fz));letter-spacing:-.015em}
+#pageHead{padding:6px 2px 0}#pageHead h2{font-size:calc(24px*var(--fz))}
+.setup-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+.setup-grid .col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.setup-more{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+@media (max-width:1180px){.setup-grid,.setup-more{grid-template-columns:minmax(0,1fr)}}
+details.sec{border-radius:var(--r);overflow:visible;min-width:0}
+details.sec>summary{cursor:pointer;padding:15px 18px;font-weight:600;font-size:calc(15px*var(--fz));list-style:none;display:flex;align-items:center;gap:10px;user-select:none;border-radius:var(--r)}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary .si{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--card-2);color:var(--ink);flex:none}
+details.sec>summary .si svg{width:16px;height:16px}
+details.sec>summary .hint:empty{display:block;flex:1}
+details.sec>summary::after{content:"";width:7px;height:7px;border-right:1.75px solid var(--faint);border-bottom:1.75px solid var(--faint);transform:rotate(45deg);margin-left:8px;flex:none}
+details.sec[open]>summary::after{transform:rotate(-135deg) translate(-2px,-2px)}
+@media (prefers-reduced-motion:no-preference){details.sec>summary::after{transition:transform .2s ease}}
+details.sec>summary .hint{font-weight:500;color:var(--muted);font-size:calc(12px*var(--fz));margin-left:auto;text-align:right}
+.body{padding:0 18px 18px;display:flex;flex-direction:column;gap:12px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:calc(12.5px*var(--fz));color:var(--muted);font-weight:500;min-width:0}
+label.c{display:flex;align-items:center;gap:8px;font-size:calc(13px*var(--fz))}
+input,select,textarea,button{font:inherit;color:inherit}
+input[type=text],input[type=number],input[type=date],input[type=search],select,textarea{width:100%;min-width:0;background:var(--field-in);border:1px solid var(--line-strong);border-radius:var(--r-sm);padding:9px 11px;font-size:calc(13.5px*var(--fz));color:var(--ink)}
+@media (prefers-reduced-motion:no-preference){input,select,textarea,button{transition:border-color .15s,box-shadow .15s,background-color .15s,transform .1s}}
+select{appearance:none;-webkit-appearance:none;padding-right:30px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 16px) 52%,calc(100% - 11px) 52%;background-size:5px 5px;background-repeat:no-repeat}
+textarea{font-family:var(--f-mono);font-size:calc(12.5px*var(--fz));min-height:72px;resize:vertical}
+input[type=file]{font-size:calc(12.5px*var(--fz));color:var(--muted);max-width:100%}
+input[type=file]::file-selector-button{font:inherit;border:1px solid var(--line-strong);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 12px;margin-right:8px;cursor:pointer}
+input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+input[type=range]{accent-color:var(--accent);width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--focus);box-shadow:0 0 0 3px color-mix(in srgb,var(--focus) 18%,transparent)}
+button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button{cursor:pointer;border:1px solid var(--line-strong);background:var(--card);border-radius:999px;padding:8px 15px;font-size:calc(13px*var(--fz));font-weight:500;color:var(--ink)}
+button:hover{background:var(--card-2)}
+button:active{transform:scale(.98)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+button.primary:hover{background:color-mix(in srgb,var(--accent) 88%,var(--bg))}
+button.small{padding:4px 11px;font-size:calc(12px*var(--fz))}
+button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.note{font-size:calc(12.5px*var(--fz));color:var(--muted)}
+.note code,.mono-inline,code{font-family:var(--f-mono);font-size:calc(11.5px*var(--fz))}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ac{position:relative}
+.ac ul{position:absolute;z-index:50;left:0;right:0;top:100%;margin:6px 0 0;padding:4px;list-style:none;border-radius:12px;max-height:280px;overflow:auto;box-shadow:var(--pop-shadow)}
+.ac li{padding:8px 10px;cursor:pointer;font-size:calc(13px*var(--fz));display:flex;justify-content:space-between;gap:8px;border-radius:8px}
+.ac li[aria-selected="true"],.ac li:hover{background:var(--card-2)}
+/* tables */
+table.t{border-collapse:separate;border-spacing:0;width:100%;font-size:calc(13.5px*var(--fz))}
+table.t th,table.t td{border-bottom:1px solid var(--line);padding:10px 10px;text-align:left;vertical-align:top}
+table.t th{font-weight:500;color:var(--muted);font-size:calc(11px*var(--fz));text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;padding-top:6px}
+table.t td.n,table.t th.n{text-align:right}
+table.t td.cost{white-space:nowrap}
+table.t tbody tr:not(.grp):hover td{background:var(--card-2)}
+table.t tr.grp td{background:transparent;color:var(--ink);font-weight:600;font-size:calc(12px*var(--fz));letter-spacing:.02em;padding-top:20px;border-bottom:1px solid var(--line-strong)}
+table.t.compact td,table.t.compact th{padding:6px 8px;font-size:calc(13px*var(--fz))}
+table.t.compact th{font-size:calc(10.5px*var(--fz))}
+.scroll{overflow-x:auto;min-width:0}
+/* status strip and pages */
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-radius:999px;padding:6px 6px 6px 16px}
+#status{font-size:calc(12.5px*var(--fz));color:var(--muted);margin-right:auto;min-width:0;flex:1 1 260px}
+.panel{border-radius:var(--r);padding:18px 20px;min-width:0}
+.page-title{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.page-title h2{font-size:calc(18px*var(--fz))}
+.page-title svg{width:20px;height:20px}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:calc(11.5px*var(--fz));background:var(--card-2);border:1px solid var(--line);margin:1px 3px 1px 0;white-space:nowrap}
+.chip.gc{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.chip.flag{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.st{display:inline-block;min-width:48px;text-align:center;font-size:calc(11.5px*var(--fz));font-weight:600;padding:3px 9px;border-radius:999px}
+.st.pass{background:var(--ok-soft);color:var(--ok)}.st.fail{background:var(--bad-soft);color:var(--bad)}.st.na{background:var(--card-2);color:var(--muted)}
+.msg{border-radius:12px;padding:11px 15px;font-size:calc(13px*var(--fz));border:1px solid var(--line)}
+.msg+.msg{margin-top:8px}
+.msg.err{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.msg.warn{background:var(--warn-soft);color:var(--ink);border-color:transparent}
+.msg.warn b{color:var(--warn)}
+.msg ul{margin:4px 0 0;padding-left:18px}
+.ms{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 3px;border-radius:9px;font-family:var(--f-mono);font-size:calc(10px*var(--fz));font-weight:600;color:var(--pip-ink);background:var(--mC);margin-right:2px;vertical-align:1px;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 1px 1px rgba(0,0,0,.15)}
+.ms.W{background:var(--mW)}.ms.U{background:var(--mU)}.ms.B{background:var(--mB)}.ms.R{background:var(--mR)}.ms.G{background:var(--mG)}
+.subtabs{display:flex;gap:6px;overflow-x:auto;margin:16px 0 4px;padding-bottom:2px;scrollbar-width:thin}
+.subtabs button{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;background:transparent;padding:6px 14px;color:var(--muted);font-weight:500;font-size:calc(13px*var(--fz))}
+.subtabs button[aria-selected="true"]{color:var(--accent-ink);background:var(--accent);border-color:transparent;font-weight:600}
+table.turns td,table.turns th{white-space:nowrap}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px 18px}
+.kv{display:flex;flex-direction:column;gap:3px;min-width:0}
+.kv>span{font-size:calc(11px*var(--fz));color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:500}
+.kv b{font-weight:600;font-size:calc(16px*var(--fz));letter-spacing:-.01em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.why{color:var(--muted);font-size:calc(12.5px*var(--fz));min-width:180px;max-width:340px}
+td.nm{min-width:160px}
+td.nm a{color:var(--ink);font-weight:500}
+tr.locked td.nm a{color:var(--accent)}
+:root:not([data-accent]) tr.locked td.nm a{color:var(--focus)}
+tr.alt td{background:var(--card-2)}
+.lockbtn{width:26px;height:26px;padding:0;text-align:center;border-radius:8px;font-size:calc(11px*var(--fz))}
+.lockbtn[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.meter{display:grid;grid-template-columns:130px minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:calc(13px*var(--fz))}
+.meter .track{height:8px;background:var(--card-2);border-radius:999px;position:relative;overflow:hidden}
+.meter .fill{position:absolute;inset:0 auto 0 0;background:var(--bar);border-radius:999px}
+.meter .fill.short{background:var(--warn)}
+.statsgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+.statsgrid>div{min-width:0}.statsgrid>.wide{grid-column:1/-1}.statsgrid table.t{width:100%}
+svg text{fill:var(--muted);font-family:var(--f-mono);font-size:calc(10px*var(--fz))}
+svg .lbl{fill:var(--ink)}
+svg .b{fill:var(--bar)}
+svg .gl{stroke:var(--line);stroke-width:1}
+.empty{display:flex;flex-direction:column;gap:10px;max-width:72ch}
+.empty h2{font-family:var(--f-display);font-weight:500;font-size:calc(24px*var(--fz))}
+.empty ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.prog{height:3px;background:var(--card-2);border-radius:2px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--bar);width:0}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:no-preference){.prog i{transition:width .2s}}
+.acts{display:flex;flex-direction:row;gap:4px;align-items:center;justify-content:flex-end}
+.acts button{padding:3px 10px}
+.an-head{margin:12px 0}
+.big{font-size:calc(30px*var(--fz));font-weight:600;letter-spacing:-.03em}
+.an-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:14px}
+.an-card .chip{white-space:normal}
+.an-card .why{min-width:0}
+.an-card{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.an-card.wide{margin-top:14px}
+.primer ul{margin:6px 0 0;padding-left:18px}.primer li{margin:7px 0;line-height:1.55}.primer p{margin:6px 0}
+.primer h3{font-family:var(--f-display);font-weight:500;font-size:calc(19px*var(--fz))}
+.an-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.an-top h3{margin:0}
+.an-sec{margin:20px 0 0;font-size:calc(15px*var(--fz));font-weight:600;color:var(--muted)}
+.meter-1{height:5px;border-radius:999px;background:var(--card-2);overflow:hidden;margin:8px 0 6px}
+.meter-1 span{display:block;height:100%;background:var(--bar);border-radius:999px}
+td.nw{white-space:nowrap}
+td.sc{width:56px;vertical-align:middle}
+td.sc i{display:block;height:5px;border-radius:999px;background:var(--bar);min-width:2px}
+.seg{display:inline-flex;padding:3px;border-radius:999px;background:var(--card-2);border:1px solid var(--line);gap:2px}
+.seg button{border:none;background:transparent;border-radius:999px;padding:5px 13px;font-size:calc(12.5px*var(--fz));color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--seg-on);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);font-weight:600}
+.an-src{gap:10px}
+svg .rg{fill:none;stroke:var(--line-strong);stroke-width:1}
+svg .rv{fill:color-mix(in srgb,var(--bar) 18%,transparent);stroke:var(--bar);stroke-width:2}
+svg .rd{fill:var(--bar)}
+svg .rl{font-family:var(--f-ui);font-size:calc(11px*var(--fz))}
+svg .ln{fill:none;stroke:var(--bar);stroke-width:2.5;stroke-linejoin:round}
+svg .ref{fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+ol.recs{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:calc(13px*var(--fz))}
+.recc{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.chip.sev-high{background:var(--bad-soft);color:var(--bad);border-color:transparent}.chip.sev-med{background:var(--warn-soft);color:var(--warn);border-color:transparent}.chip.sev-low{background:var(--accent-soft);color:var(--ink);border-color:transparent}
+.an-method{margin-top:14px}
+.an-method ul{padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.sw-acts{display:flex;gap:6px;margin-top:6px}
+.accepted{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 8px}
+button.link{border:none;background:none;padding:0 2px;color:var(--focus);font-size:inherit;text-decoration:underline;cursor:pointer;min-height:0}
+.side-h{margin:6px 2px 0;font-size:calc(12px*var(--fz));font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.seg.wide{display:flex;width:100%}.seg.wide button{flex:1;padding-left:4px;padding-right:4px;min-height:34px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.chips button{font-size:calc(12.5px*var(--fz));padding:6px 12px;border-radius:999px;min-height:34px}
+.seg.wide button[aria-pressed="true"],.chips button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+button.block{width:100%;margin-top:6px;min-height:46px;font-size:calc(14px*var(--fz))}
+div.f{display:flex;flex-direction:column;gap:5px;font-size:calc(12.5px*var(--fz));color:var(--muted);font-weight:500}
+label.f.inline{display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0 0 0 auto;font-size:calc(13px*var(--fz))}
+label.f.inline select{width:auto}
+.an-sub{margin:12px 0 4px;font-size:calc(13px*var(--fz));font-weight:600;color:var(--muted)}
+table.swaps td{vertical-align:top}
+.sw{display:flex;flex-direction:column;gap:1px;font-weight:500}
+.sw .out{color:var(--bad)}.sw .in{color:var(--ok)}
+.eff{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:calc(12.5px*var(--fz));min-width:180px}
+.eff .up{color:var(--ok)}.eff .down{color:var(--bad)}.eff .warn-t{color:var(--warn)}
+.pup{color:var(--bad);font-weight:600}.pdown{color:var(--ok);font-weight:600}
+/* page links: deck generator and card explorer (card.html) */
+.sitenav{display:inline-flex;padding:3px;border-radius:999px;background:var(--card-2);border:1px solid var(--line);gap:2px}
+.sitenav a{border-radius:999px;padding:5px 12px;font-size:calc(12.5px*var(--fz));color:var(--muted);white-space:nowrap;font-weight:500}
+.sitenav a:hover{text-decoration:none;color:var(--ink)}
+.sitenav a[aria-current="page"]{background:var(--seg-on);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);font-weight:600}
+.sitenav .sn-s{display:none}
+@media (max-width:640px){.sitenav a[aria-current="page"],.sitenav .sn-l{display:none}.sitenav .sn-s{display:inline}}
+/* appearance popover */
+.popwrap{position:relative}
+.pop{position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:300px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--pop-shadow);padding:16px;display:flex;flex-direction:column;gap:14px}
+.pop h3{margin:0 0 6px;font-size:calc(12px*var(--fz));color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.pop .seg{display:flex}.pop .seg button{flex:1}
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.swatches button{width:30px;height:30px;padding:0;border-radius:50%;border:2px solid var(--card);box-shadow:0 0 0 1px var(--line-strong)}
+.swatches button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+/* phone and tablet */
+@media (max-width:900px){
+  .wrap{grid-template-columns:minmax(0,1fr)}
+  .rail{position:sticky;top:62px;z-index:35;flex-direction:row;overflow-x:auto;max-height:none;padding:6px;border-radius:999px;gap:2px;scrollbar-width:none}
+  .rail::-webkit-scrollbar{display:none}
+  .rail .hello,.rail .grp-h,.rail .datacard{display:none}
+  .rail button{width:auto;flex:0 0 auto;padding:8px 13px;border-radius:999px}
+  .rail button svg{display:none}
+  .mini{top:116px;border-radius:14px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+}
+@media (max-width:640px){
+  .brand h1 small,.bar .sources{display:none}
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .kpi{padding:10px 10px 9px;border-radius:12px}.kpi .ki,.kpi .ks,.kpi .kbar{display:none}.kpi .kh{margin-bottom:2px}.kpi .kl{font-size:calc(11px*var(--fz));color:var(--muted);font-weight:500}
+  .kpi .kv2 small{display:none}
+  .bar{gap:8px}
+  .kpi .kv2{font-size:calc(19px*var(--fz))}
+  .panel{padding:14px}
+  .grid3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .meter{grid-template-columns:96px minmax(0,1fr) 56px}
+  .actions{border-radius:16px}
+  .page-h h2{font-size:calc(24px*var(--fz))}
+  .seg.wide button,.chips button{min-height:40px}
+}
+@media (max-width:440px){.brand h1{display:none}}
+
+/* card names, popover, sample hand, commander browser, print */
+a.cl{color:inherit;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;cursor:pointer}
+a.cl:hover{text-decoration-color:currentColor}
+#cardPop{position:fixed;z-index:60;width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--pop-shadow,0 16px 48px -10px rgba(16,24,40,.25));padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:calc(13px*var(--fz))}
+#cardPop .cimg{width:100%;aspect-ratio:488/680;border-radius:10px;background:var(--card-2);object-fit:cover}
+#cardPop .cp-h{display:flex;gap:8px;align-items:baseline}#cardPop .cp-h b{flex:1}
+#cardPop .iconx{border:0;background:none;padding:0 2px;color:var(--muted);font-size:calc(13px*var(--fz));cursor:pointer;min-height:0}
+#cardPop .cp-ot{white-space:normal;line-height:1.45}
+#cardPop .cp-m{color:var(--muted)}
+#cardPop .cp-why{border-top:1px solid var(--line);padding-top:6px}
+.hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px;margin:14px 0}
+.hcard{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-height:150px;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card-2);text-align:left;font:inherit;color:inherit;cursor:pointer}
+.hcard.land{background:var(--card)}
+.hcard .hn{font-weight:600;line-height:1.25}
+.hcard.pic{padding:0;min-height:0;border:0;background:none}
+.hcard .himg{width:100%;aspect-ratio:488/680;border-radius:10px;display:block}
+.cmdtable td{vertical-align:top}
+.seg button .ms{margin:0}
+.good{color:var(--ok)} .badc{color:var(--bad)}
+ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
+.primer h4{margin:8px 0 2px;font-size:calc(13px*var(--fz))}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+#printArea{display:none}
+@media (max-width:560px){
+  table.deck thead{display:none}
+  table.deck tr{display:grid;grid-template-columns:30px minmax(0,1fr) auto;column-gap:6px;align-items:center;border-bottom:1px solid var(--line);padding:6px 0}
+  table.deck tr.grp{display:block;padding:0}
+  table.deck td{display:block;border:0;padding:1px 0}
+  table.deck td:nth-child(1){grid-column:1;grid-row:1/3}
+  table.deck td:nth-child(2){grid-column:2;grid-row:1}
+  table.deck td:nth-child(3){grid-column:3;grid-row:1;text-align:right}
+  table.deck td:nth-child(4){display:none}
+  table.deck td:nth-child(5){grid-column:3;grid-row:2;text-align:right}
+  table.deck td:nth-child(6){grid-column:2;grid-row:2}
+  table.deck td:nth-child(7){grid-column:2/4;grid-row:3;font-size:calc(12px*var(--fz))}
+  table.deck td:nth-child(8){grid-column:2/4;grid-row:4}
+  table.deck td:nth-child(8):empty{display:none}
+  ul.dl{columns:1}
+}
+@media print{
+  @page{margin:6mm}
+  body.printing{background:#fff}
+  body.printing > *:not(#printArea){display:none!important}
+  body.printing #printArea{display:block;color:#000;font:9.5pt/1.35 var(--f-ui)}
+  #printArea h1{font:600 16pt var(--f-ui);margin:0 0 2mm}
+  #printArea h2{font:600 12pt var(--f-ui);margin:4mm 0 2mm}
+  #printArea .pcols{column-count:3;column-gap:6mm}
+  #printArea .pg{break-inside:avoid;margin-bottom:3mm}
+  #printArea .pmc{color:#555;font-size:8pt}
+  #printArea .an-card{border:0;padding:0;margin:0 0 3mm;box-shadow:none;background:none;break-inside:avoid}
+  #printArea .ms{box-shadow:none;border:0.2mm solid #888}
+  #printArea a{color:#000;text-decoration:none}
+  #printArea .pxgrid{display:grid;grid-template-columns:repeat(3,63mm);grid-auto-rows:88mm;gap:0}
+  #printArea .px{border:0.3mm solid #000;padding:3mm;overflow:hidden;break-inside:avoid;display:flex;flex-direction:column;gap:1.5mm;font-size:7.5pt;line-height:1.3}
+  #printArea .px-h{display:flex;justify-content:space-between;gap:2mm;font-size:8.5pt}
+  #printArea .px-t{border-bottom:0.2mm solid #000;padding-bottom:1mm;font-style:italic}
+  #printArea .px-o{flex:1}
+  #printArea .px-pt{align-self:flex-end;font-weight:600;font-size:9pt}
+}
+@media (max-width:560px){table.swaps thead{display:none}table.swaps tr{display:grid;grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--line);padding:6px 0}table.swaps td{display:block;border:0;padding:2px 4px}table.swaps td:last-child{grid-column:1/-1}}
+</style>
+<title>broken-stuff card explorer</title>
+<meta name="description" content="Search any Magic card: its parts, the closest cards by mechanics, mana cost, type and stats, and its 2-card combos.">
+<style>
+/* Card explorer. Uses the deck generator's stylesheet (prepended by build-card.sh) plus the rules below.
+   Layout: search bar; three columns: card details (left), the card (middle), recommendations (right).
+   Under 1100px: card and details side by side, recommendations below. Under 700px: one column. */
+.cx-top{display:flex;gap:12px;align-items:center;margin:4px 0 14px}
+.cx-search{flex:1;max-width:720px}
+.cx-search input{font-size:calc(15px*var(--fz));padding:12px 16px;border-radius:999px}
+.cx-search li .note{margin-left:6px}
+.cx-search li.none{cursor:default;color:var(--muted)}
+#statusBar{padding:6px 14px;border-radius:999px;margin-bottom:12px;align-self:flex-start}
+.cx{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,340px) minmax(0,1.3fr);grid-template-areas:"info mid recs";gap:16px;align-items:start}
+.cx.empty-state{grid-template-columns:minmax(0,1fr);grid-template-areas:"mid"}
+.cx.empty-state #cxInfo,.cx.empty-state #cxRecs{display:none}
+#cxInfo{grid-area:info}#cxMid{grid-area:mid;position:sticky;top:76px;display:flex;flex-direction:column;gap:10px;min-width:0}#cxRecs{grid-area:recs}
+.cx.empty-state #cxMid{position:static}
+@media (max-width:1100px){.cx{grid-template-columns:minmax(240px,320px) minmax(0,1fr);grid-template-areas:"mid info" "recs recs"}}
+@media (max-width:700px){.cx{grid-template-columns:minmax(0,1fr);grid-template-areas:"mid" "info" "recs"}#cxMid{position:static}.art{max-width:340px;margin:0 auto}}
+/* the card */
+.art{width:100%}
+.big-img{display:block;width:100%;aspect-ratio:488/680;border-radius:4.75%/3.5%;background:var(--card-2);box-shadow:var(--pop-shadow);object-fit:cover}
+.faux{aspect-ratio:488/680;border-radius:18px;border:10px solid var(--ink);background:var(--card);padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--pop-shadow);overflow:hidden}
+.faux .fx-h{display:flex;justify-content:space-between;gap:8px;font-size:calc(15px*var(--fz))}
+.faux .fx-t{border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong);padding:6px 0;font-weight:600;font-size:calc(12.5px*var(--fz))}
+.faux .fx-o{flex:1;overflow:auto;font-size:calc(13px*var(--fz))}.faux .fx-o p{margin:0 0 6px}
+.faux .fx-pt{align-self:flex-end;font-weight:700;font-size:calc(16px*var(--fz));border:1px solid var(--line-strong);border-radius:8px;padding:2px 10px}
+.prices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.prices div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;box-shadow:var(--shadow);min-width:0}
+.prices span{font-size:calc(11px*var(--fz));color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.prices b{font-size:calc(17px*var(--fz));font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pnote{margin:0}
+.mid-acts{justify-content:center}
+a.btnlink{display:inline-flex;align-items:center;border:1px solid var(--line-strong);background:var(--card);border-radius:999px;padding:4px 11px;font-size:calc(12px*var(--fz));color:var(--ink)}
+/* details */
+#cxInfo h3{margin:16px 0 6px;font-size:calc(11px*var(--fz));text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.ih{display:flex;gap:10px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+.ih h2{font-size:calc(26px*var(--fz));font-weight:500;letter-spacing:-.015em}
+.tl{margin:6px 0 10px;color:var(--muted)}.tl .pt{color:var(--ink);margin-left:6px}
+.oracle{background:var(--card-2);border-radius:12px;padding:12px 14px;line-height:1.55}
+.oracle p{margin:0 0 8px}.oracle p:last-child{margin:0}
+i.rem{color:var(--muted)}
+.kvs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;margin-top:14px}
+.kvs .kv b{font-size:calc(14px*var(--fz))}
+.mchips,.focusrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mchip{padding:5px 11px;font-size:calc(12.5px*var(--fz));border-radius:999px;display:inline-flex;align-items:center;gap:6px}
+.mchip small{color:var(--faint);font-variant-numeric:tabular-nums}
+.mchip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+.mchip[aria-pressed="true"] small{color:inherit;opacity:.75}
+.focusrow .lbl,.ctl .f{font-size:calc(12px*var(--fz))}
+.focusrow .lbl{color:var(--muted);font-weight:600;margin-right:2px}
+/* recommendations */
+.rtabs{margin:0 0 12px}
+.rtabs small{opacity:.7;margin-left:4px}
+.ctl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 10px;margin-top:12px}
+@media (max-width:1400px){.ctl{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ctl2{margin-top:8px;justify-content:space-between}
+.wts summary{cursor:pointer;font-size:calc(12.5px*var(--fz));color:var(--muted)}
+.wts[open]{flex-basis:100%}
+.wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;margin-top:8px;align-items:end}
+.wgrid label span{display:flex;align-items:center;gap:6px}.wgrid b{margin-left:auto}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:12px 0 4px;font-size:calc(12px*var(--fz));color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+i.sw{display:inline-block;width:10px;height:10px;border-radius:3px}
+.s-mech{background:var(--i-violet)}.s-cost{background:var(--i-blue)}.s-type{background:var(--i-teal)}.s-stats{background:var(--i-orange)}.s-focus{background:var(--i-pink)}
+.rhead{margin:4px 0 8px}
+ol.recs-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.rec{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;padding:12px 0;border-top:1px solid var(--line);align-items:start}
+.thb{padding:0;border:0;background:none;border-radius:6px;display:block;width:64px}
+.thb:hover{background:none}
+.th{display:block;width:64px;aspect-ratio:146/204;border-radius:4px;background:var(--card-2);object-fit:cover}
+.th-txt{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:2px;border:1px solid var(--line)}
+.rb{min-width:0;display:flex;flex-direction:column;gap:3px}
+.rt{display:flex;gap:8px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+button.cname{border:0;background:none;padding:0;font-weight:600;font-size:calc(14px*var(--fz));text-align:left;color:var(--ink);border-radius:4px}
+button.cname:hover{background:none;text-decoration:underline}
+.sh{display:flex;flex-wrap:wrap;gap:2px;align-items:center}
+.sh .chip{margin:0}
+.chip.inf{background:var(--accent-soft)}
+.sbar{display:flex;height:8px;border-radius:999px;background:var(--card-2);overflow:hidden;margin-top:4px}
+.sbar i{display:block;height:100%}
+.bd{font-size:calc(11.5px*var(--fz))}
+.rs{display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rs .pct{font-size:calc(22px*var(--fz));letter-spacing:-.02em;line-height:1.1}
+.plus{color:var(--muted);font-weight:600;margin-right:-4px}
+.combo .rt{justify-content:flex-start}
+.method{margin-top:16px}.method summary{cursor:pointer}.method ul{padding-left:18px;display:flex;flex-direction:column;gap:4px}
+/* empty state */
+.cx .empty{max-width:none}
+.starter{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-top:8px}
+.st-card{display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:12px;text-align:left;font-size:calc(12.5px*var(--fz))}
+.st-card img{width:100%;aspect-ratio:146/204;border-radius:5px;object-fit:cover}
+@media (max-width:640px){.rec{grid-template-columns:48px minmax(0,1fr) auto;gap:10px}.thb,.th{width:48px}.ctl{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.wgrid{grid-template-columns:minmax(0,1fr)}.bd{display:none}.kvs{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+</style>
+
+<div class="app">
+<header class="bar">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="5" r="2" fill="var(--mW)"/><circle cx="16.7" cy="9.1" r="2" fill="var(--mU)"/><circle cx="14.5" cy="15.9" r="2" fill="var(--mB)"/><circle cx="7.5" cy="15.9" r="2" fill="var(--mR)"/><circle cx="5.3" cy="9.1" r="2" fill="var(--mG)"/></svg>
+    <h1>broken-stuff<small>Card explorer</small></h1>
+  </div>
+  <nav class="sitenav" aria-label="Site"><a href="./"><span class="sn-l">Deck generator</span><span class="sn-s">Decks</span></a><a href="card.html" aria-current="page"><span class="sn-l">Card explorer</span><span class="sn-s">Cards</span></a></nav>
+  <div class="sources" aria-live="polite">
+    <span class="pill" id="pBulk"><span class="dot"></span>Cards: loading</span>
+    <span class="pill hidden" id="pCombo"><span class="dot"></span></span>
+  </div>
+  <div class="popwrap">
+    <button id="themeBtn" class="iconbtn" type="button" title="Appearance" aria-label="Appearance" aria-expanded="false" aria-controls="appearance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <div id="appearance" class="pop hidden" role="dialog" aria-label="Appearance">
+      <div><h3>Mode</h3><div class="seg" id="apMode"><button type="button" data-v="system">System</button><button type="button" data-v="light">Light</button><button type="button" data-v="dark">Dark</button></div></div>
+      <div><h3>Accent colour</h3><div class="swatches" id="apAccent">
+        <button type="button" data-v="" title="Ink" aria-label="Ink" style="background:var(--a-ink)"></button><button type="button" data-v="blue" title="Blue" aria-label="Blue" style="background:#2f66f5"></button><button type="button" data-v="violet" title="Violet" aria-label="Violet" style="background:#6c55f0"></button><button type="button" data-v="pink" title="Pink" aria-label="Pink" style="background:#e0457f"></button><button type="button" data-v="green" title="Green" aria-label="Green" style="background:#16893f"></button><button type="button" data-v="orange" title="Orange" aria-label="Orange" style="background:#e0631a"></button><button type="button" data-v="teal" title="Teal" aria-label="Teal" style="background:#0f8f8a"></button>
+      </div></div>
+      <div><h3>Text size</h3><div class="seg" id="apSize"><button type="button" data-v="0.93">S</button><button type="button" data-v="1">M</button><button type="button" data-v="1.12">L</button><button type="button" data-v="1.25">XL</button></div></div>
+      <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
+      <div><h3>Card images</h3><div class="seg" id="apImg"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div><p class="note" style="margin-top:4px">On loads pictures from cards.scryfall.io. Off shows a text card. Everything else stays on this site.</p></div>
+      <p class="note">Keys: / search · Esc close</p>
+    </div>
+  </div>
+</header>
+
+<div class="cx-top">
+  <div class="ac cx-search"><input type="search" id="q" autocomplete="off" placeholder="Search any card" aria-label="Search any card" aria-autocomplete="list" aria-controls="qL" aria-expanded="false"><ul class="hidden" role="listbox" id="qL"></ul></div>
+</div>
+<div id="statusBar" class="actions hidden"><span id="status" role="status" aria-live="polite"></span></div>
+
+<main class="cx empty-state" id="cx">
+  <section class="panel" id="cxInfo" aria-label="Card details"></section>
+  <section id="cxMid" aria-label="Card"></section>
+  <section class="panel" id="cxRecs" aria-label="Recommendations"></section>
+</main>
+</div>
+<script>
+/* ===== Engine: pure deck-generation logic (no DOM, no network) ===== */
+const Engine = (function () {
+  'use strict';
+  const WUBRG = 'WUBRG';
+  const BASIC_NAMES = { W: 'Plains', U: 'Island', B: 'Swamp', R: 'Mountain', G: 'Forest', C: 'Wastes' };
+  const ROLES = ['ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon'];
+  const SLOT_LABEL = { commander: 'Commander', include: 'Include', locked: 'Locked', land: 'Land', basic: 'Basic land',
+    ramp: 'Ramp', draw: 'Card draw', removal: 'Targeted removal', wipes: 'Board wipe', protection: 'Protection',
+    recursion: 'Recursion', wincon: 'Win condition', synergy: 'Synergy', flex: 'Flex', combo: 'Combo piece' };
+  const SKIP_LAYOUTS = new Set(['token', 'double_faced_token', 'emblem', 'art_series', 'vanguard', 'scheme', 'planar']);
+  const BRACKETS = {
+    // Commander Brackets as of the Oct 21 2025 update (unchanged by Feb 9 2026): tutor limits removed from all brackets.
+    // turns = expected game length the bracket is built for. xturn 1/2 for B2/B3 encode "low quantity, not chained or looped".
+    1: { name: 'Exhibition', turns: '9+', gc: 0, mld: 0, xturn: 0, tutor: 999, combo2: 0 },
+    2: { name: 'Core', turns: '8+', gc: 0, mld: 0, xturn: 1, tutor: 999, combo2: 0 },
+    3: { name: 'Upgraded', turns: '6+', gc: 3, mld: 0, xturn: 2, tutor: 999, combo2: 0 },
+    4: { name: 'Optimized', turns: '4+', gc: 999, mld: 999, xturn: 999, tutor: 999, combo2: 999 },
+    5: { name: 'cEDH', turns: 'any', gc: 999, mld: 999, xturn: 999, tutor: 999, combo2: 999 }
+  };
+
+  /* ---------- utils ---------- */
+  function hashStr(s) { let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function stable(o) { if (o === null || typeof o !== 'object') return JSON.stringify(o); if (Array.isArray(o)) return '[' + o.map(stable).join(',') + ']'; return '{' + Object.keys(o).sort().map(k => JSON.stringify(k) + ':' + stable(o[k])).join(',') + '}'; }
+  function pnum(v) { const n = v == null ? NaN : parseFloat(v); return isFinite(n) ? n : null; }
+  function nameKey(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim(); }
+  function stripReminder(s) { return s.replace(/\([^)]*\)/g, ''); }
+  function subsetCI(ci, CI) { for (const x of ci) if (!CI.includes(x)) return false; return true; }
+  function deepMerge(base, over) {
+    if (over == null || typeof over !== 'object' || Array.isArray(over)) return over === undefined ? base : over;
+    const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+    for (const k of Object.keys(over)) {
+      const b = base ? base[k] : undefined, v = over[k];
+      out[k] = (b && typeof b === 'object' && !Array.isArray(b) && v && typeof v === 'object' && !Array.isArray(v)) ? deepMerge(b, v) : v;
+    }
+    return out;
+  }
+  const r2 = x => Math.round(x * 100) / 100;
+
+  /* ---------- defaults ---------- */
+  function defaults() {
+    return {
+      v: 1, commanders: ['', ''], bracket: 3, bl: Object.assign({}, BRACKETS[3]),
+      archetype: '', tags: '',
+      budget: { total: null, perCard: null, cur: 'usd', inclBasics: true, unknown: 'exclude' },
+      targets: { lands: 37, ramp: 10, draw: 10, removal: 9, wipes: 3, protection: 3, recursion: 2, wincon: 3 },
+      mana: { avgMV: 3.0, nonbasic: null, types: { fetch: true, shock: true, dual: true, triome: true, utility: true, command: true } },
+      include: '', exclude: '',
+      filters: { combos: 'bracket', tutors: 'allow', fast: 'allow', stax: 'allow', xturn: 'allow', mld: 'allow', hate: 'allow',
+        reserved: 'allow', funny: 'exclude', dateFrom: '', dateTo: '', sets: '', creaturesMin: null, creaturesMax: null },
+      owned: { mode: 'off', list: '' },
+      seed: '', reroll: 0, variance: 0,
+      weights: { syn: 1.5, role: 1.5, pop: 5, quality: 2, curve: 1.5, price: 0.25, owned: 1, bracket: 0.5, power: 2, link: 1 }
+    };
+  }
+  function bracketDefaults(b) { return Object.assign({}, BRACKETS[b] || BRACKETS[3]); }
+
+  /* ---------- normalization of Scryfall card objects ---------- */
+  // P/T, loyalty or defense for display; image path on cards.scryfall.io (shown only when the user turns images on)
+  const ptOf = f => f.power != null ? f.power + '/' + f.toughness : f.loyalty != null ? 'Loyalty ' + f.loyalty : f.defense != null ? 'Defense ' + f.defense : '';
+  function imgOf(u) { const m = u && typeof u.normal === 'string' && /^https:\/\/cards\.scryfall\.io\/normal\/(front\/[0-9a-f]\/[0-9a-f]\/[0-9a-f-]+\.jpg)/.exec(u.normal); return m ? m[1] : ''; }
+  function norm(c) {
+    if (!c || typeof c !== 'object' || !c.name || c.object === 'list') return null;
+    if (SKIP_LAYOUTS.has(c.layout)) return null;
+    if (c.lang && c.lang !== 'en') return null;
+    const faces = Array.isArray(c.card_faces) ? c.card_faces : null;
+    const name = c.name, fn = name.split(' // ')[0];
+    const ot = c.oracle_text != null ? c.oracle_text : (faces ? faces.map(f => f.oracle_text || '').join('\n') : '');
+    const mc = c.mana_cost ? c.mana_cost : (faces ? faces.map(f => f.mana_cost || '').filter(Boolean).join(' // ') : '');
+    const tl = c.type_line || (faces ? faces.map(f => f.type_line || '').join(' // ') : '');
+    const ft = tl.split(' // ')[0];
+    let low = stripReminder(ot).toLowerCase();
+    const nm = new Set([name, fn].concat(faces ? faces.map(f => f.name) : []).filter(Boolean).map(x => x.toLowerCase()));
+    for (const n of [...nm].sort((a, b) => b.length - a.length)) low = low.split(n).join('~');
+    const pr = c.prices || {};
+    const pw = c.power != null ? c.power : (faces && faces[0] ? faces[0].power : null);
+    return {
+      n: name, fn, oid: c.oracle_id || (faces && faces[0] && faces[0].oracle_id) || c.id, mc, cmc: +c.cmc || 0, tl, ft, ot, low,
+      ci: WUBRG.split('').filter(x => (c.color_identity || []).includes(x)).join(''),
+      leg: (c.legalities && c.legalities.commander) || 'not_legal', gc: !!c.game_changer,
+      rank: Number.isFinite(c.edhrec_rank) ? c.edhrec_rank : null,
+      p: { usd: pnum(pr.usd), eur: pnum(pr.eur), tix: pnum(pr.tix) },
+      rl: !!c.reserved, bc: c.border_color || '', stamp: c.security_stamp || '', stype: c.set_type || '',
+      sets: c.set ? [c.set] : [], first: c.released_at || '', last: c.released_at || '',
+      kw: (c.keywords || []).map(k => String(k).toLowerCase()), pm: Array.isArray(c.produced_mana) ? c.produced_mana : [],
+      pow: pnum(pw), uri: c.scryfall_uri || '', otags: [],
+      pt: ptOf(c.power != null || c.loyalty != null || c.defense != null ? c : (faces && faces[0]) || {}), img: imgOf(c.image_uris || (faces && faces[0] && faces[0].image_uris))
+    };
+  }
+  function mergeCard(a, b) {
+    for (const s of b.sets) if (!a.sets.includes(s)) a.sets.push(s);
+    if (b.first && (!a.first || b.first < a.first)) a.first = b.first;
+    if (b.last && (!a.last || b.last > a.last)) a.last = b.last;
+    for (const k of ['usd', 'eur', 'tix']) if (b.p[k] != null && (a.p[k] == null || b.p[k] < a.p[k])) a.p[k] = b.p[k];
+    if (b.rank != null && (a.rank == null || b.rank < a.rank)) a.rank = b.rank;
+    a.gc = a.gc || b.gc; a.rl = a.rl || b.rl;
+    for (const t of b.otags) if (!a.otags.includes(t)) a.otags.push(t);
+    a.merged = (a.merged || 1) + 1;
+  }
+  function buildDB(cards, meta) {
+    const byOid = new Map();
+    for (const c of cards) { if (!c) continue; const e = byOid.get(c.oid); if (e) mergeCard(e, c); else byOid.set(c.oid, c); }
+    const all = [...byOid.values()].sort((a, b) => a.n < b.n ? -1 : a.n > b.n ? 1 : 0);
+    const byName = new Map();
+    for (const c of all) for (const k of [c.n, c.fn]) { const key = nameKey(k); if (!byName.has(key)) byName.set(key, c); }
+    return { all, byName, meta: meta || {}, _ctypes: null };
+  }
+  function lookup(db, name) { return db.byName.get(nameKey(name)) || null; }
+
+  /* ---------- list parsing (decklists, collections) ---------- */
+  function parseList(text) {
+    const out = [];
+    const lines = String(text || '').split(/\r?\n/);
+    let csvName = -1, csvQty = -1;
+    if (lines.length && /,/.test(lines[0]) && /\bname\b/i.test(lines[0])) {
+      const h = splitCSV(lines[0]).map(x => x.toLowerCase().trim());
+      csvName = h.indexOf('name'); csvQty = h.findIndex(x => x === 'count' || x === 'quantity' || x === 'qty');
+      if (csvName >= 0) lines.shift();
+    }
+    for (let line of lines) {
+      if (csvName >= 0) { const f = splitCSV(line); if (f[csvName]) out.push({ qty: csvQty >= 0 ? (parseInt(f[csvQty], 10) || 1) : 1, name: f[csvName].trim() }); continue; }
+      line = line.trim();
+      if (!line || /^(#|\/\/)/.test(line)) continue;
+      if (/^(commander|deck|sideboard|maybeboard|companion|mainboard)\s*:?$/i.test(line)) continue;
+      let qty = 1, name = line;
+      const m = line.match(/^(\d+)\s*x?\s+(.+)$/i);
+      if (m) { qty = parseInt(m[1], 10); name = m[2]; }
+      name = name.replace(/\s+\*[A-Z]+\*/g, '').replace(/\s+\[[^\]]*\]\s*$/, '').replace(/\s+\([A-Za-z0-9]{2,6}\)(\s+[\w★-]+)?\s*$/, '').trim();
+      if (name) out.push({ qty: Math.max(1, qty), name });
+    }
+    return out;
+  }
+  function splitCSV(line) { const out = []; let cur = '', q = false; for (let i = 0; i < line.length; i++) { const ch = line[i]; if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; } else if (ch === '"') q = true; else if (ch === ',') { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out; }
+
+  /* ---------- tagging rules (all data-derived from oracle text / type line / Scryfall fields) ---------- */
+  const rx = (id, desc, re) => ({ id, desc, test: typeof re === 'function' ? re : (c => re.test(c.low)) });
+  const ROLE_RULES = {
+    ramp: [
+      rx('ramp-mana', 'non-land with a mana ability: "add {X}" / "add N mana"', /\badd \{[wubrgcs]\}|\badd (?:one|two|three|x) mana|\badd [^.]{0,30}mana of any/),
+      rx('ramp-land', 'searches library for land card(s) onto the battlefield', /search your library for [^.]{0,80}\bland cards?[\s\S]{0,160}?onto the battlefield/),
+      rx('ramp-drop', 'extra land drop / put land from hand onto battlefield', /play (?:an|two|x) additional lands?|put (?:a|up to \w+) land cards? from your hand onto the battlefield/),
+      rx('ramp-treasure', 'creates Treasure tokens', /\bcreates?[^.]{0,30}treasure/)
+    ],
+    draw: [
+      rx('draw-n', '"draw N card(s)"', /\bdraws? (?:a|an|one|two|three|four|five|six|seven|x|\d+|that many|cards equal)(?: additional)? cards?\b|\bdraws? cards equal/),
+      rx('draw-impulse', 'exile top card(s), you may play/cast them', /exile the top [^.]*?cards? of your library[^.]*\.[^.]*you may (?:play|cast)/),
+      rx('draw-clue', 'investigate / creates Clues', /\binvestigates?\b|creates?[^.]{0,20}\bclue/)
+    ],
+    removal: [
+      rx('rm-destroy', '"destroy/exile target <permanent>" (not "you control", not cards in graveyards)', /\b(?:destroy|exile) (?:up to (?:one|two|three|x) )?(?:another )?target (?:(?:nonland|noncreature|nonartifact|tapped|attacking|blocking|nontoken|legendary|artifact or|creature or|enchantment or|artifact,) )*(?:creature|artifact|enchantment|planeswalker|permanent|land|battle)s?(?!s? (?:you control|card))/),
+      rx('rm-burn', 'deals damage to target creature/planeswalker or any target', /\bdeals? [^.]{0,40}?damage to (?:any target|target creature|target planeswalker|up to one target creature|another target creature)/),
+      rx('rm-bounce', 'returns target nonland permanent to owner\'s hand', /\breturn (?:up to one )?target (?:nonland |creature |artifact |enchantment )*(?:permanent|creature|artifact|enchantment|planeswalker)(?! you control)[^.]* to (?:its|their) owner'?s'? hands?/),
+      rx('rm-counter', 'counter target spell/ability', /\bcounter target (?:spell|creature spell|noncreature spell|artifact|instant|activated|activated or triggered|instant or sorcery)/),
+      rx('rm-shrink', 'target creature gets -N/-N', /\btarget creature(?: an opponent controls)? gets -(?:\d+|x)\/-(?:\d+|x)/),
+      rx('rm-edict', 'target player/each opponent sacrifices a creature/permanent', /\b(?:target player|target opponent|each opponent) sacrifices (?:a|an|one|two|x|that many)? ?(?:creature|attacking creature|nonland permanent|permanent|artifact|enchantment|planeswalker)/),
+      rx('rm-fight', 'fight / bite a target creature', /\bfights? (?:another |up to one )?target creature|target creature you control (?:fights|deals damage equal)/)
+    ],
+    wipes: [
+      rx('wipe-all', '"destroy/exile all creatures/nonland permanents/…"', /\b(?:destroy|exile) all (?:other )?(?:creatures|nonland permanents|permanents|artifacts|enchantments|planeswalkers|nontoken creatures|creatures and planeswalkers|artifacts and enchantments|nonland, nontoken permanents|creatures your opponents control|nonland permanents your opponents control|attacking creatures)/),
+      rx('wipe-shrink', 'all/each creature(s) get -N/-N', /\ball (?:other )?creatures get -(?:\d+|x)\/-(?:\d+|x)|\beach creature gets -/),
+      rx('wipe-dmg', 'deals N damage to each creature', /\bdeals? (?:\d+|x) damage to each (?:other )?creature/),
+      rx('wipe-bounce', 'returns all permanents/creatures to hand', /\breturn all (?:other )?(?:nonland )?(?:permanents|creatures)[^.]* to (?:their|its) owners'? hands?/),
+      rx('wipe-sac', 'each player sacrifices all creatures', /\beach (?:player|opponent) sacrifices all (?:creatures|nonland permanents)/)
+    ],
+    protection: [
+      rx('prot-team', 'permanents/creatures you control gain hexproof/indestructible/shroud/protection', /(?:creatures|permanents|commanders?|nonland permanents|artifacts) you control (?:gain|have|get [^.]{0,30}and gain) (?:hexproof|indestructible|shroud|protection)/),
+      rx('prot-target', 'target permanent you control gains protection / phases out', /target (?:creature|permanent|artifact|nonland permanent)(?: or [a-z]+)? you control (?:gains|has|phases out)/),
+      rx('prot-self', 'you have hexproof/shroud; phase out', /\byou have (?:hexproof|shroud)|\bphases? out\b/),
+      rx('prot-counter', 'counter target spell that targets', /counter target [^.]{0,40}that targets/),
+      rx('prot-equip', 'equipped/enchanted creature has hexproof/indestructible/shroud/protection/ward', /(?:equipped|enchanted) creature (?:has|gains|gets [^.]{0,20}and has) (?:hexproof|indestructible|shroud|protection|ward)/)
+    ],
+    recursion: [
+      rx('rec-return', 'return card(s) from graveyard to hand/battlefield', /\breturn (?:target|up to (?:one|two|three|x) target|a|an|all|each|another target|any number of target|x target)[^.]*?cards? from (?:your|a|any) graveyard (?:to (?:your hand|the battlefield)|onto the battlefield)/),
+      rx('rec-reanimate', 'put card(s) from a graveyard onto the battlefield', /put [^.]*cards? from (?:your|a|all|an opponent's) graveyards? onto the battlefield/),
+      rx('rec-cast', 'cast/play cards from your graveyard (reminder text excluded)', /\b(?:cast|play) [^.]{0,60}from your graveyard/)
+    ],
+    wincon: [
+      rx('win-alt', '"you win the game" / "loses the game"', /you win the game|(?:target player|that player|each opponent|all opponents|each other player) loses the game/),
+      rx('win-drain', 'each opponent loses N life', /each opponent loses (?:\d+|x|that much|life equal)/),
+      rx('win-ping', 'deals damage to each opponent', /\bdeals? [^.]{0,30}damage to each opponent/),
+      rx('win-overrun', 'creatures you control get +N/+N until end of turn', /creatures you control get \+(?:\d+|x)\/\+(?:\d+|x)[^.]*until end of turn/),
+      rx('win-combat', 'additional combat phase', /additional combat phase|extra combat/),
+      rx('win-double', 'doubles damage', /deals double|double (?:the )?damage/),
+      rx('win-infect', 'infect / toxic / poison', c => c.kw.includes('infect') || /\bpoison counters?\b/.test(c.low)),
+      rx('win-big', 'creature with power ≥ 7 (Scryfall power)', c => /\bCreature\b/.test(c.ft) && c.pow != null && c.pow >= 7)
+    ]
+  };
+  const STAX_RE = /(?:spells?|abilities)[^.]{0,40}cost \{\d\} more|(?:each player|each opponent|your opponents|players|that player)[^.]{0,40}can't (?:cast|search|untap|activate|draw|attack|play|gain)|(?:don't|doesn't) untap during (?:their|its) controllers?'? untap steps?|(?:permanents|creatures|artifacts|lands|nonland permanents) (?:your opponents control )?enter(?: the battlefield)? tapped/;
+  const FLAGS = {
+    gc: { label: 'Game Changer', desc: 'Scryfall field game_changer = true', test: c => c.gc },
+    tutor: { label: 'Tutor', desc: '"search your library for" a card that is not a land / basic type', test: c => { const re = /search your library for ([^.]*)/g; let m; while ((m = re.exec(c.low))) { if (!/\bland\b|\blands\b|plains|island|swamp|mountain|forest/.test(m[1])) return true; } return c.kw.includes('transmute'); } },
+    xturn: { label: 'Extra turn', desc: '"take an extra turn"', test: c => /takes? (?:an|one|two|x|that many)? ?extra turns?/.test(c.low) },
+    mld: { label: 'Mass land denial', desc: 'destroy/exile/return all lands, sacrifice multiple lands, or lands don\'t untap', test: c => /(?:destroy|exile|return) all (?:nonbasic )?lands\b|(?:destroy|exile) all permanents\b|each player sacrifices [^.]{0,20}lands\b|sacrifices? all lands|lands (?:don't|do not) untap|lands? (?:your opponents control |players control )?(?:don't|can't) untap/.test(c.low) },
+    fast: { label: 'Fast mana', desc: '≤1 MV mana artifact, or instant/sorcery adding more mana than its MV', test: c => { if (/\bLand\b/.test(c.ft)) return false; if (/\bArtifact\b/.test(c.ft) && c.cmc <= 1 && /\badd \{|\badd (?:one|two|three) mana|\badd [^.]{0,30}mana of any/.test(c.low)) return true; if (/\b(?:Instant|Sorcery)\b/.test(c.ft)) { const m = c.low.match(/\badd ((?:\{[wubrgc]\})+)/); if (m && (m[1].match(/\{/g) || []).length > c.cmc) return true; } return false; } },
+    stax: { label: 'Stax', desc: 'taxes/restricts opponents: "cost {N} more", "can\'t …", "don\'t untap", "enter tapped"', test: c => STAX_RE.test(c.low) },
+    hate: { label: 'Hate-bear', desc: 'creature with MV ≤ 3 that matches the stax rule', test: c => /\bCreature\b/.test(c.ft) && c.cmc <= 3 && STAX_RE.test(c.low) }
+  };
+  const TAGS = {
+    counters: { label: '+1/+1 counters', re: /\+1\/\+1 counters?|\bproliferate/, q: '(o:"+1/+1 counter" or o:proliferate)' },
+    tokens: { label: 'Tokens', re: /\bcreates? [^.]*tokens?|\bpopulate|tokens? you control/, q: '(o:create o:token)' },
+    aristocrats: { label: 'Aristocrats', re: /\bsacrifice (?:a|an|another|one|two|x)\b[^.]{0,25}(?:creature|permanent|artifact)|whenever [^.]{0,40}\bdies\b/, q: '(o:"sacrifice a" or o:dies)' },
+    spellslinger: { label: 'Spellslinger', re: /instant (?:or|and) sorcery|whenever you cast (?:an|a) (?:instant|noncreature)|\bmagecraft|copy target (?:instant|sorcery)/, q: '(o:"instant or sorcery" or o:magecraft or o:"noncreature spell")' },
+    voltron: { label: 'Voltron', re: /equipped creature|enchanted creature gets|\bequip \{|\baura spells?|double strike/, type: /\b(?:Equipment|Aura)\b/, q: '(t:equipment or t:aura or o:"equipped creature")' },
+    reanimator: { label: 'Reanimator', re: /graveyards? (?:onto|to) the battlefield|\bmills?\b|\bsurveil|discard (?:a|two|x) cards?/, q: '(o:"graveyard to the battlefield" or o:"graveyard onto the battlefield" or o:mill or o:surveil)' },
+    landfall: { label: 'Landfall', re: /\blandfall|whenever a land (?:you control )?enters|additional lands?|land cards? from your graveyard/, q: '(o:landfall or o:"land you control enters" or o:"additional land")' },
+    lifegain: { label: 'Lifegain', re: /\bgain (?:\d+|x|that much) life|\bgains? life\b|whenever you gain life|\blifelink/, q: '(o:"gain" o:"life")' },
+    artifacts: { label: 'Artifacts', re: /\bartifacts? you control|whenever (?:an|another) artifact|artifact spells?|\btreasure|\bclues?\b/, type: /\bArtifact\b/, q: '(o:artifact)' },
+    enchantress: { label: 'Enchantments', re: /enchantments? you control|whenever you cast an enchantment|\bconstellation/, type: /\bEnchantment\b/, q: '(o:enchantment)' },
+    blink: { label: 'Blink / ETB', re: /\bexile [^.]*you control[^.]*\.?[^.]*return (?:it|that card|them|those cards) to the battlefield|\bflicker/, q: '(o:"return it to the battlefield" or o:"return that card to the battlefield")' },
+    wheels: { label: 'Wheels', re: /each player (?:discards[^.]*and )?draws|whenever an opponent draws/, q: '(o:"each player draws" or o:"whenever an opponent draws")' },
+    mill: { label: 'Mill', re: /\bmills?\b/, q: '(o:mill)' },
+    superfriends: { label: 'Superfriends', re: /\bloyalty|planeswalkers? you control|\bproliferate/, type: /\bPlaneswalker\b/, q: '(t:planeswalker or o:planeswalker)' },
+    stax: { label: 'Stax', flag: 'stax', q: '(o:"can\'t" o:opponent)' },
+    burn: { label: 'Burn', re: /damage to (?:each opponent|any target|target player|each player)/, q: '(o:"damage to each opponent" or o:"damage to any target")' },
+    graveyard: { label: 'Graveyard', re: /\bgraveyard\b/, q: '(o:graveyard)' },
+    combat: { label: 'Go-wide / combat', re: /creatures you control get \+|whenever (?:a|one or more) creatures? you control attacks?|additional combat/, q: '(o:"creatures you control get" or o:"creatures you control attack")' },
+    drawmatters: { label: 'Draw-matters', re: /whenever you draw/, q: '(o:"whenever you draw")' }
+  };
+  const IRREG = { elf: 'elves', dwarf: 'dwarves', wolf: 'wolves', werewolf: 'werewolves', fungus: 'fungi', ox: 'oxen', mouse: 'mice', sphinx: 'sphinxes', fox: 'foxes', octopus: 'octopuses', homunculus: 'homunculi', djinn: 'djinn', sheep: 'sheep', fish: 'fish', jellyfish: 'jellyfish', elk: 'elk', dryad: 'dryads', faerie: 'faeries' };
+  function plural(t) { const l = t.toLowerCase(); if (IRREG[l]) return IRREG[l]; if (/(?:s|x|ch|sh)$/.test(l)) return l + 'es'; if (/[^aeiou]y$/.test(l)) return l.slice(0, -1) + 'ies'; return l + 's'; }
+  function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function tribalTag(T) {
+    const t = T.toLowerCase(), p = plural(T);
+    const typeRe = new RegExp('\\b' + escRe(T) + '\\b', 'i');
+    const textRe = new RegExp('\\b(?:' + escRe(t) + '|' + escRe(p) + ')\\b');
+    const real = c => typeRe.test(c.tl.split('—').slice(1).join(' ')) || textRe.test(c.low);
+    return { label: 'Tribal: ' + T, test: c => real(c) || c.kw.includes('changeling'), factor: c => real(c) ? 1 : 0.5, q: '(t:"' + T + '" or o:"' + T + '")', desc: 'subtype ' + T + ', oracle mentions ' + t + '/' + p + ', or Changeling' };
+  }
+  function creatureTypes(db) {
+    if (db._ctypes) return db._ctypes;
+    const set = new Set();
+    for (const c of db.all) {
+      if (c.stype === 'funny' || c.bc === 'silver') continue; // Un-set joke types ("The Biggest, Baddest...") are not real subtypes
+      for (const face of c.tl.split(' // ')) {
+        if (!/\b(?:Creature|Kindred|Tribal)\b/.test(face)) continue;
+        const sub = face.split('—')[1]; if (!sub) continue;
+        const words = sub.trim().replace(/\bTime Lord\b/g, 'Time_Lord').split(/\s+/);
+        for (const w of words) if (w === 'Time_Lord') set.add('Time Lord'); else if (w.length >= 3 && /^[A-Z][a-z'-]+$/.test(w)) set.add(w);
+      }
+    }
+    db._ctypes = set; return set;
+  }
+
+  /* ---------- per-card analysis (cached) ---------- */
+  const AC = new WeakMap();
+  function isBasic(c) { return /\bBasic\b/.test(c.ft) && /\bLand\b/.test(c.ft); }
+  function landClass(c) {
+    if (!/\bLand\b/.test(c.ft)) return null;
+    if (isBasic(c)) return 'basic';
+    const types = ((c.ft.split('—')[1] || '').match(/\b(Plains|Island|Swamp|Mountain|Forest)\b/g)) || [];
+    const cols = c.pm.filter(x => WUBRG.includes(x));
+    if (/search your library for an? [^.]*(?:plains|island|swamp|mountain|forest|basic land)/.test(c.low) && /sacrifice (?:~|this)/.test(c.low)) return 'fetch';
+    if (types.length >= 3) return 'triome';
+    if (/mana of any (?:one )?colou?r|mana of any type/.test(c.low) || cols.length >= 3) return 'command';
+    if (/you may pay 2 life/.test(c.low) && types.length === 2) return 'shock';
+    if (cols.length === 2) return 'dual';
+    return 'utility';
+  }
+  const LAND_CLASS_DESC = { fetch: 'sacrifices to search for a land (fetch)', shock: 'two basic types + "you may pay 2 life"', dual: 'produces exactly two colors', triome: 'three basic land types', command: 'mana of any color (Command Tower style)', utility: 'other nonbasic (colorless / mono / utility)' };
+  function analyze(c) {
+    let a = AC.get(c); if (a) return a;
+    a = { roles: {}, rules: {}, flags: {}, land: landClass(c) };
+    a.isLand = a.land != null;
+    a.creature = /\bCreature\b/.test(c.ft);
+    if (!a.isLand) {
+      for (const role of ROLES) {
+        for (const r of ROLE_RULES[role]) if (r.test(c)) { a.roles[role] = true; (a.rules[role] = a.rules[role] || []).push(r.id); }
+        if (c.otags && c.otags.includes(role)) { a.roles[role] = true; (a.rules[role] = a.rules[role] || []).push('otag'); }
+      }
+    }
+    for (const k of Object.keys(FLAGS)) if (FLAGS[k].test(c)) a.flags[k] = true;
+    if (c.otags && c.otags.includes('tutor')) a.flags.tutor = true;
+    const m = c.ot.match(/a deck can have (any number of|up to (\w+)) cards named/i);
+    a.exempt = m ? (m[2] ? ({ two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 }[m[2].toLowerCase()] || parseInt(m[2], 10) || 1) : Infinity) : (isBasic(c) ? Infinity : 1);
+    AC.set(c, a); return a;
+  }
+  function pips(mc) {
+    const out = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+    const re = /\{([^}]+)\}/g; let m;
+    while ((m = re.exec(mc || ''))) {
+      const s = m[1].toUpperCase();
+      const cols = s.split('/').filter(x => 'WUBRG'.includes(x));
+      if (cols.length) for (const x of cols) out[x] += 1 / cols.length;
+      else if (s === 'C') out.C += 1;
+    }
+    return out;
+  }
+
+  /* ---------- commanders ---------- */
+  function cmdTraits(c) {
+    const ot = stripReminder(c.ot);
+    const pw = ot.match(/(?:^|\n)Partner with ([^\n(]+?)\s*(?:\(|$|\n)/);
+    const pdash = ot.match(/(?:^|\n)Partner\s*[—-]\s*([^\n(]+?)\s*(?:\(|$|\n)/);
+    return {
+      partner: /(?:^|\n)Partner\s*(?:$|\n)/.test(ot) || /(?:^|\n)Partner \(/.test(c.ot),
+      partnerWith: pw ? pw[1].trim() : null,
+      partnerDash: pdash ? pdash[1].trim().toLowerCase() : null,
+      friends: /(?:^|\n)Friends forever/i.test(c.ot),
+      chooseBg: /Choose a Background/i.test(c.ot),
+      isBg: /\bBackground\b/.test(c.ft) && /\bLegendary\b/.test(c.ft),
+      companion: /Doctor's companion/i.test(c.ot),
+      isDoctor: /\bTime Lord Doctor\b/.test(c.ft) && /\bLegendary\b/.test(c.ft) && /\bCreature\b/.test(c.ft)
+    };
+  }
+  function commanderEligibility(c) {
+    if (c.leg !== 'legal') return { ok: false, msg: 'not legal in Commander (Scryfall legality: ' + c.leg + ')' };
+    const t = cmdTraits(c);
+    if ((/\bLegendary\b/.test(c.ft) && /\bCreature\b/.test(c.ft)) || /can be your commander/i.test(c.ot) || t.isBg) return { ok: true };
+    return { ok: false, msg: 'not a legendary creature and lacks "can be your commander"' };
+  }
+  function pairCheck(a, b) {
+    const A = cmdTraits(a), B = cmdTraits(b);
+    if (A.isBg && B.isBg) return { ok: false, msg: 'Two Backgrounds cannot be commanders together.' };
+    if (A.partner && B.partner) return { ok: true, kind: 'Partner' };
+    if (A.partnerWith && B.partnerWith && nameKey(A.partnerWith) === nameKey(b.n) && nameKey(B.partnerWith) === nameKey(a.n)) return { ok: true, kind: 'Partner with' };
+    if (A.partnerDash && A.partnerDash === B.partnerDash) return { ok: true, kind: 'Partner—' + A.partnerDash };
+    if (A.friends && B.friends) return { ok: true, kind: 'Friends forever' };
+    if ((A.chooseBg && B.isBg) || (B.chooseBg && A.isBg)) return { ok: true, kind: 'Background' };
+    if ((A.companion && B.isDoctor) || (B.companion && A.isDoctor)) return { ok: true, kind: "Doctor's companion" };
+    return { ok: false, msg: a.n + ' and ' + b.n + ' cannot be paired: no shared Partner, Partner with, Friends forever, Background or Doctor\'s companion relationship in their oracle text.' };
+  }
+
+  /* ---------- combos (Commander Spellbook) ---------- */
+  // Decodes the site's compact Spellbook files (tools/spellbook-shard.js) into variant objects:
+  // { id, c: card names, cmd: names that must be the commander, p: produced features, t: required templates, r: template count,
+  //   inf, bt: bracket tag, mv: mana value needed, ci: colour identity, pop: popularity, ex: example variant }
+  // db (optional) maps Spellbook names onto the loaded card names so lookups are exact.
+  function spellbookVariants(tables, rows, db) {
+    const canon = tables.cards.map(n => { const c = db ? lookup(db, n) || lookup(db, String(n).split(' // ')[0]) : null; return c ? c.n : n; });
+    const out = new Array(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const [id, cards, feats, tmpl, ci, mv, bt, pop, flags] = rows[i];
+      const c = [], cmd = [];
+      for (const k of cards) { const n = canon[k < 0 ? -k - 1 : k]; c.push(n); if (k < 0) cmd.push(n); }
+      const p = feats.map(k => tables.features[k]), t = tmpl.map(k => tables.templates[k]);
+      out[i] = { id, c, cmd, p, t, r: t.length, inf: p.some(x => /infinite/i.test(x)), bt: bt || '', mv, ci: ci || '', pop, ex: !!(flags & 1) };
+    }
+    return out;
+  }
+  const NO_VARIANTS = Object.freeze([]);
+  // names: an array of card names, a Set, or a predicate n => boolean. cmds: commander names (variants that need a card
+  // to be the commander only count when it is). Variants that also need a non-card template are listed but never
+  // counted as assembled, because the template cannot be checked against the list.
+  function localComboProvider(variants, meta) {
+    const by = new Map();
+    for (const v of variants) for (const n of new Set(v.c)) { let l = by.get(n); if (!l) by.set(n, l = []); l.push(v); }
+    const asHas = names => typeof names === 'function' ? names : names instanceof Set ? n => names.has(n) : (st => n => st.has(n))(new Set(names));
+    const cmdOk = (v, cmds) => !v.cmd.length || (cmds && v.cmd.every(n => cmds.has ? cmds.has(n) : cmds.includes(n)));
+    return {
+      kind: 'local', meta: meta || {}, count: variants.length, variants, byCard: by,
+      async find(names, cmdNames) {
+        const has = asHas(names), cmds = new Set(cmdNames || []), seen = new Set(), out = [];
+        for (const n of names) for (const v of by.get(n) || NO_VARIANTS) { if (seen.has(v.id)) continue; seen.add(v.id); if (v.r === 0 && cmdOk(v, cmds) && v.c.every(has)) out.push(v); }
+        return out;
+      },
+      completes(cardName, names, cmdNames) {
+        const list = by.get(cardName); if (!list) return NO_VARIANTS;
+        const has = asHas(names), cmds = cmdNames ? (cmdNames instanceof Set ? cmdNames : new Set(cmdNames)) : null, out = [];
+        for (const v of list) if (v.r === 0 && cmdOk(v, cmds) && v.c.every(n => n === cardName || has(n))) out.push(v);
+        return out;
+      },
+      async almost(names, poolNames, maxMissing) {
+        const has = asHas(names), pool = asHas(poolNames), seen = new Set(), out = [], mm = maxMissing || 2;
+        for (const n of names) for (const v of by.get(n) || NO_VARIANTS) {
+          if (seen.has(v.id) || v.r !== 0 || v.c.length > 4) continue; seen.add(v.id);
+          const missing = v.c.filter(x => !has(x));
+          if (missing.length >= 1 && missing.length <= mm && missing.every(pool)) out.push({ v, missing });
+        }
+        return out;
+      }
+    };
+  }
+
+  /* ---------- card power index (0–1) from card data: flags, efficiency of each role at its mana value, free casting, EDHREC popularity.
+     Weights are this tool's own; they rank cards, they are not a published rating. ---------- */
+  const CP = new WeakMap();
+  function cardPower(c) {
+    let v = CP.get(c); if (v != null) return v;
+    const a = analyze(c), low = c.low || '', mv = c.cmc || 0, inst = /\bInstant\b/.test(c.ft) || (c.kw || []).includes('flash');
+    let p = 0;
+    if (a.flags.fast) p += 0.45;
+    if (a.flags.gc) p += 0.35;
+    if (a.flags.tutor) p += mv <= 2 ? 0.35 : 0.2;
+    if (a.roles.removal) p += mv <= 2 ? (inst ? 0.3 : 0.2) : mv <= 3 ? 0.1 : 0;
+    if (a.roles.wipes && mv <= 4) p += 0.1;
+    if (a.roles.ramp && !a.isLand) p += mv <= 1 ? 0.3 : mv === 2 ? 0.15 : 0;
+    if (a.roles.draw) p += (/\b(?:Artifact|Creature|Enchantment|Planeswalker)\b/.test(c.ft) && /whenever|at the beginning of/.test(low) && mv <= 3) ? 0.2 : mv <= 2 ? 0.1 : 0;
+    if (a.roles.protection && mv <= 1) p += 0.15;
+    if (/without paying (?:its|this spell's) mana cost|rather than pay (?:this spell's|its) mana cost/.test(low)) p += 0.25;
+    if (a.flags.stax) p += 0.1;
+    p += 0.25 * (c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0);
+    v = Math.max(0, Math.min(1, p)); CP.set(c, v); return v;
+  }
+  // how much each bracket prefers raw card power when generating (negative = avoid strong cards)
+  const POWER_PREF = { 1: -0.3, 2: 0.2, 3: 0.6, 4: 1.3, 5: 2 };
+
+  /* ---------- generation ---------- */
+  async function generate(db, S0, env) {
+    env = env || {};
+    const S = deepMerge(defaults(), S0 || {});
+    const R = { ok: false, errors: [], warnings: [], log: [], deck: [], commanders: [], settings: S, shortfalls: [], combos: [], comboStatus: 'unavailable', poolSize: 0, excluded: {} };
+    const L = m => R.log.push(m);
+    const cur = S.budget.cur || 'usd';
+    const price = c => c.p[cur];
+    const cap = S.budget.total != null && S.budget.total !== '' ? +S.budget.total : null;
+    const pcap = S.budget.perCard != null && S.budget.perCard !== '' ? +S.budget.perCard : null;
+    const budgetOn = cap != null || pcap != null;
+    const W = S.weights;
+
+    /* commanders */
+    const cmdNames = (S.commanders || []).map(s => String(s || '').trim()).filter(Boolean);
+    if (!cmdNames.length) { R.errors.push('Commander is required.'); return R; }
+    const cmds = [];
+    for (const nm of cmdNames) { const c = lookup(db, nm); if (!c) R.errors.push('Unknown card: "' + nm + '" is not in the loaded card data.'); else cmds.push(c); }
+    if (R.errors.length) return R;
+    for (const c of cmds) { const el = commanderEligibility(c); if (!el.ok) R.errors.push(c.n + ': ' + el.msg); }
+    if (cmds.length > 2) R.errors.push('At most two commanders.');
+    if (cmds.length === 2) { if (cmds[0].oid === cmds[1].oid) R.errors.push('The two commanders are the same card.'); else { const pc = pairCheck(cmds[0], cmds[1]); if (!pc.ok) R.errors.push(pc.msg); else R.pairKind = pc.kind; } }
+    if (cmds.length === 1 && cmdTraits(cmds[0]).isBg && !/\bCreature\b/.test(cmds[0].ft)) R.errors.push(cmds[0].n + ' is a Background; it needs a commander with "Choose a Background".');
+    if (R.errors.length) return R;
+    R.commanders = cmds;
+    const CI = WUBRG.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
+    R.CI = CI;
+    const mainSize = 100 - cmds.length;
+    const lim = Object.assign(bracketDefaults(S.bracket), S.bl || {});
+    for (const k of ['gc', 'mld', 'xturn', 'tutor', 'combo2']) lim[k] = lim[k] == null || lim[k] === '' ? 999 : +lim[k];
+    R.lim = lim;
+
+    /* tags */
+    const tags = [];
+    const addTag = (key, t, w, src) => { const e = tags.find(x => x.key === key); if (e) { e.w = Math.max(e.w, w); if (!e.src.includes(src)) e.src += ', ' + src; return; } tags.push({ key, label: t.label, factor: t.factor, test: t.test || (c => (t.re && t.re.test(c.low)) || (t.type && t.type.test(c.ft)) || (t.flag && analyze(c).flags[t.flag])), q: t.q, w, src }); };
+    const ctypes = creatureTypes(db);
+    const ctLower = new Map([...ctypes].map(t => [t.toLowerCase(), t]));
+    if (S.archetype && TAGS[S.archetype]) addTag(S.archetype, TAGS[S.archetype], 1.5, 'archetype');
+    for (const raw of String(S.tags || '').split(',')) {
+      const t = raw.trim(); if (!t) continue; const tl = t.toLowerCase();
+      const byLabel = Object.keys(TAGS).find(k => TAGS[k].label.toLowerCase() === tl);
+      if (TAGS[tl]) addTag(tl, TAGS[tl], 1.5, 'user tag');
+      else if (byLabel) addTag(byLabel, TAGS[byLabel], 1.5, 'user tag');
+      else if (tl.startsWith('o:') && tl.length > 3) { const s = tl.slice(2).replace(/^"|"$/g, ''); addTag('o:' + s, { label: 'Oracle: ' + s, test: c => c.low.includes(s), q: 'o:"' + s + '"' }, 1.5, 'user tag'); }
+      else {
+        const tt = tl.replace(/^tribal:\s*/, '');
+        const ty = ctLower.get(tt) || [...ctLower.entries()].find(([k]) => plural(k) === tt)?.[1];
+        if (ty) addTag('tribal:' + ty, tribalTag(ty), 1.5, 'user tag');
+        else R.warnings.push('Tag "' + t + '" is not mapped. Use a listed archetype, a creature type present in the data, or o:<oracle text>.');
+      }
+    }
+    if (S.archetype === 'tribal' && !tags.some(t => t.key.startsWith('tribal:'))) R.warnings.push('Archetype "Tribal" needs a creature type in the tags field (e.g. Elf).');
+    for (const c of cmds) {
+      for (const k of Object.keys(TAGS)) if (TAGS[k].re && TAGS[k].re.test(c.low)) addTag(k, TAGS[k], 1, 'commander text');
+      for (const [lt, T] of ctLower) { if (lt.length < 3) continue; const re = new RegExp('\\b(?:' + escRe(lt) + '|' + escRe(plural(lt)) + ')\\b'); if (re.test(c.low)) addTag('tribal:' + T, tribalTag(T), 1, 'commander text'); }
+    }
+    R.tags = tags.map(t => ({ key: t.key, label: t.label, w: t.w, src: t.src, q: t.q }));
+
+    /* owned */
+    let owned = null;
+    if (S.owned && S.owned.mode !== 'off') {
+      owned = new Set(); const unknown = [];
+      for (const it of parseList(S.owned.list)) { const c = lookup(db, it.name); if (c) owned.add(c.n); else unknown.push(it.name); }
+      if (unknown.length) R.warnings.push('Collection: ' + unknown.length + ' name(s) not found in data: ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : ''));
+      if (!owned.size) R.warnings.push('Collection list is empty or unmatched.');
+    }
+
+    /* includes / excludes */
+    const excludeSet = new Set();
+    for (const it of parseList(S.exclude)) { const c = lookup(db, it.name); if (c) excludeSet.add(c.n); else R.warnings.push('Exclude list: unknown card "' + it.name + '".'); }
+    const bans = new Set(env.bans || []);
+    const incs = [];
+    const locks = (env.locks || []).map(x => typeof x === 'string' ? { name: x } : x);
+    for (const it of parseList(S.include).map(x => ({ name: x.name, qty: x.qty, slot: 'include' })).concat(locks.map(l => ({ name: l.name, qty: l.qty || 1, slot: 'locked', prev: l.slot })))) {
+      const c = lookup(db, it.name);
+      if (!c) { R.warnings.push('Include list: unknown card "' + it.name + '".'); continue; }
+      if (cmds.includes(c)) continue;
+      if (incs.some(x => x.c === c)) continue;
+      const a = analyze(c);
+      if (c.leg !== 'legal') { R.warnings.push('Include rejected: ' + c.n + ' is ' + c.leg + ' in Commander.'); continue; }
+      if (!subsetCI(c.ci, CI)) { R.warnings.push('Include rejected: ' + c.n + ' (identity ' + (c.ci || 'C') + ') is outside commander identity ' + (CI || 'C') + '.'); continue; }
+      if (excludeSet.has(c.n)) { R.warnings.push('Include rejected: ' + c.n + ' is also on the exclude list.'); continue; }
+      let qty = it.qty;
+      if (qty > a.exempt) { R.warnings.push(c.n + ': quantity ' + qty + ' reduced to ' + (a.exempt === Infinity ? qty : a.exempt) + ' (singleton rule).'); qty = Math.min(qty, a.exempt); }
+      incs.push({ c, qty, slot: it.slot, prev: it.prev });
+    }
+
+    /* budget feasibility (hard lower bound) */
+    const basicsCards = {};
+    for (const x of (CI ? CI.split('') : ['C'])) { const b = lookup(db, BASIC_NAMES[x]); if (!b) { R.errors.push('Basic land "' + BASIC_NAMES[x] + '" is missing from the loaded data.'); } else basicsCards[x] = b; }
+    if (R.errors.length) return R;
+    const basicPrices = Object.values(basicsCards).map(b => price(b)).filter(p => p != null);
+    const floor = S.budget.inclBasics ? (basicPrices.length ? Math.min(...basicPrices) : 0) : 0;
+    const cmdCost = cmds.reduce((s, c) => s + (price(c) || 0), 0);
+    for (const c of cmds) if (price(c) == null) R.warnings.push('No ' + cur.toUpperCase() + ' price for commander ' + c.n + '; counted as 0.');
+    const incCost = incs.reduce((s, e) => s + (isBasic(e.c) && !S.budget.inclBasics ? 0 : (price(e.c) || 0) * e.qty), 0);
+    if (pcap != null) {
+      const over = incs.filter(e => !isBasic(e.c) && price(e.c) != null && price(e.c) > pcap);
+      const cOver = [];
+      if (over.length || cOver.length) R.warnings.push('Per-card cap ' + fmt(pcap, cur) + ' is exceeded by required cards: ' + cOver.concat(over.map(e => e.c)).map(c => c.n + ' (' + fmt(price(c), cur) + ')').join(', ') + '. These stay in the deck and the budget rule will fail.');
+    }
+    if (cap != null) {
+      const incQty = incs.reduce((s, e) => s + e.qty, 0);
+      const minTotal = cmdCost + incCost + Math.max(0, mainSize - incQty) * floor;
+      R.minTotal = minTotal;
+      if (minTotal > cap + 1e-9) {
+        R.errors.push('Budget infeasible: minimum achievable total is ' + fmt(minTotal, cur) + ' (commanders ' + fmt(cmdCost, cur) + ' + includes ' + fmt(incCost, cur) + ' + ' + Math.max(0, mainSize - incQty) + ' cheapest slots at ' + fmt(floor, cur) + (S.budget.inclBasics ? ' each, basic lands counted' : '') + '). Cap ' + fmt(cap, cur) + ' is short by ' + fmt(minTotal - cap, cur) + '. Binding constraint: ' + (cmdCost > cap ? 'commander price alone' : incCost + cmdCost > cap ? 'commanders + include list' : 'basic-land cost of the remaining slots') + '.');
+        return R;
+      }
+    }
+
+    /* seeded RNG */
+    const seedBase = String(S.seed || '').trim() || ('auto:' + hashStr(stable(Object.assign({}, S, { seed: '', reroll: 0 }))));
+    R.seedUsed = seedBase + (S.reroll ? '#' + S.reroll : '');
+    const rng = mulberry32(hashStr(R.seedUsed));
+
+    /* candidate pool */
+    const F = S.filters;
+    const allowedSets = String(F.sets || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
+    const serverFiltered = (db.meta && db.meta.serverFiltered) || {};
+    const exReasons = {};
+    const ex = (c, why) => { exReasons[why] = (exReasons[why] || 0) + 1; R.excluded[c.n] = why; };
+    const pool = [];
+    for (const c of db.all) {
+      if (cmds.includes(c) || isBasic(c)) continue;
+      if (!subsetCI(c.ci, CI)) continue;
+      if (c.leg !== 'legal') { if (c.leg === 'banned') ex(c, 'banned'); continue; }
+      const a = analyze(c);
+      if (excludeSet.has(c.n)) { ex(c, 'exclude list'); continue; }
+      if (bans.has(c.n)) { ex(c, 'removed by user'); continue; }
+      if (F.reserved === 'exclude' && c.rl) { ex(c, 'reserved list'); continue; }
+      if (F.funny === 'exclude' && (c.stype === 'funny' || c.bc === 'silver' || c.stamp === 'acorn')) { ex(c, 'silver-border/acorn/Un'); continue; }
+      if (!serverFiltered.dates) {
+        if (F.dateFrom && c.last && c.last < F.dateFrom) { ex(c, 'date filter'); continue; }
+        if (F.dateTo && c.first && c.first > F.dateTo) { ex(c, 'date filter'); continue; }
+      }
+      if (!serverFiltered.sets && allowedSets.length && !c.sets.some(s => allowedSets.includes(s))) { ex(c, 'set filter'); continue; }
+      if (owned && S.owned.mode === 'only' && !owned.has(c.n)) { ex(c, 'not owned'); continue; }
+      let skip = null;
+      for (const [fk, flag] of [['tutors', 'tutor'], ['fast', 'fast'], ['stax', 'stax'], ['xturn', 'xturn'], ['mld', 'mld'], ['hate', 'hate']]) if (F[fk] === 'exclude' && a.flags[flag]) { skip = FLAGS[flag].label + ' filter'; break; }
+      if (!skip) for (const k of ['gc', 'mld', 'xturn', 'tutor']) if (a.flags[k] && lim[k] <= 0) { skip = 'bracket ' + S.bracket + ' (' + FLAGS[k].label + ')'; break; }
+      if (skip) { ex(c, skip); continue; }
+      const p = price(c);
+      if (budgetOn && p == null && S.budget.unknown === 'exclude') { ex(c, 'no ' + cur.toUpperCase() + ' price'); continue; }
+      if (pcap != null && p != null && p > pcap) { ex(c, 'per-card cap'); continue; }
+      pool.push(c);
+    }
+    R.poolSize = pool.length; R.exReasons = exReasons;
+    L('Pool: ' + pool.length + ' candidates within identity ' + (CI || 'C') + '. Excluded: ' + (Object.entries(exReasons).map(([k, v]) => k + ' ' + v).join(', ') || 'none') + '.');
+    if (!pool.length && !incs.length) R.warnings.push('Candidate pool is empty after filters; deck will be filled with basic lands only.');
+
+    /* scoring */
+    const T = +S.mana.avgMV || 3;
+    const noise = new Map();
+    for (const c of pool) noise.set(c.n, (rng() * 2 - 1) * (+S.variance || 0));
+    const syn = new Map();
+    const synOf = c => { let v = syn.get(c); if (v) return v; let s = 0; const hit = []; for (const t of tags) if (t.test(c)) { s += t.w * (t.factor ? t.factor(c) : 1); hit.push(t.label); } v = { s, hit }; syn.set(c, v); return v; };
+    const pop = c => c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
+    const priceRef = pcap != null ? pcap : (cap != null ? Math.max(1, cap / mainSize * 3) : null);
+    const pricePen = c => { const p = price(c); if (p == null || !priceRef) return 0; return Math.min(3, p / priceRef); }; // no budget → price is ignored
+    const curveFit = c => Math.max(-0.5, 1 - Math.abs(c.cmc - T) / (c.cmc < T ? 4 : 3));
+    const pPref = (POWER_PREF[S.bracket] != null ? POWER_PREF[S.bracket] : 0.5) * (W.power != null ? +W.power : 2);
+    const bpen = c => { const a = analyze(c); let s = 0; for (const k of ['gc', 'tutor', 'xturn', 'mld']) if (a.flags[k] && lim[k] < 999) s += 1; return s; };
+    const baseCache = new Map();
+    const base = c => {
+      let v = baseCache.get(c); if (v != null) return v;
+      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (pPref + (W.quality != null ? +W.quality : 2)) * cardPower(c) + (noise.get(c.n) || 0);
+      baseCache.set(c, v); return v;
+    };
+
+    R.explain = c => ({ syn: W.syn * Math.min(synOf(c).s, 3), pop: W.pop * pop(c), curve: W.curve * curveFit(c), owned: owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0, price: -W.price * pricePen(c), bracket: -W.bracket * bpen(c), power: (pPref + (W.quality != null ? +W.quality : 2)) * cardPower(c), noise: noise.get(c.n) || 0, total: base(c), inPool: pool.includes(c), excluded: R.excluded[c.n] || null, tags: synOf(c).hit });
+    /* deck state */
+    const st = { total: cmdCost, cnt: { gc: 0, mld: 0, xturn: 0, tutor: 0 }, creatures: 0, names: new Set(cmds.map(c => c.n)) };
+    for (const c of cmds) { const a = analyze(c); for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k]++; }
+    const deck = R.deck;
+    const size = () => deck.reduce((s, e) => s + e.qty, 0);
+    const landCount = () => deck.reduce((s, e) => s + (analyze(e.c).isLand ? e.qty : 0), 0);
+    const roleCount = role => deck.reduce((s, e) => s + (analyze(e.c).roles[role] ? 1 : 0), 0);
+    const cmin = F.creaturesMin != null && F.creaturesMin !== '' ? +F.creaturesMin : null;
+    const cmax = F.creaturesMax != null && F.creaturesMax !== '' ? +F.creaturesMax : null;
+    const combos = env.combos || null;
+    const comboPolicy = F.combos || 'bracket';
+    const comboForbidden = v => {
+      const two = v.inf && v.c.length <= 2;
+      if (comboPolicy === 'none') return true;
+      if (comboPolicy === 'noinf' && v.inf) return true;
+      if (comboPolicy === 'no2inf' && two) return true;
+      return false;
+    };
+    R.comboStatus = combos ? (combos.kind === 'local' ? 'local' : 'api') : 'unavailable';
+    const deckNames = () => cmds.map(c => c.n).concat(deck.map(e => e.c.n));
+    const cmdSet = new Set(cmds.map(c => c.n));
+    function canAdd(c, opts) {
+      opts = opts || {};
+      if (st.names.has(c.n) && analyze(c).exempt <= 1) return 'duplicate';
+      if (bans.has(c.n) || R._runBan && R._runBan.has(c.n)) return 'banned for this run';
+      const a = analyze(c), p = price(c) || 0;
+      const freed = opts.replacing ? (price(opts.replacing.c) || 0) * (isBasic(opts.replacing.c) && !S.budget.inclBasics ? 0 : 1) : 0;
+      if (cap != null) {
+        const left = mainSize - size() - (opts.replacing ? 0 : 1);
+        if (st.total - freed + (isBasic(c) && !S.budget.inclBasics ? 0 : p) + Math.max(0, left) * floor > cap + (opts.slack || 0) + 1e-9) return 'total budget';
+        if (!opts.replacing && !opts.noPace) { const slots = Math.max(1, left + 1); const pace = (cap - st.total - Math.max(0, left) * floor) / slots * 3 + floor; if (p > pace + 1e-9) return 'budget pacing (≤3× remaining per-slot share)'; }
+      }
+      const rm = opts.replacing ? analyze(opts.replacing.c) : null;
+      for (const k of ['gc', 'mld', 'xturn', 'tutor']) if (a.flags[k] && st.cnt[k] - (rm && rm.flags[k] ? 1 : 0) >= lim[k]) return 'bracket limit (' + FLAGS[k].label + ')';
+      if (a.creature && cmax != null && st.creatures - (rm && rm.creature ? 1 : 0) >= cmax) return 'creature maximum';
+      if (combos && combos.completes) {
+        const repl = opts.replacing ? opts.replacing.c.n : null, inDeck = n => n !== repl && st.names.has(n);
+        const vs = combos.completes(c.n, inDeck, cmdSet);
+        const others = vs.length ? deckNames().filter(n => n !== repl) : null;
+        for (const v of vs) {
+          if (comboForbidden(v)) return 'combo filter';
+          if (v.inf && v.c.length <= 2 && lim.combo2 < 999) {
+            if (countTwoInf(others) >= lim.combo2) return 'bracket limit (2-card infinite)';
+          }
+        }
+      }
+      return null;
+    }
+    function countTwoInf(names) {
+      if (!combos || !combos.completes) return 0;
+      const seen = new Set(); let n = 0;
+      for (const nm of names) for (const v of combos.completes(nm, names, cmdSet)) if (v.inf && v.c.length <= 2 && !seen.has(v.id)) { seen.add(v.id); n++; }
+      return n;
+    }
+    function reason(c, slot, extra) {
+      const a = analyze(c), s = synOf(c), p = price(c), parts = [];
+      if (slot && a.rules[slot]) parts.push(SLOT_LABEL[slot] + ' via ' + a.rules[slot].join('+'));
+      else if (slot === 'land') parts.push('Land: ' + a.land + ' (' + LAND_CLASS_DESC[a.land] + ')');
+      else parts.push(SLOT_LABEL[slot] || slot);
+      if (extra) parts.push(extra);
+      if (s.hit.length) parts.push('tags: ' + s.hit.join(', '));
+      parts.push(c.rank ? 'EDHREC #' + c.rank : 'no EDHREC rank');
+      parts.push(p == null ? 'no ' + cur.toUpperCase() + ' price' : fmt(p, cur));
+      if (owned && owned.has(c.n)) parts.push('owned');
+      return parts.join(' · ');
+    }
+    function add(c, slot, qty, score, extra, flags) {
+      qty = qty || 1;
+      const a = analyze(c);
+      const e = { c, qty, slot, score: score != null ? score : base(c), why: reason(c, slot, extra), locked: !!(flags && flags.locked), inc: !!(flags && flags.inc) };
+      deck.push(e); st.names.add(c.n);
+      st.total += (isBasic(c) && !S.budget.inclBasics ? 0 : (price(c) || 0)) * qty;
+      for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k] += qty;
+      if (a.creature) st.creatures += qty;
+      return e;
+    }
+    function removeEntry(e) {
+      const i = deck.indexOf(e); if (i < 0) return;
+      deck.splice(i, 1); const a = analyze(e.c);
+      if (!deck.some(x => x.c === e.c)) st.names.delete(e.c.n);
+      st.total -= (isBasic(e.c) && !S.budget.inclBasics ? 0 : (price(e.c) || 0)) * e.qty;
+      for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k] -= e.qty;
+      if (a.creature) st.creatures -= e.qty;
+    }
+    const sortScored = arr => arr.sort((x, y) => y.s - x.s || (x.c.n < y.c.n ? -1 : 1));
+    const dyn = c => { const a = analyze(c); let need = 0; for (const r of ROLES) if (a.roles[r] && roleCount(r) < (+S.targets[r] || 0)) need++; return base(c) + (need ? W.role * (1 + 0.25 * (need - 1)) : 0); }; // extra roles add a little, so multi-role filler cannot outrank staples
+
+    /* 1. includes / locks */
+    for (const e of incs) add(e.c, e.slot === 'locked' ? (e.prev || 'locked') : 'include', e.qty, null, e.slot === 'locked' ? 'locked by user' : 'include list', { locked: true, inc: e.slot === 'include' });
+    if (incs.length) L('Includes/locks: ' + incs.map(e => (e.qty > 1 ? e.qty + 'x ' : '') + e.c.n).join(', ') + '.');
+    if (size() > mainSize) { R.errors.push('Include list has ' + size() + ' cards; maximum is ' + mainSize + ' with ' + cmds.length + ' commander(s).'); return R; }
+
+    /* 2. lands (nonbasic now, basics after nonland fill) */
+    const landTarget = Math.max(0, Math.min(mainSize, +S.targets.lands || 0));
+    const autoNB = { 0: 8, 1: 7, 2: 14, 3: 17, 4: 19, 5: 21 }[CI.length];
+    let nbTarget = S.mana.nonbasic != null && S.mana.nonbasic !== '' ? +S.mana.nonbasic : autoNB;
+    nbTarget = Math.max(0, Math.min(nbTarget, landTarget - landCount()));
+    const landColors = c => { const a = analyze(c); if (a.land === 'command') return CI.length; if (a.land === 'fetch') { if (/basic land/.test(c.low)) return Math.min(CI.length, 1); const m = c.low.match(/plains|island|swamp|mountain|forest/g) || []; const map = { plains: 'W', island: 'U', swamp: 'B', mountain: 'R', forest: 'G' }; return new Set(m.map(x => map[x]).filter(x => CI.includes(x))).size; } return c.pm.filter(x => CI.includes(x)).length; };
+    const landScore = c => { const a = analyze(c); const on = landColors(c); return W.pop * pop(c) + (CI.length > 1 ? 1.5 * Math.min(on, CI.length) / CI.length : 0) + 0.5 * W.syn * Math.min(synOf(c).s, 2) - W.price * pricePen(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) + (noise.get(c.n) || 0) - (a.land === 'utility' && CI.length >= 3 ? 0.5 : 0); };
+    const landOK = c => { const a = analyze(c); if (!a.isLand || a.land === 'basic') return false; if (!S.mana.types[a.land]) return false; if (a.land === 'fetch' && CI.length && landColors(c) === 0) return false; if ((a.land === 'dual' || a.land === 'shock' || a.land === 'triome') && landColors(c) < 2) return false; return true; };
+    const landCands = sortScored(pool.filter(landOK).map(c => ({ c, s: landScore(c) })));
+    let nb = 0, why = {};
+    for (const x of landCands) { if (nb >= nbTarget) break; const r = canAdd(x.c); if (r) { why[r] = (why[r] || 0) + 1; continue; } add(x.c, 'land', 1, x.s); nb++; }
+    L('Lands: ' + nb + '/' + nbTarget + ' nonbasic selected from ' + landCands.length + ' allowed (' + Object.keys(S.mana.types).filter(k => S.mana.types[k]).join(', ') + ').' + (Object.keys(why).length ? ' Rejected: ' + JSON.stringify(why) : ''));
+    if (nb < nbTarget) L('Nonbasic shortfall ' + (nbTarget - nb) + '; filled with basics.');
+
+    const nonlandSlots = () => mainSize - landTarget - (deck.reduce((s, e) => s + (analyze(e.c).isLand ? 0 : e.qty), 0)) - Math.max(0, landCount() - landTarget);
+    /* 3. roles */
+    for (const role of ROLES) {
+      const target = +S.targets[role] || 0;
+      let have = roleCount(role);
+      if (have >= target) { L(SLOT_LABEL[role] + ': ' + have + '/' + target + ' already covered.'); continue; }
+      const cands = sortScored(pool.filter(c => !analyze(c).isLand && analyze(c).roles[role] && !st.names.has(c.n)).map(c => ({ c, s: dyn(c) })));
+      const rej = {};
+      for (const x of cands) {
+        if (have >= target || nonlandSlots() <= 0) break;
+        const r = canAdd(x.c); if (r) { rej[r] = (rej[r] || 0) + 1; continue; }
+        add(x.c, role, 1, x.s); have = roleCount(role);
+      }
+      L(SLOT_LABEL[role] + ': ' + have + '/' + target + ' from ' + cands.length + ' tagged candidates.' + (Object.keys(rej).length ? ' Rejected: ' + Object.entries(rej).map(([k, v]) => k + ' ' + v).join(', ') + '.' : ''));
+      if (have < target) {
+        const exByRole = {};
+        for (const c of db.all) { const why2 = R.excluded[c.n]; if (why2 && !analyze(c).isLand && analyze(c).roles[role]) exByRole[why2] = (exByRole[why2] || 0) + 1; }
+        R.shortfalls.push({ role, have, target, pool: cands.length, rejected: rej, excluded: exByRole });
+      }
+    }
+
+    /* 4. synergy then flex */
+    const fill = (phase, filter) => {
+      const cands = sortScored(pool.filter(c => !analyze(c).isLand && !st.names.has(c.n) && filter(c)).map(c => ({ c, s: dyn(c) })));
+      let n = 0;
+      for (const x of cands) {
+        if (nonlandSlots() <= 0) break;
+        if (cmin != null && cmin - st.creatures >= nonlandSlots() && !analyze(x.c).creature) continue;
+        if (canAdd(x.c)) continue;
+        add(x.c, phase, 1, x.s); n++;
+      }
+      return n;
+    };
+    /* several themes: round-robin by weight so one large theme cannot crowd out the others */
+    const synFill = () => {
+      if (tags.length < 2) return fill('synergy', c => synOf(c).s > 0);
+      const lists = tags.map(t => ({ t, got: 0, cands: sortScored(pool.filter(c => !analyze(c).isLand && t.test(c)).map(c => ({ c, s: dyn(c) }))), i: 0 }));
+      for (const l of lists) l.got = deck.filter(e => !analyze(e.c).isLand && l.t.test(e.c)).length;
+      let n = 0;
+      for (let guard = 0; guard < 400 && nonlandSlots() > 0; guard++) {
+        const open = lists.filter(l => l.i < l.cands.length);
+        if (!open.length) break;
+        const l = open.sort((a, b) => a.got / a.t.w - b.got / b.t.w || (a.t.key < b.t.key ? -1 : 1))[0];
+        const x = l.cands[l.i++];
+        if (st.names.has(x.c.n)) continue;
+        if (cmin != null && cmin - st.creatures >= nonlandSlots() && !analyze(x.c).creature) continue;
+        if (canAdd(x.c)) continue;
+        add(x.c, 'synergy', 1, dyn(x.c)); n++;
+        for (const m of lists) if (m.t.test(x.c)) m.got++;
+      }
+      R.themeCounts = lists.map(l => ({ label: l.t.label, n: l.got }));
+      return n;
+    };
+    const nSyn = tags.length ? synFill() : 0;
+    L('Synergy: ' + nSyn + ' cards matching tags [' + tags.map(t => t.label).join(', ') + ']' + (R.themeCounts ? '; per theme (incl. role cards): ' + R.themeCounts.map(x => x.label + ' ' + x.n).join(', ') : '') + '.');
+    const nFlex = fill('flex', () => true);
+    L('Flex: ' + nFlex + ' cards by score.');
+
+    /* 5. combos: prefer */
+    if (comboPolicy === 'prefer' && combos && combos.almost) {
+      try {
+        const poolNames = pool.filter(c => !st.names.has(c.n)).map(c => c.n);
+        const al = (await combos.almost(deckNames(), poolNames)).filter(x => !(x.v.inf && x.v.c.length <= 2 && lim.combo2 <= 0));
+        al.sort((a, b) => a.missing.length - b.missing.length || (a.v.id < b.v.id ? -1 : 1));
+        let added = 0;
+        for (const x of al) {
+          if (added >= 2) break;
+          const cards = x.missing.map(n => lookup(db, n)).filter(Boolean);
+          if (cards.length !== x.missing.length || cards.some(c => !pool.includes(c) || st.names.has(c.n))) continue;
+          const victims = deck.filter(e => !e.locked && (e.slot === 'flex' || e.slot === 'synergy')).sort((a, b) => a.score - b.score).slice(0, cards.length);
+          if (victims.length < cards.length) break;
+          victims.forEach(removeEntry);
+          if (cards.some(c => canAdd(c))) { victims.forEach(v => add(v.c, v.slot, v.qty, v.score)); continue; }
+          cards.forEach(c => add(c, 'combo', 1, base(c), 'completes combo: ' + x.v.c.join(' + ') + ' → ' + x.v.p.slice(0, 2).join(', ')));
+          L('Combo (prefer): added ' + cards.map(c => c.n).join(', ') + ' replacing ' + victims.map(v => v.c.n).join(', ') + ' for ' + x.v.c.join(' + ') + '.');
+          added++;
+        }
+        if (!added) L('Combo (prefer): no completable combo found in pool.');
+      } catch (err) { R.warnings.push('Combo lookup failed: ' + (err && err.message || err)); }
+    }
+
+    /* 6. curve adjustment (soft) */
+    const avgMV = () => { const nl = deck.filter(e => !analyze(e.c).isLand); const q = nl.reduce((s, e) => s + e.qty, 0); return q ? nl.reduce((s, e) => s + e.c.cmc * e.qty, 0) / q : 0; };
+    const curveOk = (c, slot) => slot === 'synergy' ? synOf(c).s > 0 : ROLES.includes(slot) ? !!analyze(c).roles[slot] : true;
+    const curveStep = up => {
+      const victims = deck.filter(e => !e.locked && e.qty === 1 && (e.slot === 'flex' || e.slot === 'synergy' || ROLES.includes(e.slot)) && (up ? e.c.cmc < T - 0.5 : e.c.cmc > T))
+        .sort((a, b) => (up ? a.c.cmc - b.c.cmc : b.c.cmc - a.c.cmc) || a.score - b.score);
+      for (const victim of victims) {
+        const rep = sortScored(pool.filter(c => !analyze(c).isLand && !st.names.has(c.n) && (up ? c.cmc > victim.c.cmc && c.cmc <= T + 2 : c.cmc <= T) && curveOk(c, victim.slot)).map(c => ({ c, s: dyn(c) })))
+          .find(x => x.s >= victim.score - 1.5 && !canAdd(x.c, { replacing: victim }));
+        if (!rep) continue;
+        removeEntry(victim); add(rep.c, victim.slot, 1, rep.s);
+        L('Curve' + (up ? ' (up)' : '') + ': swapped ' + victim.c.n + ' (' + victim.slot + ', MV ' + victim.c.cmc + ', score ' + victim.score.toFixed(2) + ') → ' + rep.c.n + ' (MV ' + rep.c.cmc + ', score ' + rep.s.toFixed(2) + '); avg MV now ' + avgMV().toFixed(2) + '.');
+        return true;
+      }
+      return false;
+    };
+    for (let i = 0; i < 20 && avgMV() > T + 0.15 && curveStep(false); i++);
+    for (let i = 0; i < 20 && avgMV() < T - 0.15 && curveStep(true); i++);
+
+    /* 7. basics */
+    function addBasics(n, label) {
+      if (n <= 0) return;
+      const pp = { W: 0, U: 0, B: 0, R: 0, G: 0 };
+      for (const c of cmds) { const p = pips(c.mc); for (const k in pp) pp[k] += p[k]; }
+      for (const e of deck) if (!analyze(e.c).isLand) { const p = pips(e.c.mc); for (const k in pp) pp[k] += p[k] * e.qty; }
+      const cols = CI ? CI.split('') : ['C'];
+      const wsum = cols.reduce((s, x) => s + (pp[x] || 0), 0);
+      const share = cols.map(x => ({ x, w: wsum > 0 ? (pp[x] || 0) / wsum : 1 / cols.length }));
+      const alloc = share.map(s => ({ x: s.x, n: Math.floor(s.w * n), r: s.w * n - Math.floor(s.w * n) }));
+      let left = n - alloc.reduce((s, a) => s + a.n, 0);
+      alloc.slice().sort((a, b) => b.r - a.r || (a.x < b.x ? -1 : 1)).forEach(a => { if (left > 0) { a.n++; left--; } });
+      for (const a of alloc) {
+        if (!a.n) continue;
+        const b = basicsCards[a.x];
+        const ex = deck.find(e => e.c === b);
+        if (ex) { ex.qty += a.n; st.total += (S.budget.inclBasics ? (price(b) || 0) : 0) * a.n; ex.why = reason(b, 'basic', 'pip-weighted: ' + ex.qty + ' of ' + (landTarget) + ' lands'); }
+        else add(b, 'basic', a.n, 0, label || ('pip-weighted share ' + (share.find(s => s.x === a.x).w * 100).toFixed(0) + '%'));
+      }
+      R.pipShare = share;
+    }
+    const nlLeft = nonlandSlots();
+    if (nlLeft > 0) {
+      const flexRej = {}; for (const c of pool) if (!st.names.has(c.n) && !analyze(c).isLand) { const r = canAdd(c, { noPace: true }); if (r) flexRej[r] = (flexRej[r] || 0) + 1; }
+      R.warnings.push(nlLeft + ' nonland slot(s) could not be filled within the constraints and were filled with basic lands. Remaining nonland candidates: ' + pool.filter(c => !st.names.has(c.n) && !analyze(c).isLand).length + (Object.keys(flexRej).length ? ' (blocked by: ' + Object.entries(flexRej).map(([k, v]) => k + ' ' + v).join(', ') + ')' : '') + '.');
+    }
+    addBasics(mainSize - size());
+    L('Basics: ' + deck.filter(e => isBasic(e.c)).map(e => e.qty + ' ' + e.c.n).join(', ') + '.');
+
+    /* 7b. optimise: steps 1–7 are a greedy baseline. This step searches the whole candidate pool for swaps that raise the
+       deck's total score J, re-scanning every (deck card, pool card) pair after each round until no swap improves J.
+       J = Σ base(nonland card) + pair synergy (enabler × payoff per theme) − role-shortfall − curve-drift penalties.
+       A swap blocked by the total budget may be paired with a cheaper swap elsewhere (incl. nonbasic land → basic)
+       when the two together raise J. All moves pass canAdd (budget, bracket, creature cap, combos). */
+    {
+      const t0 = Date.now(), timeCap = +(S.optTimeMs || 60000); // safety only: rounds, not time, end the search, so results never depend on machine speed
+      const Wl = W.link != null ? +W.link : 1;
+      const NP = PAIRS.length, tagKeys = new Set(tags.map(t => t.key));
+      const PW = PAIRS.map(p => (cmds.some(c => p.en(c) || p.pay(c)) || tagKeys.has(p.key)) ? 1 : 0.35);
+      const sidesCache = new Map();
+      const sides = c => { let v = sidesCache.get(c); if (v) return v; v = []; PAIRS.forEach((p, i) => { if (p.en(c)) v.push(2 * i); if (p.pay(c)) v.push(2 * i + 1); }); sidesCache.set(c, v); return v; };
+      const roleBits = c => { const a = analyze(c); let b = 0; ROLES.forEach((r, i) => { if (a.roles[r]) b |= 1 << i; }); return b; };
+      const pc = b => { let n = 0; while (b) { n += b & 1; b >>>= 1; } return n; };
+      const G = (i, en, pay) => PW[i] * 2 * Math.sqrt(en * pay);
+      const cnt = new Float64Array(NP * 2);
+      for (const c of cmds) for (const k of sides(c)) cnt[k] += 3; // commander counts 3, as in the analysis
+      for (const e of deck) if (!isBasic(e.c)) for (const k of sides(e.c)) cnt[k] += e.qty;
+      const synTotal = () => { let g = 0; for (let i = 0; i < NP; i++) g += G(i, cnt[2 * i], cnt[2 * i + 1]); return Wl * g; };
+      const tgt = ROLES.map(r => +S.targets[r] || 0), rc = ROLES.map(r => roleCount(r));
+      const nlE = () => deck.filter(e => !analyze(e.c).isLand);
+      const nN = nlE().reduce((s, e) => s + e.qty, 0); let mvSum = nlE().reduce((s, e) => s + e.c.cmc * e.qty, 0);
+      const curvePen = sum => W.curve * 8 * Math.max(0, Math.abs((nN ? sum / nN : T) - T) - 0.15);
+      const shortfall = () => ROLES.reduce((s, r, i) => s + Math.max(0, tgt[i] - rc[i]), 0);
+      const landVal = c => isBasic(c) ? 0 : landScore(c);
+      const J = () => deck.reduce((s, e) => s + (analyze(e.c).isLand ? landVal(e.c) * e.qty : base(e.c) * e.qty), 0) + synTotal() - W.role * 2 * shortfall() - curvePen(mvSum);
+      const pr = c => isBasic(c) && !S.budget.inclBasics ? 0 : (price(c) || 0);
+      const split = sd => { const both = [], one = []; for (const k of sd) { if (k % 2 === 0 && sd.includes(k + 1)) both.push(k / 2); else if (!(k % 2 === 1 && sd.includes(k - 1))) one.push(k); } return { both, one }; };
+      const cands = pool.filter(c => !analyze(c).isLand).map(c => ({ c, b: base(c), sd: sides(c), ...split(sides(c)), rb: roleBits(c), cr: analyze(c).creature, mv: c.cmc, p: pr(c), inDeck: st.names.has(c.n) }));
+      const byName = new Map(cands.map(x => [x.c.n, x]));
+      const bestBasic = () => { const sh = (R.pipShare || []).slice().sort((a, b) => b.w - a.w); for (const x of sh) if (basicsCards[x.x]) return basicsCards[x.x]; return basicsCards[Object.keys(basicsCards)[0]]; };
+      const J0 = J(); let pairs = 0, rounds = 0; const swaps = [], tabu = new Set();
+      const validBudget = () => cap == null || st.total <= cap + 1e-9;
+      const doSwap = (out, x, d, tag) => {
+        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ROLES.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; });
+        if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
+        const xr = x.land ? null : ROLES.find((r, i) => (x.rb & (1 << i)) && rc[i] < tgt[i]) || ROLES.find((r, i) => (x.rb & (1 << i)) && (roleBits(out.c) & (1 << i)));
+        const slot = xr || (!x.land && synOf(x.c).s > 0 ? 'synergy' : 'flex');
+        removeEntry(out); const ox = byName.get(out.c.n); if (ox) ox.inDeck = false;
+        if (x.land) { const ex = deck.find(e => e.c === x.c); if (ex) { ex.qty++; st.total += pr(x.c); } else add(x.c, 'basic', 1, 0, 'optimiser: budget for a better spell'); }
+        else { add(x.c, slot, 1, x.b, 'optimiser swap (' + tag + ')'); x.inDeck = true; for (const k of x.sd) cnt[k] += 1; ROLES.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
+        swaps.push({ out: out.c.n, in: x.c.n, d, tag });
+      };
+      // exact change in J for one swap in the current state (used to verify paired moves)
+      const exactD = (out, x) => { const snap = { cnt: Float64Array.from(cnt), rc: rc.slice(), mv: mvSum };
+        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ROLES.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; }); if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
+        if (!x.land) { for (const k of x.sd) cnt[k] += 1; ROLES.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
+        const outV = analyze(out.c).isLand ? landVal(out.c) : base(out.c), inV = x.land ? 0 : x.b;
+        const synAfter = synTotal(), sfAfter = shortfall(), cpAfter = curvePen(mvSum);
+        cnt.set(snap.cnt); rc.splice(0, rc.length, ...snap.rc); mvSum = snap.mv;
+        return (inV - outV) + (synAfter - synTotal()) - W.role * 2 * (sfAfter - shortfall()) - (cpAfter - curvePen(mvSum)); };
+      for (; rounds < 250 && Date.now() - t0 < timeCap; rounds++) {
+        const outs = deck.filter(e => !e.locked && e.qty === 1 && e.slot !== 'combo' && e.slot !== 'include' && !analyze(e.c).isLand);
+        const moves = [], blocked = [];
+        const BUCKETS = [0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+        const down = BUCKETS.map(() => []); // per saving bucket: best few (d, out, x) with saving ≥ bucket
+        const pushDown = (sv, d, e, x) => { for (let b = 0; b < BUCKETS.length && BUCKETS[b] <= sv; b++) { const L2 = down[b]; if (L2.length < 6 || d > L2[L2.length - 1].d) { L2.push({ d, e, x }); L2.sort((a, b2) => b2.d - a.d); if (L2.length > 6) L2.pop(); } } };
+        const curNow = curvePen(mvSum), synNow = synTotal(), sfNow = shortfall();
+        const gain = new Float64Array(NP * 2), gainBoth = new Float64Array(NP);
+        for (const e of outs) {
+          const c = e.c, cs = sides(c), cb = roleBits(c), bc = base(c), pOut = pr(c);
+          for (const k of cs) cnt[k] -= 1;
+          let gNoC = 0;
+          for (let i = 0; i < NP; i++) { const en = cnt[2 * i], pay = cnt[2 * i + 1], g = G(i, en, pay); gNoC += g; gain[2 * i] = G(i, en + 1, pay) - g; gain[2 * i + 1] = G(i, en, pay + 1) - g; gainBoth[i] = G(i, en + 1, pay + 1) - g; }
+          for (const k of cs) cnt[k] += 1;
+          const lossC = synNow - Wl * gNoC;
+          let needMask = 0, openMask = 0;
+          ROLES.forEach((r, i) => { if ((cb & (1 << i)) && rc[i] <= tgt[i]) needMask |= 1 << i; if (!(cb & (1 << i)) && rc[i] < tgt[i]) openMask |= 1 << i; });
+          const cp = new Map();
+          const fixed = -bc - lossC + curNow;
+          for (let q = 0; q < cands.length; q++) {
+            const x = cands[q]; pairs++;
+            if (x.inDeck || (x.rb & needMask) !== needMask) continue; // never open a role shortfall
+            let sg = 0; const one = x.one, both = x.both; for (let k = 0; k < one.length; k++) sg += gain[one[k]]; for (let k = 0; k < both.length; k++) sg += gainBoth[both[k]];
+            let cpv = cp.get(x.mv); if (cpv === undefined) { cpv = curvePen(mvSum - c.cmc + x.mv); cp.set(x.mv, cpv); }
+            const d = x.b + fixed + Wl * sg + W.role * 2 * pc(x.rb & openMask) - cpv;
+            if (d > 1e-6) (cap != null && st.total - pOut + x.p > cap + 1e-9 ? blocked : moves).push({ e, x, d });
+            if (cap != null && pOut - x.p >= BUCKETS[0]) pushDown(pOut - x.p, d, e, x);
+          }
+        }
+        // nonbasic land → basic as a budget source
+        if (cap != null) { const bb = bestBasic(); if (bb) for (const e of deck) if (!e.locked && analyze(e.c).isLand && !isBasic(e.c) && e.qty === 1 && pr(e.c) - pr(bb) >= BUCKETS[0]) pushDown(pr(e.c) - pr(bb), landVal(bb) - landVal(e.c), e, { c: bb, land: true, p: pr(bb) }); }
+        // every budget-feasible improving move is tried in order (no cut-off), then the best budget-blocked ones for pairing
+        const ord = (a, b) => b.d - a.d || (a.x.c.n < b.x.c.n ? -1 : 1);
+        moves.sort(ord); blocked.sort(ord);
+        let applied = 0; const usedOut = new Set(), usedIn = new Set();
+        for (const m of moves.concat(blocked.slice(0, 300))) {
+          if (applied >= 8) break;
+          if (usedOut.has(m.e) || usedIn.has(m.x.c.n) || m.x.inDeck || !deck.includes(m.e)) continue;
+          if (cmin != null && analyze(m.e.c).creature && !m.x.cr && st.creatures - 1 < cmin) continue;
+          const dd = applied ? exactD(m.e, m.x) : m.d; if (dd <= 1e-6) continue;
+          const why = canAdd(m.x.c, { replacing: m.e });
+          if (!why) { doSwap(m.e, m.x, dd, 'single'); usedOut.add(m.e); usedIn.add(m.x.c.n); applied++; continue; }
+          if (why !== 'total budget' || cap == null) continue;
+          // pair with a cheaper swap elsewhere so the two together fit the budget and raise J
+          const over = st.total - pr(m.e.c) + m.x.p - cap;
+          const bi = BUCKETS.findIndex(b => b >= over - 1e-9); if (bi < 0) continue;
+          for (const dn of down[bi]) {
+            if (dn.e === m.e || dn.x.c === m.x.c || usedOut.has(dn.e) || tabu.has(dn.e.c.n) || !deck.includes(dn.e) || (dn.x.c && !dn.x.land && dn.x.inDeck)) continue;
+            if (dd + dn.d <= 1e-6) continue;
+            if (!dn.x.land && canAdd(dn.x.c, { replacing: dn.e })) continue;
+            if (canAdd(m.x.c, { replacing: m.e, slack: pr(dn.e.c) - dn.x.p })) continue; // other limits (bracket, combos, creatures) still block it
+            const d2 = exactD(dn.e, dn.x); if (dd + d2 <= 1e-6) continue;
+            // apply both, then keep them only if J really rose (state snapshot makes this exact and reversible)
+            const Jb = J(), snap = { deck: deck.map(e => [e, e.qty]), total: st.total, cnt: Object.assign({}, st.cnt), cr: st.creatures, names: new Set(st.names), pc: Float64Array.from(cnt), rc: rc.slice(), mv: mvSum, inD: cands.map(x => x.inDeck), sw: swaps.length };
+            doSwap(dn.e, dn.x, d2, 'budget pair');
+            const d1 = exactD(m.e, m.x); doSwap(m.e, m.x, d1, 'budget pair');
+            if (J() <= Jb + 1e-6 || validBudget() === false) {
+              deck.splice(0, deck.length, ...snap.deck.map(([e, q]) => { e.qty = q; return e; })); st.total = snap.total; st.cnt = snap.cnt; st.creatures = snap.cr; st.names = snap.names;
+              cnt.set(snap.pc); rc.splice(0, rc.length, ...snap.rc); mvSum = snap.mv; cands.forEach((x, i) => { x.inDeck = snap.inD[i]; }); swaps.length = snap.sw; continue;
+            }
+            usedOut.add(m.e); usedOut.add(dn.e); usedIn.add(m.x.c.n); tabu.add(m.x.c.n); applied += 2; break;
+          }
+        }
+        if (!applied) break;
+      }
+      const J1 = J();
+      R.optimize = { baseline: J0, final: J1, swaps, pairs, rounds, pool: cands.length, ms: Date.now() - t0, timedOut: Date.now() - t0 >= timeCap };
+      L('Optimise: deck score ' + J0.toFixed(1) + ' → ' + J1.toFixed(1) + ' after ' + swaps.length + ' swap(s) in ' + rounds + ' round(s); ' + pairs.toLocaleString() + ' (deck card, pool card) pairs scored across ' + cands.length.toLocaleString() + ' nonland candidates in ' + R.optimize.ms + ' ms' + (R.optimize.timedOut ? ' (time cap reached)' : '; no improving swap left') + '.');
+      for (const w of swaps) L('  ' + w.tag + ': ' + w.out + ' → ' + w.in + ' (' + (w.d >= 0 ? '+' : '') + w.d.toFixed(2) + ')');
+    }
+
+    /* deck score from scratch for the current list (same J as the optimiser), so edits and history show a comparable number */
+    R.deckScore = () => {
+      const Wl = W.link != null ? +W.link : 1, tagKeys = new Set(tags.map(t => t.key));
+      const cnt = new Float64Array(PAIRS.length * 2);
+      const addSides = (c, q) => PAIRS.forEach((p, i) => { if (p.en(c)) cnt[2 * i] += q; if (p.pay(c)) cnt[2 * i + 1] += q; });
+      for (const c of cmds) addSides(c, 3);
+      let b = 0, mv = 0, n = 0; const rc = {};
+      for (const e of deck) { const a = analyze(e.c); if (!isBasic(e.c)) addSides(e.c, e.qty); for (const r of ROLES) if (a.roles[r]) rc[r] = (rc[r] || 0) + 1;
+        if (a.isLand) b += isBasic(e.c) ? 0 : landScore(e.c) * e.qty; else { b += base(e.c) * e.qty; mv += e.c.cmc * e.qty; n += e.qty; } }
+      let g = 0; PAIRS.forEach((p, i) => { const w = (cmds.some(c => p.en(c) || p.pay(c)) || tagKeys.has(p.key)) ? 1 : 0.35; g += w * 2 * Math.sqrt(cnt[2 * i] * cnt[2 * i + 1]); });
+      const sf = ROLES.reduce((s2, r) => s2 + Math.max(0, (+S.targets[r] || 0) - (rc[r] || 0)), 0);
+      return b + Wl * g - W.role * 2 * sf - W.curve * 8 * Math.max(0, Math.abs((n ? mv / n : T) - T) - 0.15);
+    };
+
+    /* 8. validate + auto-repair */
+    R._runBan = new Set();
+    const ctx = { db, S, CI, lim, cap, pcap, cur, price, combos, comboForbidden, mainSize, cmin, cmax, excludeSet, cmds };
+    for (let iter = 0; iter < 120; iter++) {
+      const v = await validate(R, ctx);
+      R.validation = v;
+      const fail = v.rules.find(r => r.pass === false && !r.stuck);
+      if (!fail) break;
+      if (fail.id === 'count') {
+        const n = size() + cmds.length;
+        if (n < 100) { addBasics(100 - n, 'repair: deck short'); L('Repair: added ' + (100 - n) + ' basic(s) to reach 100.'); continue; }
+        const victim = deck.filter(e => !e.locked).sort((a, b) => a.score - b.score)[0];
+        if (!victim) { fail.stuck = true; continue; }
+        if (victim.qty > 1) { victim.qty--; st.total -= (S.budget.inclBasics ? price(victim.c) || 0 : 0); } else removeEntry(victim);
+        L('Repair: removed 1 ' + victim.c.n + ' (deck over 100).');
+        continue;
+      }
+      const offenders = deck.filter(e => !e.locked && fail.offenders.includes(e.c.n)).sort((a, b) => a.score - b.score || (a.c.n < b.c.n ? -1 : 1));
+      if (!offenders.length) { R.warnings.push('Validation "' + fail.label + '" fails on locked/include cards or commanders only: ' + fail.offenders.join(', ') + '. Not auto-repaired.'); fail.stuck = true; R._stuck = (R._stuck || new Set()).add(fail.id); if (R._stuck.size > 10) break; continue; }
+      const victim = offenders[0];
+      removeEntry(victim); R._runBan.add(victim.c.n);
+      let rep = null;
+      if (isBasic(victim.c)) { /* budget: basics are the floor; drop to fewer? keep count */ addBasics(victim.qty); L('Repair (' + fail.label + '): re-added basics.'); continue; }
+      const va = analyze(victim.c);
+      const filt = va.isLand ? (c => landOK(c)) : (ROLES.includes(victim.slot) ? (c => !analyze(c).isLand && analyze(c).roles[victim.slot]) : (c => !analyze(c).isLand));
+      const cands = sortScored(pool.filter(c => !st.names.has(c.n) && filt(c)).map(c => ({ c, s: va.isLand ? landScore(c) : dyn(c) })));
+      for (const x of cands) {
+        if (fail.id === 'budget' && cap != null && (price(x.c) || 0) >= (price(victim.c) || 0)) continue;
+        if (!canAdd(x.c)) { rep = x; break; }
+      }
+      if (!rep && !va.isLand && ROLES.includes(victim.slot)) {
+        for (const x of sortScored(pool.filter(c => !st.names.has(c.n) && !analyze(c).isLand).map(c => ({ c, s: dyn(c) })))) { if (fail.id === 'budget' && cap != null && (price(x.c) || 0) >= (price(victim.c) || 0)) continue; if (!canAdd(x.c)) { rep = x; break; } }
+      }
+      if (rep) { add(rep.c, va.isLand ? 'land' : (ROLES.includes(victim.slot) && analyze(rep.c).roles[victim.slot] ? victim.slot : 'flex'), 1, rep.s, 'repair replacement'); L('Repair (' + fail.label + '): removed ' + victim.c.n + ' (score ' + victim.score.toFixed(2) + ') → ' + rep.c.n + ' (score ' + rep.s.toFixed(2) + ').'); }
+      else { addBasics(victim.qty, 'repair: no eligible replacement'); L('Repair (' + fail.label + '): removed ' + victim.c.n + '; no eligible replacement, added basic land.'); }
+    }
+    R.validation = await validate(R, ctx);
+    R.stats = stats(R, ctx);
+    R.ok = R.validation.rules.every(r => r.pass !== false);
+
+    /* session helpers for per-card actions */
+    R.ctx = ctx;
+    R.alternatives = function (entry, k) {
+      k = k || 5;
+      const a = analyze(entry.c);
+      const filt = a.isLand ? (c => landOK(c)) : (ROLES.includes(entry.slot) ? (c => !analyze(c).isLand && analyze(c).roles[entry.slot]) : (c => !analyze(c).isLand));
+      return sortScored(pool.filter(c => !st.names.has(c.n) && filt(c)).map(c => ({ c, s: a.isLand ? landScore(c) : dyn(c) })))
+        .filter(x => !canAdd(x.c, { replacing: entry })).slice(0, k).map(x => ({ c: x.c, s: x.s, why: reason(x.c, a.isLand ? 'land' : entry.slot) }));
+    };
+    R.replace = async function (entry, card, locked) {
+      removeEntry(entry);
+      const a = analyze(card);
+      const slot = a.isLand ? 'land' : (ROLES.includes(entry.slot) && a.roles[entry.slot] ? entry.slot : entry.slot === 'combo' ? 'flex' : entry.slot);
+      const e = add(card, slot, 1, a.isLand ? landScore(card) : dyn(card), 'manual swap for ' + entry.c.n, { locked: !!locked });
+      L('Manual swap: ' + entry.c.n + ' → ' + card.n + '.');
+      R.validation = await validate(R, ctx); R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
+      return e;
+    };
+    // one-copy swap (used by accepted recommendations): splits multi-copy entries such as basics
+    R.swapOne = async function (entry, card) {
+      if ((entry.qty || 1) > 1) {
+        entry.qty--; st.total -= (isBasic(entry.c) && !S.budget.inclBasics ? 0 : (price(entry.c) || 0));
+        const a = analyze(card);
+        add(card, a.isLand ? 'land' : 'flex', 1, a.isLand ? landScore(card) : dyn(card), 'accepted recommendation (replaces one ' + entry.c.n + ')', { locked: true });
+        L('Accepted recommendation: one ' + entry.c.n + ' → ' + card.n + '.');
+        R.validation = await validate(R, ctx); R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
+        return;
+      }
+      await R.replace(entry, card, true);
+    };
+    R.remove = async function (entry) {
+      const alts = R.alternatives(entry, 1);
+      bans.add(entry.c.n); R.bans = [...bans];
+      if (alts.length) return R.replace(entry, alts[0].c, false).then(e => { L('Removed ' + entry.c.n + ' by user; replaced with ' + e.c.n + '.'); return e; });
+      removeEntry(entry); addBasics(entry.qty, 'replacement for removed card'); L('Removed ' + entry.c.n + ' by user; no eligible replacement, added basic land.');
+      R.validation = await validate(R, ctx); R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
+      return null;
+    };
+    R.bans = [...bans];
+    return R;
+  }
+
+  /* ---------- validation ---------- */
+  async function validate(R, ctx) {
+    const { CI, lim, cap, pcap, cur, price, combos, comboForbidden, S, cmin, cmax, excludeSet, cmds } = ctx;
+    const rules = [];
+    const all = cmds.map(c => ({ c, qty: 1, cmd: true })).concat(R.deck);
+    const total = all.reduce((s, e) => s + e.qty, 0);
+    rules.push({ id: 'count', label: '100 cards', pass: total === 100, detail: total + ' cards (' + cmds.length + ' commander' + (cmds.length > 1 ? 's' : '') + ' + ' + (total - cmds.length) + ')', offenders: [] });
+    const counts = new Map(); for (const e of all) counts.set(e.c, (counts.get(e.c) || 0) + e.qty);
+    const dup = [...counts.entries()].filter(([c, n]) => n > analyze(c).exempt).map(([c]) => c.n);
+    const exemptUsed = [...counts.entries()].filter(([c, n]) => n > 1 && !isBasic(c)).map(([c, n]) => n + 'x ' + c.n);
+    rules.push({ id: 'singleton', label: 'Singleton', pass: dup.length === 0, detail: dup.length ? 'Duplicates: ' + dup.join(', ') : 'No duplicates except basics' + (exemptUsed.length ? ' and exempt cards (' + exemptUsed.join(', ') + ')' : ''), offenders: dup });
+    const offCI = R.deck.filter(e => !subsetCI(e.c.ci, CI)).map(e => e.c.n);
+    rules.push({ id: 'identity', label: 'Color identity', pass: offCI.length === 0, detail: offCI.length ? 'Outside ' + (CI || 'C') + ': ' + offCI.join(', ') : 'All cards within ' + (CI || 'colorless'), offenders: offCI });
+    const illegal = all.filter(e => e.c.leg !== 'legal').map(e => e.c.n + ' (' + e.c.leg + ')');
+    rules.push({ id: 'legality', label: 'Legality (Commander, not banned)', pass: illegal.length === 0, detail: illegal.length ? illegal.join(', ') : 'All cards legal per Scryfall legalities.commander', offenders: all.filter(e => e.c.leg !== 'legal').map(e => e.c.n) });
+    const ex = R.deck.filter(e => excludeSet.has(e.c.n)).map(e => e.c.n);
+    rules.push({ id: 'exclude', label: 'Exclude list respected', pass: ex.length === 0, detail: ex.length ? ex.join(', ') : 'No excluded cards present', offenders: ex });
+    let totalP = 0, unknown = [];
+    for (const e of all) { if (isBasic(e.c) && !S.budget.inclBasics) continue; const p = price(e.c); if (p == null) { if (!isBasic(e.c)) unknown.push(e.c.n); continue; } totalP += p * e.qty; }
+    R.totalPrice = totalP; R.unknownPrice = unknown;
+    if (cap != null || pcap != null) {
+      const overPer = pcap != null ? R.deck.filter(e => !isBasic(e.c) && price(e.c) != null && price(e.c) > pcap + 1e-9).map(e => e.c.n) : [];
+      const overTotal = cap != null && totalP > cap + 1e-9;
+      const offenders = overPer.length ? overPer : (overTotal ? R.deck.filter(e => !isBasic(e.c)).sort((a, b) => (price(b.c) || 0) - (price(a.c) || 0)).slice(0, 5).map(e => e.c.n) : []);
+      rules.push({ id: 'budget', label: 'Budget', pass: !overTotal && !overPer.length, detail: 'Total ' + fmt(totalP, cur) + (cap != null ? ' / cap ' + fmt(cap, cur) + (overTotal ? ' (over by ' + fmt(totalP - cap, cur) + ')' : '') : '') + (pcap != null ? '; per-card cap ' + fmt(pcap, cur) + (overPer.length ? ' exceeded by ' + overPer.join(', ') : ' respected') : '') + (unknown.length ? '; ' + unknown.length + ' card(s) without price' : ''), offenders });
+    } else rules.push({ id: 'budget', label: 'Budget', pass: true, detail: 'No cap set. Total ' + fmt(totalP, cur) + (unknown.length ? '; ' + unknown.length + ' card(s) without price' : ''), offenders: [] });
+    const flagged = k => all.filter(e => analyze(e.c).flags[k]);
+    const bparts = [], boff = [];
+    let bpass = true;
+    for (const k of ['gc', 'mld', 'xturn', 'tutor']) {
+      const f = flagged(k), n = f.reduce((s, e) => s + e.qty, 0);
+      const l = lim[k];
+      bparts.push(FLAGS[k].label + ' ' + n + '/' + (l >= 999 ? '∞' : l));
+      if (n > l) { bpass = false; f.forEach(e => { if (!e.cmd) boff.push(e.c.n); }); }
+    }
+    let comboPass = null, comboDetail = 'combo data unavailable (load the Commander Spellbook variants file)';
+    R.combos = [];
+    if (combos) {
+      try {
+        const found = await combos.find(all.map(e => e.c.n), cmds.map(c => c.n));
+        R.combos = found; R.comboStatus = combos.kind;
+        const twoInf = found.filter(v => v.inf && v.c.length <= 2);
+        const forbidden = found.filter(v => comboForbidden(v));
+        comboPass = twoInf.length <= lim.combo2 && !forbidden.length;
+        comboDetail = '2-card infinite ' + twoInf.length + '/' + (lim.combo2 >= 999 ? '∞' : lim.combo2) + '; ' + found.length + ' combo(s) detected' + (forbidden.length ? '; ' + forbidden.length + ' blocked by combo filter' : '');
+        if (!comboPass) { const bad = (forbidden.length ? forbidden : twoInf); for (const v of bad) for (const n of v.c) { const e = R.deck.find(x => nameKey(x.c.n) === nameKey(n) || nameKey(x.c.fn) === nameKey(n)); if (e && !boff.includes(e.c.n)) boff.push(e.c.n); } }
+      } catch (err) { comboDetail = 'combo lookup failed: ' + (err && err.message || err); R.comboStatus = 'error'; }
+    }
+    if (comboPass === false) bpass = false;
+    rules.push({ id: 'bracket', label: 'Bracket ' + S.bracket + ' limits', pass: bpass, detail: bparts.join('; ') + '; ' + comboDetail, offenders: boff, comboVerified: comboPass !== null });
+    const cr = R.deck.filter(e => analyze(e.c).creature).reduce((s, e) => s + e.qty, 0) + 0;
+    if (cmin != null || cmax != null) {
+      const okC = (cmin == null || cr >= cmin) && (cmax == null || cr <= cmax);
+      rules.push({ id: 'creatures', label: 'Creature count', pass: okC, detail: cr + ' creatures (range ' + (cmin != null ? cmin : 0) + '–' + (cmax != null ? cmax : '∞') + ')', offenders: cmax != null && cr > cmax ? R.deck.filter(e => analyze(e.c).creature).map(e => e.c.n) : [] });
+    }
+    return { rules, at: new Date().toISOString() };
+  }
+
+  /* ---------- stats ---------- */
+  function typeGroup(c) { const t = c.ft; for (const g of ['Land', 'Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Artifact', 'Enchantment']) if (new RegExp('\\b' + g + '\\b').test(t)) return g; return 'Other'; }
+  function stats(R, ctx) {
+    const { S, price, cur } = ctx;
+    const deck = R.deck;
+    const curve = [0, 0, 0, 0, 0, 0, 0, 0];
+    let mvSum = 0, mvN = 0;
+    const pp = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+    const src = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+    for (const c of R.commanders) { const p = pips(c.mc); for (const k in pp) pp[k] += p[k]; }
+    for (const e of deck) {
+      const a = analyze(e.c);
+      if (!a.isLand) { curve[Math.min(7, Math.floor(e.c.cmc))] += e.qty; mvSum += e.c.cmc * e.qty; mvN += e.qty; const p = pips(e.c.mc); for (const k in pp) pp[k] += p[k] * e.qty; }
+      if (a.isLand || a.roles.ramp) {
+        let cols = e.c.pm.slice();
+        if (a.land === 'fetch') { const map = { plains: 'W', island: 'U', swamp: 'B', mountain: 'R', forest: 'G' }; cols = /basic land/.test(e.c.low) ? R.CI.split('') : (e.c.low.match(/plains|island|swamp|mountain|forest/g) || []).map(x => map[x]); }
+        if (a.land === 'command' || /mana of any (?:one )?colou?r/.test(e.c.low)) cols = R.CI.split('');
+        for (const x of new Set(cols)) if (src[x] != null && (R.CI.includes(x) || x === 'C')) src[x] += e.qty;
+      }
+    }
+    const roles = {};
+    for (const r of ROLES) roles[r] = { have: deck.filter(e => analyze(e.c).roles[r]).length, target: +S.targets[r] || 0 };
+    roles.lands = { have: deck.reduce((s, e) => s + (analyze(e.c).isLand ? e.qty : 0), 0), target: +S.targets.lands || 0 };
+    const gcs = R.commanders.concat(deck.map(e => e.c)).filter(c => c.gc).map(c => c.n);
+    const creatures = deck.filter(e => analyze(e.c).creature).reduce((s, e) => s + e.qty, 0);
+    return { curve, avgMV: mvN ? mvSum / mvN : 0, pips: pp, sources: src, roles, gcs, creatures, total: R.totalPrice, unknown: R.unknownPrice, cur };
+  }
+
+  function fmt(v, cur) { if (v == null) return '—'; const s = cur === 'eur' ? '€' : cur === 'tix' ? '' : '$'; return cur === 'tix' ? v.toFixed(2) + ' tix' : s + v.toFixed(2); }
+
+  /* ---------- exports ---------- */
+  function exportDeck(R, fmtName) {
+    const cmds = R.commanders, deck = R.deck.slice().sort((a, b) => a.c.n < b.c.n ? -1 : 1);
+    const front = n => n.split(' // ')[0];
+    const lines = [];
+    switch (fmtName) {
+      case 'plain': cmds.forEach(c => lines.push('1 ' + c.n)); deck.forEach(e => lines.push(e.qty + ' ' + e.c.n)); break;
+      case 'arena': lines.push('Commander'); cmds.forEach(c => lines.push('1 ' + c.n)); lines.push('', 'Deck'); deck.forEach(e => lines.push(e.qty + ' ' + e.c.n)); break;
+      case 'archidekt': cmds.forEach(c => lines.push('1x ' + c.n + ' [Commander{top}]')); deck.forEach(e => lines.push(e.qty + 'x ' + e.c.n)); break;
+      case 'mtgo': deck.forEach(e => lines.push(e.qty + ' ' + front(e.c.n))); lines.push(''); cmds.forEach(c => lines.push('1 ' + front(c.n))); break;
+      case 'csv': {
+        const q = s => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+        lines.push(['Quantity', 'Name', 'Section', 'ManaCost', 'MV', 'Type', 'Slot', 'Roles', 'Price', 'Currency', 'EDHRECRank', 'GameChanger', 'Reason'].join(','));
+        const row = (c, qty, sec, slot, why) => lines.push([qty, q(c.n), sec, q(c.mc), c.cmc, q(c.tl), slot, q(Object.keys(analyze(c).roles).join(' ')), c.p[R.stats.cur] == null ? '' : c.p[R.stats.cur], R.stats.cur.toUpperCase(), c.rank == null ? '' : c.rank, c.gc ? 1 : 0, q(why)].join(','));
+        cmds.forEach(c => row(c, 1, 'Commander', 'commander', ''));
+        deck.forEach(e => row(e.c, e.qty, 'Main', e.slot, e.why));
+        break;
+      }
+    }
+    return lines.join('\n') + '\n';
+  }
+
+  /* ---------- enabler / payoff synergy pairs (used by the generator's optimiser and by the analysis) ---------- */
+  const PAIRS = [
+    { key: 'tokens', label: 'Tokens', en: c => /\bcreates? [^.]*tokens?/.test(c.low), pay: c => /tokens? you control|whenever (?:a|another|one or more) (?:nontoken )?(?:creature|token)s? (?:you control )?enters|\bpopulate|creatures you control get \+/.test(c.low), enDesc: 'creates tokens', payDesc: 'rewards tokens / creatures entering / anthem' },
+    { key: 'aristocrats', label: 'Sacrifice', en: c => /sacrifice (?:a|another|an?(?: \w+)?) (?:creature|permanent|artifact)[^.:]*:/.test(c.low) || /\bcreates? [^.]*creature tokens?/.test(c.low), pay: c => /whenever [^.]{0,50}(?:dies|is put into a graveyard from the battlefield)|whenever you sacrifice/.test(c.low), enDesc: 'sacrifice outlet or creature-token fodder', payDesc: 'death / sacrifice triggers' },
+    { key: 'counters', label: '+1/+1 counters', en: c => /put (?:a|one|two|three|x|that many|\w+) \+1\/\+1 counters?|\bproliferate|enters (?:the battlefield )?with [^.]*\+1\/\+1 counters?/.test(c.low), pay: c => /(?:with|has|have) (?:a|one or more) \+1\/\+1 counters? on (?:it|them)|for each \+1\/\+1 counter|whenever (?:one or more )?\+1\/\+1 counters? (?:are|is) put|double the number of [^.]*counters/.test(c.low), enDesc: 'places counters / proliferate', payDesc: 'rewards creatures with counters' },
+    { key: 'spells', label: 'Instants & sorceries', en: c => /\b(?:Instant|Sorcery)\b/.test(c.ft), pay: c => /whenever you cast (?:an|a) (?:instant|sorcery|noncreature)|\bmagecraft|instant (?:or|and) sorcery spells? you cast|copy target (?:instant|sorcery)/.test(c.low), enDesc: 'instant or sorcery card', payDesc: 'cast/copy triggers for spells' },
+    { key: 'landfall', label: 'Landfall', en: c => /play (?:an|two) additional lands?|search your library for [^.]*land cards?[\s\S]{0,120}?onto the battlefield|return [^.]*land cards? from your graveyard to the battlefield/.test(c.low) || analyze(c).land === 'fetch', pay: c => /\blandfall|whenever a land (?:you control )?enters|whenever one or more lands (?:you control )?enter/.test(c.low), enDesc: 'extra land drops / land to battlefield / fetch', payDesc: 'landfall triggers' },
+    { key: 'graveyard', label: 'Graveyard', en: c => /\bmills?\b|\bsurveil|\bdiscard (?:a|two|x|that many|your hand)|put the top [^.]* into your graveyard|\bdredge/.test(c.low), pay: c => /from your graveyard|cards? in your graveyard|\bflashback|\bescape|\bdelve|\bunearth|\bembalm|\beternalize/.test(c.low) || ['flashback', 'escape', 'delve', 'unearth', 'embalm', 'eternalize'].some(k => c.kw.includes(k)), enDesc: 'fills your graveyard', payDesc: 'uses cards in your graveyard' },
+    { key: 'artifacts', label: 'Artifacts', en: c => /\bArtifact\b/.test(c.ft) || /creates? [^.]*(?:treasure|clue|food|blood|map|powerstone)/.test(c.low), pay: c => /artifacts? you control|whenever (?:an|another|one or more) (?:nontoken )?artifacts?|for each artifact|artifact spells? you cast/.test(c.low), enDesc: 'artifact or artifact token maker', payDesc: 'artifact-count / artifact triggers' },
+    { key: 'enchantments', label: 'Enchantments', en: c => /\bEnchantment\b/.test(c.ft), pay: c => /enchantments? you control|whenever you cast an enchantment|\bconstellation|whenever (?:an|another) enchantment/.test(c.low), enDesc: 'enchantment card', payDesc: 'enchantment triggers / count' },
+    { key: 'lifegain', label: 'Lifegain', en: c => /\bgain (?:\d+|x|that much|life equal)[^.]*life|\blifelink/.test(c.low) || c.kw.includes('lifelink'), pay: c => /whenever you gain life|for each 1 life you gained|life you gained this turn/.test(c.low), enDesc: 'gains life', payDesc: 'lifegain triggers' },
+    { key: 'blink', label: 'Blink / ETB', en: c => /\bexile [^.]*you control[^.]*\.?[^.]*return (?:it|that card|them|those cards) to the battlefield|\bflicker/.test(c.low), pay: c => analyze(c).creature && /when (?:~|this creature) enters/.test(c.low), enDesc: 'flickers permanents', payDesc: 'creature with enter trigger' },
+    { key: 'draw', label: 'Draw triggers', en: c => !!analyze(c).roles.draw, pay: c => /whenever you draw/.test(c.low), enDesc: 'draws cards', payDesc: 'draw triggers' }
+  ];
+
+  return { cardPower, POWER_PREF, PAIRS, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
+    norm, buildDB, lookup, nameKey, parseList, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
+    spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes };
+})();
+if (typeof module !== 'undefined') module.exports = Engine;
+</script>
+<script>
+/* ===== Similar: card-to-card similarity for the card explorer =====
+   Every score is computed from the loaded Scryfall data with the generator's own rules (Engine.ROLE_RULES, FLAGS, TAGS) plus
+   the mechanic detectors below. A match is a weighted mean of four parts, each 0–1:
+     mechanics = ½ · cosine of TF-IDF rules-text vectors (words and word pairs) + ½ · IDF-weighted Jaccard of shared mechanics
+     mana cost = 0.6 · (1 − |ΔMV| / 4) + 0.4 · Jaccard of colour identities (both colourless = 1)
+     type      = 0.7 · Jaccard of card types + 0.2 · Jaccard of subtypes + 0.1 · same legendary status
+     stats     = 1 − (|Δpower| + |Δtoughness|) / 8, or 1 − |Δloyalty| / 5 (only when the chosen card has P/T or loyalty)
+   Stats are left out when the chosen card has no P/T or loyalty, and the rest are re-weighted. A card with no rules text
+   matches other cards with no rules text on mechanics (1) and nothing else (0). */
+const Similar = (function () {
+  'use strict';
+  const E = typeof Engine !== 'undefined' ? Engine : require('./engine.js');
+
+  /* ---------- rules text → terms ---------- */
+  const STOP = new Set('a an the of to and or that this it its is are be on in for with as at by'.split(' '));
+  function words(low) {
+    return String(low || '')
+      .replace(/\{t\}/g, ' tapsym ').replace(/\{q\}/g, ' untapsym ').replace(/\{e\}/g, ' energysym ').replace(/\{[^}]+\}/g, ' manasym ')
+      .replace(/\+(?:\d+|x)\/\+(?:\d+|x)/g, ' pluspt ').replace(/-(?:\d+|x)\/-(?:\d+|x)/g, ' minuspt ')
+      .replace(/'s\b/g, '').replace(/\d+/g, ' num ').replace(/~/g, ' self ').replace(/[^a-z' ]+/g, ' ')
+      .split(/\s+/).filter(w => w && !STOP.has(w) && w !== "'");
+  }
+  function terms(low) {
+    const w = words(low), out = new Map();
+    for (let i = 0; i < w.length; i++) {
+      out.set(w[i], (out.get(w[i]) || 0) + 1);
+      if (i) { const b = w[i - 1] + ' ' + w[i]; out.set(b, (out.get(b) || 0) + 1); }
+    }
+    return out;
+  }
+
+  /* ---------- mechanics: [id, label, group, test on rules text] ---------- */
+  const MECH = [
+    ['etb', 'Enters trigger', 'Triggers', /\bwhen(?:ever)? (?:~|this (?:creature|permanent|artifact|enchantment|land|vehicle))[^.]{0,30}? enters\b/],
+    ['enters-other', 'Others entering', 'Triggers', /\bwhenever (?:a|an|another|one or more)\b[^.]{0,60}? enters?\b/],
+    ['dies', 'Death trigger', 'Triggers', /\bwhen(?:ever)? [^.]{0,60}?\bdies\b|\bis put into (?:a|your|an opponent's) graveyard from the battlefield/],
+    ['attacks', 'Attack trigger', 'Triggers', /\bwhen(?:ever)? [^.]{0,60}?\battacks?\b/],
+    ['combat-dmg', 'Combat damage trigger', 'Triggers', /deals combat damage to (?:a player|an opponent|one or more players|that player|a player or planeswalker)/],
+    ['cast-trig', 'Cast trigger', 'Triggers', /\bwhen(?:ever)? (?:you|a player|an opponent) casts?\b/],
+    ['phase-trig', 'Upkeep / end step trigger', 'Triggers', /\bat the beginning of (?:your|each|the|each opponent|each player)[^.]{0,20}?(?:upkeep|end step|combat|main phase|draw step)/],
+    ['ltb', 'Leaves the battlefield', 'Triggers', /leaves the battlefield/],
+    ['sac-trig', 'Sacrifice trigger', 'Triggers', /whenever you sacrifice/],
+    ['lifegain-trig', 'Lifegain trigger', 'Triggers', /whenever you gain life/],
+    ['draw-trig', 'Draw trigger', 'Triggers', /whenever (?:you|a player|an opponent) draws?/],
+    ['landfall', 'Landfall', 'Triggers', /\blandfall\b|whenever (?:a|one or more) lands? (?:you control )?enters?/],
+    ['sac-outlet', 'Sacrifice outlet', 'Abilities', /sacrifice (?:a|an|another|one|two|x)\b[^.:]{0,40}:/],
+    ['tap-ab', 'Tap ability', 'Abilities', /\{t\}[^:.]{0,40}:/],
+    ['untap', 'Untap effects', 'Abilities', /\buntap (?:target|all|up to|each|it|~|another|those|that|two|one)\b/],
+    ['cost-red', 'Cost reduction', 'Abilities', /\bcosts? (?:\{[^}]+\})+ less|\bcost (?:\{[^}]+\})+ less|\bcosts? x less|less to cast/],
+    ['free-cast', 'Cast without paying', 'Abilities', /without paying (?:its|their|that card's|that spell's|this spell's|the) mana costs?/],
+    ['cast-exile', 'Play from exile', 'Abilities', /(?:play|cast) [^.]{0,50}(?:from exile|exiled with|cards? exiled)/],
+    ['copy', 'Copy effects', 'Abilities', /\bcopy (?:target|that|it|each|the next|this)\b|\bcopies of\b|that's a copy|becomes a copy/],
+    ['anthem', 'Anthem (+N/+N)', 'Abilities', /you control get \+\d|creatures you control get \+/],
+    ['evasion', 'Grants evasion', 'Abilities', /(?:gains?|have|has) (?:flying|trample|menace|shadow|fear|intimidate|horsemanship)|can't be blocked/],
+    ['replace', 'Replacement effect', 'Abilities', /\bwould\b[^.]*(?:\binstead\b|that many plus|twice that many|plus one)/],
+    ['doubler', 'Doubling', 'Abilities', /\btwice that many\b|\bdouble (?:the|that|its|their|target)\b|deals double/],
+    ['modal', 'Modal (choose)', 'Abilities', /\bchoose (?:one|two|three|one or more|any number)\b/],
+    ['lifeloss', 'Life loss', 'Abilities', /\b(?:loses?|lose) (?:\d+|x|that much|half) life/],
+    ['discard', 'Discard', 'Abilities', /\bdiscards?\b/],
+    ['top-lib', 'Top of library', 'Abilities', /top (?:card|\w+ cards|x cards) of (?:your|their|target player's|each player's|that player's) library/],
+    ['monarch', 'Monarch', 'Abilities', /\bmonarch\b/],
+    ['initiative', 'Initiative', 'Abilities', /\binitiative\b/],
+    ['energy', 'Energy', 'Abilities', /\{e\}/],
+    ['x-cost', 'X spell', 'Abilities', null, c => /\{X\}/.test(c.mc), /\bx\b/]
+  ];
+  const ROLE_LABEL = {
+    'ramp-mana': 'Mana ability', 'ramp-land': 'Land ramp', 'ramp-drop': 'Extra land drop', 'draw-n': 'Card draw', 'draw-impulse': 'Impulse draw',
+    'rm-destroy': 'Targeted destroy / exile', 'rm-burn': 'Burn removal', 'rm-bounce': 'Bounce', 'rm-counter': 'Counterspell', 'rm-shrink': '−N/−N removal',
+    'rm-edict': 'Edict', 'rm-fight': 'Fight / bite', 'wipe-all': 'Board wipe', 'wipe-shrink': '−N/−N sweeper', 'wipe-dmg': 'Damage sweeper',
+    'wipe-bounce': 'Mass bounce', 'wipe-sac': 'Mass sacrifice', 'prot-team': 'Team protection', 'prot-target': 'Targeted protection',
+    'prot-self': 'Hexproof / phasing', 'prot-equip': 'Protective equipment / aura', 'rec-return': 'Graveyard return', 'rec-reanimate': 'Reanimation',
+    'rec-cast': 'Cast from graveyard', 'win-alt': 'Alternate win', 'win-drain': 'Drain opponents', 'win-ping': 'Damage each opponent',
+    'win-overrun': 'Overrun', 'win-combat': 'Extra combat', 'win-double': 'Damage doubling', 'win-infect': 'Infect / poison'
+  };
+  const FLAG_IDS = ['tutor', 'fast', 'stax', 'xturn', 'mld'];
+  const THEME_IDS = ['aristocrats', 'spellslinger', 'voltron', 'reanimator', 'lifegain', 'artifacts', 'enchantress', 'blink', 'wheels', 'superfriends', 'burn', 'graveyard', 'combat'];
+  const TOKEN_KINDS = ['treasure', 'food', 'clue', 'blood', 'map', 'powerstone', 'gold', 'incubator', 'junk', 'shard', 'role'];
+  const CTR_SKIP = new Set(['a', 'an', 'the', 'that', 'those', 'these', 'its', 'their', 'each', 'all', 'any', 'more', 'of', 'no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'x', 'many', 'additional', 'other', 'another', 'different', 'kind', 'type', 'such', 'his', 'her', 'your', 'with', 'single', 'same', 'number', 'total', 'put', 'remove', 'kinds', 'types', 'or', 'and', 'of', 'twice', 'half', 'n', 'distributed', 'divided', 'those', 'additional', 'them']);
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // Definition of one mechanic id: label, group, and a test that also works on a single line of rules text (for focus).
+  const DEF = new Map();
+  for (const [id, label, group, re, cardTest, lineRe] of MECH) DEF.set('m:' + id, { label, group, card: cardTest || (c => re.test(c.low)), line: l => (lineRe || re).test(l) });
+  for (const role of E.ROLES) for (const r of E.ROLE_RULES[role]) if (ROLE_LABEL[r.id]) DEF.set('r:' + r.id, { label: ROLE_LABEL[r.id], group: 'Roles', card: c => r.test(c), line: l => r.test({ low: l, kw: [], ft: '', pow: null }) });
+  for (const f of FLAG_IDS) DEF.set('f:' + f, { label: E.FLAGS[f].label, group: 'Roles', card: c => !!E.analyze(c).flags[f], line: l => E.FLAGS[f].test({ low: l, kw: [], ft: 'Artifact', cmc: 9 }) });
+  for (const t of THEME_IDS) { const T = E.TAGS[t]; if (T && T.re) DEF.set('t:' + t, { label: T.label, group: 'Themes', card: c => T.re.test(c.low), line: l => T.re.test(l) }); }
+  function defOf(id) {
+    let d = DEF.get(id); if (d) return d;
+    const [k, v] = [id.slice(0, id.indexOf(':')), id.slice(id.indexOf(':') + 1)];
+    if (k === 'kw') { const re = new RegExp('\\b' + escRe(v) + '\\b'); d = { label: cap(v), group: 'Keywords', card: c => c.kw.includes(v), line: l => re.test(l) }; }
+    else if (k === 'ctr') { const re = new RegExp(escRe(v) + ' counters?\\b'); d = { label: (v === '+1/+1' || v === '-1/-1' ? v : cap(v)) + ' counters', group: 'Counters and tokens', card: c => re.test(c.low), line: l => re.test(l) }; }
+    else if (k === 'tok') { const re = v === 'creature' ? /creates? [^.]*creature tokens?/ : v === 'copy' ? /token that's a copy|tokens? that are copies/ : new RegExp('creates? [^.]*\\b' + escRe(v) + '\\b'); d = { label: v === 'creature' ? 'Creature tokens' : v === 'copy' ? 'Token copies' : cap(v) + ' tokens', group: 'Counters and tokens', card: c => re.test(c.low), line: l => re.test(l) }; }
+    else d = { label: id, group: 'Other', card: () => false, line: () => false };
+    DEF.set(id, d); return d;
+  }
+  // All mechanic ids of one card.
+  function mechanics(c) {
+    const out = [];
+    if (!c.low && !c.kw.length && !/\{X\}/.test(c.mc)) return out;
+    for (const [id, d] of DEF) if (/^(?:m|r|f|t):/.test(id) && d.card(c)) out.push(id);
+    for (const k of c.kw) out.push('kw:' + k);
+    const re = /(\+1\/\+1|-1\/-1|[a-z]+) counters?\b/g; let m; const ctr = new Set();
+    while ((m = re.exec(c.low))) if (!CTR_SKIP.has(m[1])) ctr.add(m[1]);
+    for (const x of ctr) out.push('ctr:' + x);
+    const tr = /creates? ([^.]*?)tokens?\b/g; const tok = new Set();
+    while ((m = tr.exec(c.low))) { const ph = m[1]; for (const k of TOKEN_KINDS) if (new RegExp('\\b' + k + '\\b').test(ph)) tok.add(k); if (/\bcreature\b/.test(ph)) tok.add('creature'); }
+    if (/token that's a copy|tokens? that are copies/.test(c.low)) tok.add('copy');
+    for (const x of tok) out.push('tok:' + x);
+    return [...new Set(out)];
+  }
+
+  /* ---------- type, stats ---------- */
+  const TYPES = ['Creature', 'Artifact', 'Enchantment', 'Instant', 'Sorcery', 'Land', 'Planeswalker', 'Battle', 'Kindred'];
+  function typeInfo(c) {
+    const ft = c.ft || '', [left, right] = ft.split('—');
+    return { types: TYPES.filter(t => new RegExp('\\b' + t + '\\b').test(left || '')), subs: (right || '').trim().split(/\s+/).filter(Boolean), leg: /\bLegendary\b/.test(left || '') };
+  }
+  function statsOf(c) {
+    const pt = /^([^/\s]+)\/([^/\s]+)$/.exec(c.pt || ''), ly = /^Loyalty (\S+)$/.exec(c.pt || '');
+    const n = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
+    if (pt) return { kind: 'pt', p: n(pt[1]), t: n(pt[2]) };
+    if (ly) return { kind: 'loy', l: n(ly[1]) };
+    return null;
+  }
+  const jacc = (A, B) => { if (!A.length && !B.length) return 1; let i = 0; for (const x of A) if (B.includes(x)) i++; return i / (A.length + B.length - i); };
+
+  /* ---------- index: built once per card file ---------- */
+  async function build(db, onProgress) {
+    const cards = db.all, N = cards.length, tick = async i => { if (i % 3000 === 0) { if (onProgress) onProgress(i / N / 2 + (tick.half ? 0.5 : 0)); await new Promise(r => setTimeout(r, 0)); } };
+    const df = new Map();
+    for (let i = 0; i < N; i++) { for (const t of terms(cards[i].low).keys()) df.set(t, (df.get(t) || 0) + 1); await tick(i); }
+    const vocab = new Map(), idf = [];
+    for (const [t, d] of df) if (d >= 2 && d <= N * 0.4) { vocab.set(t, idf.length); idf.push(Math.log(N / d)); }
+    tick.half = true;
+    const off = new Int32Array(N + 1), ids = [], ws = [];
+    const fids = new Map(), fdf = [], fOff = new Int32Array(N + 1), fl = [];
+    const tinfo = new Array(N), sinfo = new Array(N);
+    for (let i = 0; i < N; i++) {
+      const c = cards[i], tm = terms(c.low), row = [];
+      let norm = 0;
+      for (const [t, n] of tm) { const id = vocab.get(t); if (id == null) continue; const w = (1 + Math.log(n)) * idf[id]; row.push([id, w]); norm += w * w; }
+      norm = Math.sqrt(norm) || 1; row.sort((a, b) => a[0] - b[0]);
+      for (const [id, w] of row) { ids.push(id); ws.push(w / norm); }
+      off[i + 1] = ids.length;
+      for (const f of mechanics(c)) { let k = fids.get(f); if (k == null) { k = fdf.length; fids.set(f, k); fdf.push(0); } fdf[k]++; fl.push(k); }
+      fOff[i + 1] = fl.length;
+      tinfo[i] = typeInfo(c); sinfo[i] = statsOf(c);
+      await tick(i);
+    }
+    const fname = []; for (const [f, k] of fids) fname[k] = f;
+    const fw = Float32Array.from(fdf, d => Math.log((N + 1) / d));
+    const pos = new Map(); cards.forEach((c, i) => pos.set(c, i));
+    if (onProgress) onProgress(1);
+    return { cards, N, vocab, idf: Float32Array.from(idf), off, ids: Int32Array.from(ids), ws: Float32Array.from(ws), fname, fids, fw, fOff, fl: Int32Array.from(fl), tinfo, sinfo, pos };
+  }
+  function cardFeats(X, i) { return X.fl.subarray(X.fOff[i], X.fOff[i + 1]); }
+  function vecOf(X, low) {
+    const tm = terms(low), v = new Map(); let norm = 0;
+    for (const [t, n] of tm) { const id = X.vocab.get(t); if (id == null) continue; const w = (1 + Math.log(n)) * X.idf[id]; v.set(id, w); norm += w * w; }
+    norm = Math.sqrt(norm) || 1; for (const [k, w] of v) v.set(k, w / norm); return v;
+  }
+  const cosMap = (a, b) => { let s = 0; const [x, y] = a.size < b.size ? [a, b] : [b, a]; for (const [k, w] of x) { const u = y.get(k); if (u) s += w * u; } return s; };
+  const lines = low => String(low || '').split('\n').map(s => s.trim()).filter(Boolean);
+  function focusText(c, fid) { const d = defOf(fid), L = lines(c.low).filter(l => d.line(l)); return L.length ? L.join('\n') : c.low; }
+
+  /* ---------- ranking ----------
+     opts: { weights: {mech, cost, type, stats}, focus: mechanic id or '', filter: c => boolean, limit } */
+  function rank(X, card, opts) {
+    opts = opts || {};
+    const W = Object.assign({ mech: 60, cost: 20, type: 12, stats: 8 }, opts.weights || {});
+    const qi = X.pos.get(card); if (qi == null) return { list: [], parts: {} };
+    const q = new Float32Array(X.idf.length), qo = X.off[qi], qe = X.off[qi + 1];
+    for (let j = qo; j < qe; j++) q[X.ids[j]] = X.ws[j];
+    const hasText = qe > qo;
+    const qf = cardFeats(X, qi), qfs = new Set(qf); let qfw = 0; for (const k of qf) qfw += X.fw[k];
+    const hasFeat = qf.length > 0;
+    const qt = X.tinfo[qi], qs = X.sinfo[qi], qci = card.ci.split('');
+    const vanilla = !hasText && !hasFeat; // no rules text: other cards without rules text match on mechanics, the rest do not
+    const use = { mech: W.mech > 0, cost: W.cost > 0, type: W.type > 0, stats: !!qs && W.stats > 0 };
+    const wsum = (use.mech ? W.mech : 0) + (use.cost ? W.cost : 0) + (use.type ? W.type : 0) + (use.stats ? W.stats : 0) || 1;
+    const focus = opts.focus || '', fk = focus ? X.fids.get(focus) : null;
+    const qFocus = focus ? vecOf(X, focusText(card, focus)) : null;
+    const filter = opts.filter || (() => true), out = [];
+    for (let i = 0; i < X.N; i++) {
+      if (i === qi) continue;
+      const c = X.cards[i]; if (c.oid === card.oid || !filter(c)) continue;
+      const cf = cardFeats(X, i);
+      if (focus && (fk == null || !cf.includes(fk))) continue;
+      let text = 0; for (let j = X.off[i], e = X.off[i + 1]; j < e; j++) { const v = q[X.ids[j]]; if (v) text += v * X.ws[j]; }
+      let inter = 0, uni = qfw; for (const k of cf) { if (qfs.has(k)) inter += X.fw[k]; else uni += X.fw[k]; }
+      const feat = uni ? inter / uni : 0;
+      text = Math.min(1, text);
+      const mech = vanilla ? (X.off[i + 1] === X.off[i] && !cf.length ? 1 : 0) : hasText && hasFeat ? 0.5 * text + 0.5 * feat : hasText ? text : feat;
+      const cost = 0.6 * Math.max(0, 1 - Math.abs(c.cmc - card.cmc) / 4) + 0.4 * jacc(qci, c.ci.split(''));
+      const ti = X.tinfo[i], type = 0.7 * jacc(qt.types, ti.types) + 0.2 * jacc(qt.subs, ti.subs) + 0.1 * (qt.leg === ti.leg ? 1 : 0);
+      let stats = 0; const si = X.sinfo[i];
+      if (qs && si && qs.kind === si.kind) stats = qs.kind === 'pt' ? Math.max(0, 1 - (Math.abs(qs.p - si.p) + Math.abs(qs.t - si.t)) / 8) : Math.max(0, 1 - Math.abs(qs.l - si.l) / 5);
+      const parts = { mech: use.mech ? mech : null, cost: use.cost ? cost : null, type: use.type ? type : null, stats: use.stats ? stats : null };
+      const overall = ((use.mech ? W.mech * mech : 0) + (use.cost ? W.cost * cost : 0) + (use.type ? W.type * type : 0) + (use.stats ? W.stats * stats : 0)) / wsum;
+      out.push({ c, i, overall, score: overall, text, feat, parts });
+    }
+    out.sort((a, b) => b.score - a.score);
+    let list = out;
+    if (focus) {
+      // focus: half the score is how alike the two cards' lines with that mechanic are, half the overall match
+      const pre = out.slice(0, Math.max(400, opts.limit || 0));
+      for (const r of pre) { r.focus = Math.min(1, cosMap(qFocus, vecOf(X, focusText(r.c, focus)))); r.score = 0.5 * r.focus + 0.5 * r.overall; }
+      pre.sort((a, b) => b.score - a.score); list = pre;
+    }
+    list = list.slice(0, opts.limit || 100);
+    for (const r of list) r.shared = [...cardFeats(X, r.i)].filter(k => qfs.has(k)).sort((a, b) => X.fw[b] - X.fw[a]).map(k => X.fname[k]);
+    return { list, total: out.length, use, W };
+  }
+  // Mechanic ids of a card, rarest first (most distinctive), with labels and groups.
+  function cardMechanics(X, card) {
+    const i = X.pos.get(card); if (i == null) return [];
+    return [...cardFeats(X, i)].sort((a, b) => X.fw[b] - X.fw[a]).map(k => { const id = X.fname[k], d = defOf(id); return { id, label: d.label, group: d.group, cards: Math.round((X.N + 1) / Math.exp(X.fw[k])) }; });
+  }
+
+  /* ---------- 2-card combos from Commander Spellbook (Engine.localComboProvider) ---------- */
+  function combos(provider, name) {
+    const list = provider && provider.byCard.get(name) || [];
+    const two = [], seen = new Set(); let more = 0;
+    for (const v of list) {
+      if (seen.has(v.id)) continue; seen.add(v.id);
+      const u = [...new Set(v.c)];
+      if (u.length === 2) two.push({ v, partner: u.find(n => n !== name) }); else if (u.length > 2) more++;
+    }
+    two.sort((a, b) => (b.v.pop || 0) - (a.v.pop || 0) || a.v.r - b.v.r);
+    return { two, more };
+  }
+
+  return { words, terms, mechanics, defOf, typeInfo, statsOf, build, rank, cardMechanics, combos, focusText };
+})();
+if (typeof module !== 'undefined') module.exports = Similar;
+</script>
+<script>
+/* ===== Card explorer: search a card, see its parts, similar cards (Similar.rank) and 2-card combos (Commander Spellbook) ===== */
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const W0 = { mech: 60, cost: 20, type: 12, stats: 8 };
+  const CX = { bulk: null, X: null, combos: null, sbData: null, card: null, tab: 'similar', focus: '', W: Object.assign({}, W0), F: { colors: 'any', type: 'any', max: '', legal: true }, sort: 'match', n: 30, img: 'on' };
+  window.CardExplorer = CX;
+
+  /* ---------- storage (same database and keys as the deck generator, so a file loaded on one page is reused on the other) ---------- */
+  const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } } };
+  const IDB = {
+    open() { return new Promise((res, rej) => { try { const r = indexedDB.open('edhgen', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); },
+    async put(k, v) { try { const db = await IDB.open(); await new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); return true; } catch (e) { return false; } },
+    async get(k) { try { const db = await IDB.open(); return await new Promise((res, rej) => { const tx = db.transaction('kv', 'readonly'); const r = tx.objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); } catch (e) { return null; } }
+  };
+  function setStatus(t) { $('status').textContent = t || ''; $('statusBar').classList.toggle('hidden', !t); }
+
+  /* ---------- card data: the newest Scryfall file listed in data/index.json, else the copy stored in this browser ---------- */
+  const NORM_V = 2; // must match the generator's NORM_V so both pages accept each other's stored copy
+  const BULK_RE = /^(?:oracle-cards|default-cards|all-cards|unique-artwork|cards)[\w.-]*\.jsonl?(?:\.gz)?$/i;
+  const pickNewest = files => { const ok = files.filter(f => BULK_RE.test(f.name)); const rank = n => /^oracle/i.test(n) ? 0 : /^default/i.test(n) ? 1 : 2; ok.sort((a, b) => rank(a.name) - rank(b.name) || (a.name < b.name ? 1 : -1)); return ok[0] || null; };
+  async function repoFile() {
+    if (!window.EDH_SITE || !/^https?:$/.test(location.protocol)) return null;
+    try {
+      const r = await fetch('data/index.json', { cache: 'no-cache' });
+      if (r.ok) { const ix = await r.json(); const f = ix && Array.isArray(ix.files) ? pickNewest(ix.files.map(x => ({ name: x.name, size: x.size, sha: x.sha256 }))) : null; if (f) return { url: 'data/' + f.name, tag: f.sha, size: f.size }; }
+    } catch (e) { }
+    return null;
+  }
+  async function readCards(res, url, size) {
+    const gz = /\.gz$/.test(url) && !/gzip/i.test(res.headers.get('content-encoding') || '');
+    if (gz && typeof DecompressionStream === 'undefined') throw new Error('this browser cannot unzip ' + url);
+    const reader = (gz ? res.body.pipeThrough(new DecompressionStream('gzip')) : res.body).pipeThrough(new TextDecoderStream()).getReader();
+    const out = []; let buf = '', read = 0, parsed = 0;
+    const handle = line => { let t = line.trim(); if (t.endsWith(',')) t = t.slice(0, -1); if (t[0] !== '{' || t[t.length - 1] !== '}') return; try { const n = Engine.norm(JSON.parse(t)); parsed++; if (n) out.push(n); } catch (e) { } };
+    for (; ;) {
+      const { done, value } = await reader.read(); if (done) break;
+      buf += value; read += value.length;
+      let i; while ((i = buf.indexOf('\n')) >= 0) { handle(buf.slice(0, i)); buf = buf.slice(i + 1); }
+      setStatus('Reading card data… ' + Math.min(99, Math.round(read / Math.max(1, (gz ? size * 8 : size)) * 100)) + '%');
+    }
+    handle(buf);
+    return { cards: out, parsed };
+  }
+  async function loadCards() {
+    const stored = await IDB.get('bulk'), rc = await repoFile();
+    const fresh = stored && stored.meta && rc && rc.tag && stored.meta.tag === rc.tag && stored.meta.nv === NORM_V;
+    if (rc && !fresh) {
+      try {
+        setStatus('Reading card data…');
+        const res = await fetch(rc.url, { cache: 'no-cache' }); if (!res.ok || !res.body) throw new Error(rc.url + ': HTTP ' + res.status);
+        const { cards, parsed } = await readCards(res, rc.url, rc.size);
+        if (!cards.length) throw new Error('no Scryfall card objects found');
+        const meta = { source: 'Scryfall bulk file', source2: 'site data', tag: rc.tag, nv: NORM_V, file: rc.url.split('/').pop(), loadedAt: new Date().toISOString(), records: parsed };
+        CX.bulk = Engine.buildDB(cards, meta);
+        IDB.put('bulk', { cards, meta });
+      } catch (e) { setStatus('Site card data: ' + e.message); }
+    }
+    if (!CX.bulk && stored && stored.cards && stored.cards.length) CX.bulk = Engine.buildDB(stored.cards, stored.meta);
+    renderSources();
+  }
+  /* ---------- Commander Spellbook combos (data/spellbook/), same files and stored copy as the generator ---------- */
+  const SB_FORMAT = 'edhgen-spellbook/1';
+  async function loadCombos() {
+    try {
+      let man = null;
+      if (window.EDH_SITE && /^https?:$/.test(location.protocol)) { try { const r = await fetch('data/spellbook/manifest.json', { cache: 'no-cache' }); if (r.ok) man = await r.json(); } catch (e) { } }
+      if (man && man.format !== SB_FORMAT) man = null;
+      const stored = await IDB.get('combos');
+      const tag = man ? [man.format, man.timestamp, man.variants, man.tables.bytes].concat(man.shards.map(x => x.bytes)).join('|') : null;
+      let data = stored && stored.format === SB_FORMAT && (!man || stored.tag === tag) ? stored : null;
+      if (!data && man) {
+        setStatus('Loading Commander Spellbook combos (' + man.variants.toLocaleString() + ')…');
+        const get = async f => { const r = await fetch('data/spellbook/' + f, { cache: 'no-cache' }); if (!r.ok) throw new Error(f + ': HTTP ' + r.status); return r.json(); };
+        const [tables, ...shards] = await Promise.all([get(man.tables.file)].concat(man.shards.map(x => get(x.file))));
+        const rows = [].concat(...shards.map(x => x.rows));
+        if (rows.length !== man.variants) throw new Error('expected ' + man.variants + ' combos, files hold ' + rows.length);
+        data = { format: SB_FORMAT, tag, tables, rows, meta: { source: 'Commander Spellbook', timestamp: man.timestamp, version: man.version, count: man.variants } };
+        IDB.put('combos', data);
+      }
+      if (data) CX.combos = Engine.localComboProvider(Engine.spellbookVariants(data.tables, data.rows, CX.bulk), data.meta);
+    } catch (e) { CX.combos = null; setStatus('Combo data not loaded: ' + e.message + '.'); }
+    renderSources();
+  }
+  function renderSources() {
+    const pill = (id, ok, text) => { const el = $(id); el.classList.remove('hidden'); el.innerHTML = '<span class="dot ' + (ok ? 'ok' : '') + '"></span>' + esc(text); };
+    pill('pBulk', !!CX.bulk, CX.bulk ? CX.bulk.all.length.toLocaleString() + ' cards' : 'Card data not loaded');
+    if (CX.combos) pill('pCombo', true, CX.combos.count.toLocaleString() + ' combos');
+  }
+
+  /* ---------- formatting ---------- */
+  const IMG = size => 'https://cards.scryfall.io/' + size + '/';
+  const imgOn = () => CX.img === 'on';
+  function manaHTML(mc) {
+    if (!mc) return '';
+    return esc(mc).replace(/\{([^}]+)\}/g, (m, s) => { const cols = s.split('/').filter(x => 'WUBRG'.includes(x)); const cls = cols.length === 1 ? cols[0] : ''; return '<span class="ms ' + cls + '">' + s.replace('/', '') + '</span>'; });
+  }
+  const pipsHTML = ci => ci ? ci.split('').map(x => '<span class="ms ' + x + '">' + x + '</span>').join('') : '<span class="ms C">C</span>';
+  const usd = v => v == null ? '—' : '$' + v.toFixed(2);
+  const oracleHTML = ot => String(ot || '').split('\n').map(l => '<p>' + manaHTML(l).replace(/\(([^)]*)\)/g, '<i class="rem">($1)</i>') + '</p>').join('');
+  const thumb = (c, cls) => imgOn() && c.img ? '<img class="' + (cls || 'th') + '" src="' + IMG('small') + esc(c.img) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '<span class="' + (cls || 'th') + ' th-txt" aria-hidden="true">' + pipsHTML(c.ci) + '</span>';
+  const openBtn = (c, label) => '<button type="button" class="cname" data-open="' + esc(c.n) + '">' + esc(label || c.n) + '</button>';
+  const SEG = { mech: 'Mechanics', cost: 'Mana cost', type: 'Type', stats: 'Stats' };
+
+  /* ---------- search ---------- */
+  let nameIx = null;
+  function names() { if (!nameIx && CX.bulk) nameIx = CX.bulk.all.filter(c => c.stype !== 'funny' || c.leg === 'legal').map(c => ({ c, k: Engine.nameKey(c.n) })); return nameIx || []; }
+  function setupSearch() {
+    const inp = $('q'), ul = $('qL'); let items = [], sel = -1;
+    const close = () => { ul.classList.add('hidden'); ul.innerHTML = ''; items = []; sel = -1; inp.setAttribute('aria-expanded', 'false'); };
+    const show = () => {
+      const k = Engine.nameKey(inp.value); if (k.length < 2) return close();
+      const ix = names(), pre = [], sub = [];
+      for (const x of ix) { const p = x.k.indexOf(k); if (p === 0) pre.push(x.c); else if (p > 0) sub.push(x.c); }
+      const byRank = (a, b) => (a.rank || 1e9) - (b.rank || 1e9);
+      items = pre.sort(byRank).concat(sub.sort(byRank)).slice(0, 12); sel = -1;
+      if (!items.length) { ul.innerHTML = '<li class="none">No card named like that' + (CX.bulk ? '' : ' (card data still loading)') + '</li>'; ul.classList.remove('hidden'); return; }
+      ul.innerHTML = items.map((c, i) => '<li role="option" id="qL' + i + '" data-i="' + i + '"><span>' + esc(c.n) + ' <span class="note">' + esc(c.ft) + '</span></span><span class="cost">' + manaHTML(c.mc) + '</span></li>').join('');
+      ul.classList.remove('hidden'); inp.setAttribute('aria-expanded', 'true');
+    };
+    const pick = i => { const c = items[i]; if (!c) return; close(); inp.value = ''; inp.blur(); go(c.n); };
+    inp.addEventListener('input', show);
+    inp.addEventListener('focus', () => { if (inp.value) show(); });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (!items.length) return; e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length; [...ul.children].forEach((li, i) => li.setAttribute('aria-selected', i === sel)); inp.setAttribute('aria-activedescendant', 'qL' + sel); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (items.length) pick(sel >= 0 ? sel : 0); else if (CX.bulk) { const c = Engine.lookup(CX.bulk, inp.value); if (c) { close(); inp.value = ''; go(c.n); } } }
+      else if (e.key === 'Escape') { close(); inp.blur(); }
+    });
+    ul.addEventListener('mousedown', e => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); pick(+li.dataset.i); } });
+    inp.addEventListener('blur', () => setTimeout(close, 150));
+  }
+
+  /* ---------- navigation: the card name lives in the URL hash, so Back and shared links work ---------- */
+  function go(name) { const h = '#' + encodeURIComponent(name); if (location.hash !== h) location.hash = h; else show(); }
+  function hashName() { try { return decodeURIComponent((location.hash || '').slice(1)); } catch (e) { return ''; } }
+  function show() {
+    const n = hashName(), c = n && CX.bulk ? Engine.lookup(CX.bulk, n) : null;
+    if (c !== CX.card) { CX.card = c; CX.focus = ''; CX.n = 30; }
+    render(); if (c) window.scrollTo({ top: 0 });
+  }
+
+  /* ---------- page ---------- */
+  function render() {
+    const c = CX.card;
+    document.title = c ? c.n + ' · card explorer' : 'broken-stuff card explorer';
+    $('cx').classList.toggle('empty-state', !c);
+    if (!c) { $('cxInfo').innerHTML = ''; $('cxRecs').innerHTML = ''; $('cxMid').innerHTML = emptyHTML(); return; }
+    $('cxMid').innerHTML = midHTML(c);
+    $('cxInfo').innerHTML = infoHTML(c);
+    renderRecs();
+  }
+  function emptyHTML() {
+    if (!CX.bulk) return '<div class="panel empty"><h2>Card explorer</h2><p class="note">Loading card data…</p></div>';
+    const top = CX.bulk.all.filter(c => c.rank && c.leg === 'legal' && !Engine.isBasic(c)).sort((a, b) => a.rank - b.rank).slice(0, 12);
+    return '<div class="panel empty"><h2>Search any card</h2><p class="note">Type a name above. You get the card, its parts, the closest cards by mechanics, mana cost, type and stats, and its 2-card combos. Or start with one of the most played Commander cards:</p>' +
+      '<div class="starter">' + top.map(c => '<button type="button" class="st-card" data-open="' + esc(c.n) + '">' + (imgOn() && c.img ? '<img src="' + IMG('small') + esc(c.img) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '<span>' + esc(c.n) + '</span></button>').join('') + '</div></div>';
+  }
+  function midHTML(c) {
+    const faces = / \/\/ /.test(c.n);
+    const art = imgOn() && c.img
+      ? '<img id="bigImg" class="big-img" src="' + IMG('normal') + esc(c.img) + '" alt="' + esc(c.n) + '" referrerpolicy="no-referrer">'
+      : '<div class="faux"><div class="fx-h"><b>' + esc(c.n) + '</b><span>' + manaHTML(c.mc) + '</span></div><div class="fx-t">' + esc(c.tl) + '</div><div class="fx-o">' + oracleHTML(c.ot) + '</div>' + (c.pt ? '<div class="fx-pt">' + esc(c.pt) + '</div>' : '') + '</div>';
+    return '<div class="art">' + art + '</div>' +
+      '<div class="prices"><div><span>USD</span><b>' + usd(c.p.usd) + '</b></div><div><span>EUR</span><b>' + (c.p.eur == null ? '—' : '€' + c.p.eur.toFixed(2)) + '</b></div><div><span>MTGO</span><b>' + (c.p.tix == null ? '—' : c.p.tix.toFixed(2) + ' tix') + '</b></div></div>' +
+      '<p class="note pnote">Lowest Scryfall price across printings in the loaded file.</p>' +
+      '<div class="row mid-acts">' + (faces && imgOn() && c.img ? '<button type="button" class="small" id="flipBtn">Flip</button>' : '') + (c.uri ? '<a class="small btnlink" href="' + esc(c.uri) + '" target="_blank" rel="noopener">Scryfall ↗</a>' : '') + '</div>';
+  }
+  function infoHTML(c) {
+    const a = Engine.analyze(c), roles = Object.keys(a.roles).map(r => '<span class="chip">' + esc(Engine.SLOT_LABEL[r]) + '</span>').join('') +
+      ['tutor', 'fast', 'stax', 'xturn', 'mld'].filter(f => a.flags[f]).map(f => '<span class="chip flag">' + esc(Engine.FLAGS[f].label) + '</span>').join('') + (c.gc ? '<span class="chip gc">Game Changer</span>' : '');
+    const leg = c.leg === 'legal' ? '<span class="good">Legal</span>' : '<span class="badc">' + esc(c.leg.replace('_', ' ')) + '</span>';
+    const cmd = Engine.commanderEligibility(c).ok;
+    const kv = [['Mana value', c.cmc], ['Colour identity', pipsHTML(c.ci)], ['EDHREC rank', c.rank ? '#' + c.rank.toLocaleString() : '—'], ['Commander', leg + (cmd ? ' · can be commander' : '')],
+      ['Printings', c.sets.length + (c.first ? ' · first ' + esc(c.first.slice(0, 4)) : '')], ['Reserved list', c.rl ? 'Yes' : 'No']];
+    const M = CX.X ? Similar.cardMechanics(CX.X, c) : null;
+    const mech = M == null ? '<p class="note">Reading rules text…</p>' : !M.length ? '<p class="note">No mechanics found in its rules text.</p>' :
+      '<div class="mchips">' + M.map(m => '<button type="button" class="mchip" data-focus="' + esc(m.id) + '" aria-pressed="' + (CX.focus === m.id) + '" title="' + esc(m.group) + ' · on ' + m.cards.toLocaleString() + ' cards. Click to rank similar cards by this.">' + esc(m.label) + '<small>' + m.cards.toLocaleString() + '</small></button>').join('') + '</div><p class="note">Number = cards in the data with it. Click one to focus the recommendations on it.</p>';
+    return '<div class="ih"><h2 class="display">' + esc(c.n) + '</h2><span class="cost">' + manaHTML(c.mc) + '</span></div>' +
+      '<div class="tl">' + esc(c.tl) + (c.pt ? ' <b class="pt">' + esc(c.pt) + '</b>' : '') + '</div>' +
+      (c.ot ? '<div class="oracle">' + oracleHTML(c.ot) + '</div>' : '<div class="oracle note">No rules text.</div>') +
+      '<div class="kvs">' + kv.map(([k, v]) => '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>').join('') + '</div>' +
+      (c.kw.length ? '<h3>Keywords</h3><div>' + c.kw.map(k => '<span class="chip">' + esc(k.charAt(0).toUpperCase() + k.slice(1)) + '</span>').join('') + '</div>' : '') +
+      (roles ? '<h3>Deck roles</h3><div>' + roles + '</div>' : '') +
+      '<h3>Mechanics</h3>' + mech;
+  }
+
+  /* ---------- recommendations ---------- */
+  function filterFn(c0) {
+    const F = CX.F, max = parseFloat(F.max), t0 = Similar.typeInfo(c0).types;
+    return c => {
+      if (F.legal && c.leg !== 'legal') return false;
+      if (c.stype === 'funny' || Engine.isBasic(c)) return false;
+      if (F.colors === 'within' && ![...c.ci].every(x => c0.ci.includes(x))) return false;
+      if (F.colors === 'same' && c.ci !== c0.ci) return false;
+      if (F.type === 'same' && !Similar.typeInfo(c).types.some(t => t0.includes(t))) return false;
+      if (isFinite(max) && (c.p.usd == null || c.p.usd > max)) return false;
+      return true;
+    };
+  }
+  function renderRecs() {
+    const c = CX.card; if (!c) return;
+    const K = CX.combos ? Similar.combos(CX.combos, c.n) : null;
+    const tabs = '<div class="subtabs rtabs" role="tablist"><button role="tab" data-rtab="similar" aria-selected="' + (CX.tab === 'similar') + '">Similar cards</button><button role="tab" data-rtab="combos" aria-selected="' + (CX.tab === 'combos') + '">2-card combos' + (K ? ' <small>' + K.two.length + '</small>' : '') + '</button></div>';
+    $('cxRecs').innerHTML = tabs + '<div id="recBody">' + (CX.tab === 'combos' ? combosHTML(c, K) : similarHTML(c)) + '</div>';
+  }
+  function similarHTML(c) {
+    if (!CX.X) return '<p class="note">Indexing rules text for ' + (CX.bulk ? CX.bulk.all.length.toLocaleString() : '') + ' cards…</p>';
+    const M = Similar.cardMechanics(CX.X, c), F = CX.F;
+    const R = Similar.rank(CX.X, c, { weights: CX.W, focus: CX.focus, filter: filterFn(c), limit: 100 });
+    let list = R.list.slice();
+    if (CX.sort === 'price') list.sort((a, b) => (a.c.p.usd == null ? 1e9 : a.c.p.usd) - (b.c.p.usd == null ? 1e9 : b.c.p.usd));
+    else if (CX.sort === 'rank') list.sort((a, b) => (a.c.rank || 1e9) - (b.c.rank || 1e9));
+    const wsum = Object.keys(SEG).reduce((s, k) => s + (R.use[k] ? CX.W[k] : 0), 0) || 1;
+    const focusLabel = CX.focus ? Similar.defOf(CX.focus).label : '';
+    const sel = (id, v, opts) => '<select id="' + id + '">' + opts.map(([k, l]) => '<option value="' + k + '"' + (k === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>';
+    const ctl = '<div class="focusrow"><span class="lbl">Focus</span><button type="button" class="mchip" data-focus="" aria-pressed="' + !CX.focus + '">Overall</button>' +
+      M.slice(0, 14).map(m => '<button type="button" class="mchip" data-focus="' + esc(m.id) + '" aria-pressed="' + (CX.focus === m.id) + '">' + esc(m.label) + '</button>').join('') + '</div>' +
+      '<div class="ctl">' +
+      '<label class="f">Colours' + sel('fCol', F.colors, [['any', 'Any colours'], ['within', 'Within its colour identity'], ['same', 'Same colour identity']]) + '</label>' +
+      '<label class="f">Type' + sel('fType', F.type, [['any', 'Any type'], ['same', 'Shares a card type']]) + '</label>' +
+      '<label class="f">Max price (USD)<input type="number" id="fMax" min="0" step="0.5" placeholder="none" value="' + esc(F.max) + '"></label>' +
+      '<label class="f">Sort' + sel('fSort', CX.sort, [['match', 'Best match'], ['price', 'Lowest price'], ['rank', 'Most played (EDHREC)']]) + '</label>' +
+      '</div>' +
+      '<div class="row ctl2"><label class="c"><input type="checkbox" id="fLegal"' + (F.legal ? ' checked' : '') + '> Commander-legal only</label>' +
+      '<details class="wts"' + (CX.wOpen ? ' open' : '') + '><summary>Weights</summary><div class="wgrid">' +
+      Object.keys(SEG).map(k => '<label class="f"><span><i class="sw s-' + k + '"></i>' + SEG[k] + ' <b class="mono" id="wv-' + k + '">' + CX.W[k] + '</b></span><input type="range" min="0" max="100" step="1" data-w="' + k + '" value="' + CX.W[k] + '"></label>').join('') +
+      '<button type="button" class="small" id="wReset">Reset weights</button></div></details></div>';
+    const legend = '<div class="legend">' + Object.keys(SEG).filter(k => R.use[k]).map(k => '<span><i class="sw s-' + k + '"></i>' + SEG[k] + ' ' + Math.round(CX.W[k] / wsum * (CX.focus ? 50 : 100)) + '%</span>').join('') + (CX.focus ? '<span><i class="sw s-focus"></i>' + esc(focusLabel) + ' 50%</span>' : '') + '</div>';
+    const head = '<p class="note rhead">' + (CX.focus ? R.total.toLocaleString() + ' cards with ' + esc(focusLabel) + '. Score = ½ how alike their ' + esc(focusLabel) + ' text is + ½ overall match.' : R.total.toLocaleString() + ' cards compared. Score = weighted match of mechanics, mana cost, type and stats.') + (CX.sort !== 'match' ? ' Showing the top 100 matches sorted by ' + (CX.sort === 'price' ? 'price' : 'EDHREC rank') + '.' : '') + '</p>';
+    const rows = list.slice(0, CX.n).map((r, i) => {
+      const parts = Object.keys(SEG).filter(k => R.use[k]), f = CX.focus ? 0.5 : 1;
+      const bar = (CX.focus ? '<i class="s-focus" style="width:' + (r.focus * 50).toFixed(1) + '%"></i>' : '') + parts.map(k => '<i class="s-' + k + '" style="width:' + (f * CX.W[k] / wsum * r.parts[k] * 100).toFixed(1) + '%"></i>').join('');
+      const tip = (CX.focus ? focusLabel + ' text ' + Math.round(r.focus * 100) + '% · ' : '') + parts.map(k => SEG[k] + ' ' + Math.round(r.parts[k] * 100) + '%').join(' · ');
+      const shared = r.shared.slice(0, 5).map(id => '<span class="chip">' + esc(Similar.defOf(id).label) + '</span>').join('') + (r.shared.length > 5 ? '<span class="note">+' + (r.shared.length - 5) + '</span>' : '');
+      return '<li class="rec">' + '<button type="button" class="thb" data-open="' + esc(r.c.n) + '" aria-label="Open ' + esc(r.c.n) + '">' + thumb(r.c) + '</button>' +
+        '<div class="rb"><div class="rt">' + openBtn(r.c) + '<span class="cost">' + manaHTML(r.c.mc) + '</span></div><div class="note">' + esc(r.c.tl) + (r.c.pt ? ' · ' + esc(r.c.pt) : '') + '</div>' + (shared ? '<div class="sh">' + shared + '</div>' : '') +
+        '<div class="sbar" title="' + esc(tip) + '">' + bar + '</div><div class="note bd">' + esc(tip) + '</div></div>' +
+        '<div class="rs"><b class="pct">' + Math.round(r.score * 100) + '%</b><span>' + usd(r.c.p.usd) + '</span>' + (r.c.rank ? '<span class="note">#' + r.c.rank.toLocaleString() + '</span>' : '') + '</div></li>';
+    }).join('');
+    return ctl + legend + head + (rows ? '<ol class="recs-l">' + rows + '</ol>' : '<p class="note">No cards pass these filters.</p>') +
+      (list.length > CX.n ? '<button type="button" class="block" id="moreBtn">Show more (' + (list.length - CX.n) + ')</button>' : '') +
+      '<details class="method"><summary class="note">How the match is computed</summary><ul class="note">' +
+      '<li><b>Mechanics</b>: half the cosine similarity of the two cards\' rules text (words and word pairs, weighted by how rare they are across all cards, card names replaced), half the overlap of detected mechanics (keywords, triggers, counters, tokens, the generator\'s role and theme rules), with rare mechanics counting more.</li>' +
+      '<li><b>Mana cost</b>: 60% mana value (−25% per point of difference), 40% colour identity overlap.</li>' +
+      '<li><b>Type</b>: 70% card types, 20% subtypes, 10% legendary or not.</li>' +
+      '<li><b>Stats</b>: power and toughness (−12.5% per point) or loyalty (−20% per point); only for cards that have them.</li>' +
+      '<li>The score is the weighted mean of those parts; the bar shows each part\'s share. A focus keeps only cards with that mechanic and adds how alike their lines with it are.</li></ul></details>';
+  }
+  const BT = { R: 'Ruthless', S: 'Spicy', P: 'Powerful', O: 'Oddball', C: 'Core', E: 'Exhibition', B: 'Banned' };
+  function combosHTML(c, K) {
+    if (!K) return '<p class="note">' + (CX.combos === null && CX.comboTried ? 'Combo data is not available.' : 'Loading Commander Spellbook combos…') + '</p>';
+    if (!K.two.length) return '<p class="note">No 2-card combos with ' + esc(c.n) + ' in Commander Spellbook' + (K.more ? '. It is in ' + K.more.toLocaleString() + ' combos that need 3 or more cards.' : '.') + '</p>' + sbSearch(c);
+    const rows = K.two.slice(0, CX.cn || 40).map(({ v, partner }) => {
+      const p = Engine.lookup(CX.bulk, partner) || { n: partner, ci: '', mc: '', tl: '', p: {}, img: '' };
+      const tot = c.p.usd != null && p.p.usd != null ? c.p.usd + p.p.usd : null;
+      const res = v.p.slice(0, 4).map(x => '<span class="chip' + (/infinite/i.test(x) ? ' inf' : '') + '">' + esc(x) + '</span>').join('') + (v.p.length > 4 ? '<span class="note">+' + (v.p.length - 4) + '</span>' : '');
+      return '<li class="rec combo"><button type="button" class="thb" data-open="' + esc(p.n) + '" aria-label="Open ' + esc(p.n) + '">' + thumb(p) + '</button>' +
+        '<div class="rb"><div class="rt"><span class="plus">+</span>' + openBtn(p) + '<span class="cost">' + manaHTML(p.mc) + '</span></div><div class="sh">' + res + '</div>' +
+        (v.t.length ? '<div class="note">Also needs: ' + esc(v.t.join('; ')) + '</div>' : '') + (v.cmd.length ? '<div class="note">Needs ' + esc(v.cmd.join(' and ')) + ' as commander</div>' : '') +
+        '<div class="note">' + (BT[v.bt] ? 'Spellbook bracket tag: ' + BT[v.bt] + ' · ' : '') + 'colour identity ' + pipsHTML(v.ci) + (v.pop ? ' · in ' + v.pop.toLocaleString() + ' decks' : '') + ' · <a href="https://commanderspellbook.com/combo/' + encodeURIComponent(v.id) + '/" target="_blank" rel="noopener">Steps ↗</a></div></div>' +
+        '<div class="rs"><b>' + usd(p.p.usd) + '</b><span class="note">both ' + usd(tot) + '</span></div></li>';
+    }).join('');
+    return '<p class="note rhead">' + K.two.length.toLocaleString() + ' Commander Spellbook combos made of ' + esc(c.n) + ' and one other card, most played first' + (K.more ? '; ' + K.more.toLocaleString() + ' more need 3 or more cards' : '') + '.</p><ol class="recs-l">' + rows + '</ol>' +
+      (K.two.length > (CX.cn || 40) ? '<button type="button" class="block" id="moreCombo">Show more (' + (K.two.length - (CX.cn || 40)) + ')</button>' : '') + sbSearch(c);
+  }
+  const sbSearch = c => '<p class="note"><a href="https://commanderspellbook.com/search/?q=' + encodeURIComponent('card:"' + c.n + '"') + '" target="_blank" rel="noopener">All combos with this card on Commander Spellbook ↗</a></p>';
+
+  /* ---------- events ---------- */
+  let rT = 0;
+  const reRank = (delay) => { clearTimeout(rT); rT = setTimeout(() => { const y = window.scrollY; renderRecs(); window.scrollTo({ top: y }); }, delay || 0); };
+  function wire() {
+    document.addEventListener('click', e => {
+      const o = e.target.closest('[data-open]'); if (o) { e.preventDefault(); go(o.dataset.open); return; }
+      const f = e.target.closest('[data-focus]'); if (f) { CX.focus = f.dataset.focus; CX.tab = 'similar'; CX.n = 30; $('cxInfo').innerHTML = infoHTML(CX.card); reRank(); if (f.closest('#cxInfo') && innerWidth < 1100) $('cxRecs').scrollIntoView({ behavior: 'smooth' }); return; }
+      const t = e.target.closest('[data-rtab]'); if (t) { CX.tab = t.dataset.rtab; renderRecs(); return; }
+      if (e.target.id === 'moreBtn') { CX.n += 30; reRank(); return; }
+      if (e.target.id === 'moreCombo') { CX.cn = (CX.cn || 40) + 40; reRank(); return; }
+      if (e.target.id === 'wReset') { CX.W = Object.assign({}, W0); CX.wOpen = true; reRank(); return; }
+      if (e.target.id === 'flipBtn') { const im = $('bigImg'); if (!im) return; const back = /\/front\//.test(im.src); im.onerror = () => { im.onerror = null; im.src = im.src.replace('/back/', '/front/'); e.target.disabled = true; e.target.title = 'No back face image'; }; im.src = back ? im.src.replace('/front/', '/back/') : im.src.replace('/back/', '/front/'); return; }
+    });
+    $('cxRecs').addEventListener('change', e => {
+      const id = e.target.id;
+      if (id === 'fCol') CX.F.colors = e.target.value; else if (id === 'fType') CX.F.type = e.target.value; else if (id === 'fSort') CX.sort = e.target.value;
+      else if (id === 'fLegal') CX.F.legal = e.target.checked; else if (id === 'fMax') CX.F.max = e.target.value; else if (e.target.dataset.w) { CX.wOpen = true; }
+      else return;
+      CX.n = 30; reRank();
+    });
+    $('cxRecs').addEventListener('input', e => {
+      const k = e.target.dataset.w; if (!k) return;
+      CX.W[k] = +e.target.value; CX.wOpen = true; const v = $('wv-' + k); if (v) v.textContent = e.target.value; reRank(250);
+    });
+    $('cxRecs').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('wts')) CX.wOpen = e.target.open; }, true);
+    // a picture that fails to load (offline, blocked) falls back to the text card or the colour block
+    document.addEventListener('error', e => {
+      const im = e.target; if (!im || im.tagName !== 'IMG') return;
+      if (im.id === 'bigImg' && CX.card && /\/front\//.test(im.src)) { const c = CX.card; im.outerHTML = '<div class="faux"><div class="fx-h"><b>' + esc(c.n) + '</b><span>' + manaHTML(c.mc) + '</span></div><div class="fx-t">' + esc(c.tl) + '</div><div class="fx-o">' + oracleHTML(c.ot) + '</div>' + (c.pt ? '<div class="fx-pt">' + esc(c.pt) + '</div>' : '') + '</div>'; }
+      else if (im.classList.contains('th')) { const n = im.closest('[data-open]'), c = n && Engine.lookup(CX.bulk, n.dataset.open); im.outerHTML = '<span class="th th-txt" aria-hidden="true">' + pipsHTML(c ? c.ci : '') + '</span>'; }
+      else if (im.closest('.st-card')) im.remove();
+    }, true);
+    window.addEventListener('hashchange', show);
+    document.addEventListener('keydown', e => {
+      if (e.target.matches && e.target.matches('input,select,textarea')) return;
+      if (e.key === '/') { e.preventDefault(); $('q').focus(); }
+      else if (e.key === 'Escape') $('appearance').classList.add('hidden');
+    });
+    // appearance: shared with the deck generator (edhgen.appearance); card pictures default to on here
+    let AP = { mode: 'system', accent: '', size: '1', head: 'serif', img: 'off', cimg: 'on' };
+    try { AP = Object.assign(AP, JSON.parse(LS.get('edhgen.appearance') || '{}')); } catch (e) { }
+    const root = document.documentElement, keys = [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head'], ['apImg', 'cimg']];
+    const applyAP = () => {
+      if (AP.mode === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', AP.mode);
+      if (AP.accent) root.setAttribute('data-accent', AP.accent); else root.removeAttribute('data-accent');
+      root.style.setProperty('--fz', AP.size); root.setAttribute('data-headings', AP.head); CX.img = AP.cimg;
+      for (const [id, k] of keys) $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(AP[k])));
+    };
+    applyAP();
+    for (const [id, k] of keys) $(id).addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; AP[k] = b.dataset.v; applyAP(); LS.set('edhgen.appearance', JSON.stringify(AP)); if (k === 'cimg') render(); });
+    $('themeBtn').addEventListener('click', e => { e.stopPropagation(); const p = $('appearance'), open = p.classList.toggle('hidden'); $('themeBtn').setAttribute('aria-expanded', String(!open)); });
+    document.addEventListener('click', e => { if (!e.target.closest('.popwrap')) $('appearance').classList.add('hidden'); });
+  }
+
+  async function init() {
+    wire(); setupSearch(); render();
+    await loadCards();
+    if (!CX.bulk) { setStatus('No card data. Open this page from the site, or load a file on the deck generator page first.'); $('cxMid').innerHTML = '<div class="panel empty"><h2>No card data</h2><p class="note">This page reads the Scryfall file in the site\'s data folder, or the copy the deck generator stored in this browser.</p></div>'; return; }
+    setStatus(''); show();
+    const comboP = loadCombos().then(() => { CX.comboTried = true; if (CX.card) { if (CX.tab === 'combos') renderRecs(); else { const b = document.querySelector('[data-rtab="combos"]'); if (b) renderRecs(); } } });
+    setStatus('Indexing rules text…');
+    CX.X = await Similar.build(CX.bulk, f => setStatus('Indexing rules text… ' + Math.round(f * 100) + '%'));
+    setStatus('');
+    if (CX.card) { $('cxInfo').innerHTML = infoHTML(CX.card); renderRecs(); }
+    await comboP;
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+</script>
+</html>
