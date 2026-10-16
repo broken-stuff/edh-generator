@@ -245,9 +245,9 @@ table.swaps td{vertical-align:top}
 <aside class="settings" aria-label="Deck settings">
 
 <details class="sec" id="secData"><summary>Data source <span class="hint" id="dataHint"></span></summary><div class="body">
-  <div class="note">Runs offline from downloaded JSON files. Files are parsed in this browser; nothing is sent anywhere.</div>
-  <label class="f">Scryfall bulk JSON (Oracle Cards or Default Cards)
-    <input type="file" id="bulkFile" accept=".json,application/json"></label>
+  <div class="note">The site loads the newest Scryfall file in its data folder automatically. You can also load your own; it is read in this browser and nothing is sent anywhere.</div>
+  <label class="f">Scryfall bulk file (Oracle Cards or Default Cards; .json, .jsonl or .gz)
+    <input type="file" id="bulkFile" accept=".json,.jsonl,.gz,application/json,application/gzip"></label>
   <div class="prog hidden" id="bulkProg"><i></i></div>
   <div class="note">Download from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a>. Default Cards gives full printing history for set/date filters and uses the lowest price across printings.</div>
   <div class="row"><button type="button" class="small" id="forgetBtn">Forget stored bulk data</button><span class="note" id="idbNote"></span></div>
@@ -354,8 +354,10 @@ table.swaps td{vertical-align:top}
     <label class="f">Owned bonus<input type="number" step="0.1" id="wOwned" data-k="weights.owned"></label>
     <label class="f">Bracket penalty<input type="number" step="0.1" id="wBr" data-k="weights.bracket"></label>
     <label class="f">Bracket power pull<input type="number" step="0.1" id="wPow" data-k="weights.power"></label>
+    <label class="f">Card quality<input type="number" step="0.1" id="wQual" data-k="weights.quality"></label>
+    <label class="f">Pair synergy<input type="number" step="0.1" id="wLink" data-k="weights.link"></label>
   </div>
-  <div class="note">score = syn·min(synergy,3) + role·(unfilled roles matched) + pop·(1 − log₁₀ rank / log₁₀ 40000) + curve·fit(MV) + owned − price·min(3, price ÷ (per-card cap, or 3×budget÷99)) − bracket·(limited flags) + power·pref(bracket)·cardPower + seeded noise. pref = −1, −0.4, 0.5, 1.3, 2 for B1–B5. fit(MV) = 1 − |MV − target| / (4 below, 3 above). Price only counts when a budget is set. With two or more themes, synergy slots go round-robin to the theme with the fewest cards relative to its weight.</div>
+  <div class="note">Card score = syn·min(tag synergy, 3) + pop·(1 − log₁₀ EDHREC rank / log₁₀ 40000) + (quality + power·pref(bracket))·cardPower + curve·fit(MV) + owned − price·min(3, price ÷ reference) − bracket·(limited flags) + seeded noise. pref = −0.3, 0.2, 0.6, 1.3, 2 for B1–B5; fit(MV) = 1 − |MV − target| / (4 below, 3 above); price counts only with a budget. Deck score = Σ card scores + pair synergy·Σ 2√(enablers × payoffs) per theme − 2·role·(role slots short) − 8·curve·(drift of average MV beyond ±0.15). The optimiser swaps until no single swap, or budget-neutral pair of swaps, raises the deck score.</div>
   <div class="row"><label class="f" style="flex:1">Seed (blank = derived from settings)<input type="text" id="seed" data-k="seed"></label><button type="button" class="small" id="seedBtn" style="align-self:flex-end">New seed</button></div>
   <label class="f">Variance <span id="varOut" class="mono-inline"></span><input type="range" min="0" max="1" step="0.05" id="variance" data-k="variance" data-type="num"></label>
   <div class="grid2">
@@ -461,7 +463,7 @@ const Engine = (function () {
         reserved: 'allow', funny: 'exclude', dateFrom: '', dateTo: '', sets: '', creaturesMin: null, creaturesMax: null },
       owned: { mode: 'off', list: '' },
       seed: '', reroll: 0, variance: 0.15,
-      weights: { syn: 2, role: 1.5, pop: 1.5, curve: 1.5, price: 0.5, owned: 1, bracket: 0.5, power: 2 }
+      weights: { syn: 1.5, role: 1.5, pop: 5, quality: 2, curve: 1.5, price: 0.25, owned: 1, bracket: 0.5, power: 2, link: 1 }
     };
   }
   function bracketDefaults(b) { return Object.assign({}, BRACKETS[b] || BRACKETS[3]); }
@@ -630,15 +632,20 @@ const Engine = (function () {
     const t = T.toLowerCase(), p = plural(T);
     const typeRe = new RegExp('\\b' + escRe(T) + '\\b', 'i');
     const textRe = new RegExp('\\b(?:' + escRe(t) + '|' + escRe(p) + ')\\b');
-    return { label: 'Tribal: ' + T, test: c => (typeRe.test(c.tl.split('—').slice(1).join(' ')) || textRe.test(c.low) || c.kw.includes('changeling')), q: '(t:"' + T + '" or o:"' + T + '")', desc: 'subtype ' + T + ', oracle mentions ' + t + '/' + p + ', or Changeling' };
+    const real = c => typeRe.test(c.tl.split('—').slice(1).join(' ')) || textRe.test(c.low);
+    return { label: 'Tribal: ' + T, test: c => real(c) || c.kw.includes('changeling'), factor: c => real(c) ? 1 : 0.5, q: '(t:"' + T + '" or o:"' + T + '")', desc: 'subtype ' + T + ', oracle mentions ' + t + '/' + p + ', or Changeling' };
   }
   function creatureTypes(db) {
     if (db._ctypes) return db._ctypes;
     const set = new Set();
-    for (const c of db.all) for (const face of c.tl.split(' // ')) {
-      if (!/\b(?:Creature|Kindred|Tribal)\b/.test(face)) continue;
-      const sub = face.split('—')[1]; if (!sub) continue;
-      for (const w of sub.trim().split(/\s+/)) if (w.length >= 3 && /^[A-Z][a-z'-]+$/.test(w)) set.add(w);
+    for (const c of db.all) {
+      if (c.stype === 'funny' || c.bc === 'silver') continue; // Un-set joke types ("The Biggest, Baddest...") are not real subtypes
+      for (const face of c.tl.split(' // ')) {
+        if (!/\b(?:Creature|Kindred|Tribal)\b/.test(face)) continue;
+        const sub = face.split('—')[1]; if (!sub) continue;
+        const words = sub.trim().replace(/\bTime Lord\b/g, 'Time_Lord').split(/\s+/);
+        for (const w of words) if (w === 'Time_Lord') set.add('Time Lord'); else if (w.length >= 3 && /^[A-Z][a-z'-]+$/.test(w)) set.add(w);
+      }
     }
     db._ctypes = set; return set;
   }
@@ -788,7 +795,7 @@ const Engine = (function () {
     v = Math.max(0, Math.min(1, p)); CP.set(c, v); return v;
   }
   // how much each bracket prefers raw card power when generating (negative = avoid strong cards)
-  const POWER_PREF = { 1: -1, 2: -0.4, 3: 0.5, 4: 1.3, 5: 2 };
+  const POWER_PREF = { 1: -0.3, 2: 0.2, 3: 0.6, 4: 1.3, 5: 2 };
 
   /* ---------- generation ---------- */
   async function generate(db, S0, env) {
@@ -824,7 +831,7 @@ const Engine = (function () {
 
     /* tags */
     const tags = [];
-    const addTag = (key, t, w, src) => { const e = tags.find(x => x.key === key); if (e) { e.w = Math.max(e.w, w); if (!e.src.includes(src)) e.src += ', ' + src; return; } tags.push({ key, label: t.label, test: t.test || (c => (t.re && t.re.test(c.low)) || (t.type && t.type.test(c.ft)) || (t.flag && analyze(c).flags[t.flag])), q: t.q, w, src }); };
+    const addTag = (key, t, w, src) => { const e = tags.find(x => x.key === key); if (e) { e.w = Math.max(e.w, w); if (!e.src.includes(src)) e.src += ', ' + src; return; } tags.push({ key, label: t.label, factor: t.factor, test: t.test || (c => (t.re && t.re.test(c.low)) || (t.type && t.type.test(c.ft)) || (t.flag && analyze(c).flags[t.flag])), q: t.q, w, src }); };
     const ctypes = creatureTypes(db);
     const ctLower = new Map([...ctypes].map(t => [t.toLowerCase(), t]));
     if (S.archetype && TAGS[S.archetype]) addTag(S.archetype, TAGS[S.archetype], 1.5, 'archetype');
@@ -946,7 +953,7 @@ const Engine = (function () {
     const noise = new Map();
     for (const c of pool) noise.set(c.n, (rng() * 2 - 1) * (+S.variance || 0));
     const syn = new Map();
-    const synOf = c => { let v = syn.get(c); if (v) return v; let s = 0; const hit = []; for (const t of tags) if (t.test(c)) { s += t.w; hit.push(t.label); } v = { s, hit }; syn.set(c, v); return v; };
+    const synOf = c => { let v = syn.get(c); if (v) return v; let s = 0; const hit = []; for (const t of tags) if (t.test(c)) { s += t.w * (t.factor ? t.factor(c) : 1); hit.push(t.label); } v = { s, hit }; syn.set(c, v); return v; };
     const pop = c => c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
     const priceRef = pcap != null ? pcap : (cap != null ? Math.max(1, cap / mainSize * 3) : null);
     const pricePen = c => { const p = price(c); if (p == null || !priceRef) return 0; return Math.min(3, p / priceRef); }; // no budget → price is ignored
@@ -956,10 +963,11 @@ const Engine = (function () {
     const baseCache = new Map();
     const base = c => {
       let v = baseCache.get(c); if (v != null) return v;
-      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + pPref * cardPower(c) + (noise.get(c.n) || 0);
+      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (pPref + (W.quality != null ? +W.quality : 2)) * cardPower(c) + (noise.get(c.n) || 0);
       baseCache.set(c, v); return v;
     };
 
+    R.explain = c => ({ syn: W.syn * Math.min(synOf(c).s, 3), pop: W.pop * pop(c), curve: W.curve * curveFit(c), owned: owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0, price: -W.price * pricePen(c), bracket: -W.bracket * bpen(c), power: (pPref + (W.quality != null ? +W.quality : 2)) * cardPower(c), noise: noise.get(c.n) || 0, total: base(c), inPool: pool.includes(c), excluded: R.excluded[c.n] || null, tags: synOf(c).hit });
     /* deck state */
     const st = { total: cmdCost, cnt: { gc: 0, mld: 0, xturn: 0, tutor: 0 }, creatures: 0, names: new Set(cmds.map(c => c.n)) };
     for (const c of cmds) { const a = analyze(c); for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k]++; }
@@ -988,7 +996,7 @@ const Engine = (function () {
       const freed = opts.replacing ? (price(opts.replacing.c) || 0) * (isBasic(opts.replacing.c) && !S.budget.inclBasics ? 0 : 1) : 0;
       if (cap != null) {
         const left = mainSize - size() - (opts.replacing ? 0 : 1);
-        if (st.total - freed + (isBasic(c) && !S.budget.inclBasics ? 0 : p) + Math.max(0, left) * floor > cap + 1e-9) return 'total budget';
+        if (st.total - freed + (isBasic(c) && !S.budget.inclBasics ? 0 : p) + Math.max(0, left) * floor > cap + (opts.slack || 0) + 1e-9) return 'total budget';
         if (!opts.replacing && !opts.noPace) { const slots = Math.max(1, left + 1); const pace = (cap - st.total - Math.max(0, left) * floor) / slots * 3 + floor; if (p > pace + 1e-9) return 'budget pacing (≤3× remaining per-slot share)'; }
       }
       const rm = opts.replacing ? analyze(opts.replacing.c) : null;
@@ -1042,7 +1050,7 @@ const Engine = (function () {
       if (a.creature) st.creatures -= e.qty;
     }
     const sortScored = arr => arr.sort((x, y) => y.s - x.s || (x.c.n < y.c.n ? -1 : 1));
-    const dyn = c => { const a = analyze(c); let need = 0; for (const r of ROLES) if (a.roles[r] && roleCount(r) < (+S.targets[r] || 0)) need++; return base(c) + W.role * need; };
+    const dyn = c => { const a = analyze(c); let need = 0; for (const r of ROLES) if (a.roles[r] && roleCount(r) < (+S.targets[r] || 0)) need++; return base(c) + (need ? W.role * (1 + 0.25 * (need - 1)) : 0); }; // extra roles add a little, so multi-role filler cannot outrank staples
 
     /* 1. includes / locks */
     for (const e of incs) add(e.c, e.slot === 'locked' ? (e.prev || 'locked') : 'include', e.qty, null, e.slot === 'locked' ? 'locked by user' : 'include list', { locked: true, inc: e.slot === 'include' });
@@ -1191,6 +1199,128 @@ const Engine = (function () {
     }
     addBasics(mainSize - size());
     L('Basics: ' + deck.filter(e => isBasic(e.c)).map(e => e.qty + ' ' + e.c.n).join(', ') + '.');
+
+    /* 7b. optimise: steps 1–7 are a greedy baseline. This step searches the whole candidate pool for swaps that raise the
+       deck's total score J, re-scanning every (deck card, pool card) pair after each round until no swap improves J.
+       J = Σ base(nonland card) + pair synergy (enabler × payoff per theme) − role-shortfall − curve-drift penalties.
+       A swap blocked by the total budget may be paired with a cheaper swap elsewhere (incl. nonbasic land → basic)
+       when the two together raise J. All moves pass canAdd (budget, bracket, creature cap, combos). */
+    {
+      const t0 = Date.now(), timeCap = +(S.optTimeMs || 8000);
+      const Wl = W.link != null ? +W.link : 1;
+      const NP = PAIRS.length, tagKeys = new Set(tags.map(t => t.key));
+      const PW = PAIRS.map(p => (cmds.some(c => p.en(c) || p.pay(c)) || tagKeys.has(p.key)) ? 1 : 0.35);
+      const sidesCache = new Map();
+      const sides = c => { let v = sidesCache.get(c); if (v) return v; v = []; PAIRS.forEach((p, i) => { if (p.en(c)) v.push(2 * i); if (p.pay(c)) v.push(2 * i + 1); }); sidesCache.set(c, v); return v; };
+      const roleBits = c => { const a = analyze(c); let b = 0; ROLES.forEach((r, i) => { if (a.roles[r]) b |= 1 << i; }); return b; };
+      const pc = b => { let n = 0; while (b) { n += b & 1; b >>>= 1; } return n; };
+      const G = (i, en, pay) => PW[i] * 2 * Math.sqrt(en * pay);
+      const cnt = new Float64Array(NP * 2);
+      for (const c of cmds) for (const k of sides(c)) cnt[k] += 3; // commander counts 3, as in the analysis
+      for (const e of deck) if (!isBasic(e.c)) for (const k of sides(e.c)) cnt[k] += e.qty;
+      const synTotal = () => { let g = 0; for (let i = 0; i < NP; i++) g += G(i, cnt[2 * i], cnt[2 * i + 1]); return Wl * g; };
+      const tgt = ROLES.map(r => +S.targets[r] || 0), rc = ROLES.map(r => roleCount(r));
+      const nlE = () => deck.filter(e => !analyze(e.c).isLand);
+      const nN = nlE().reduce((s, e) => s + e.qty, 0); let mvSum = nlE().reduce((s, e) => s + e.c.cmc * e.qty, 0);
+      const curvePen = sum => W.curve * 8 * Math.max(0, Math.abs((nN ? sum / nN : T) - T) - 0.15);
+      const shortfall = () => ROLES.reduce((s, r, i) => s + Math.max(0, tgt[i] - rc[i]), 0);
+      const landVal = c => isBasic(c) ? 0 : landScore(c);
+      const J = () => deck.reduce((s, e) => s + (analyze(e.c).isLand ? landVal(e.c) * e.qty : base(e.c) * e.qty), 0) + synTotal() - W.role * 2 * shortfall() - curvePen(mvSum);
+      const pr = c => isBasic(c) && !S.budget.inclBasics ? 0 : (price(c) || 0);
+      const split = sd => { const both = [], one = []; for (const k of sd) { if (k % 2 === 0 && sd.includes(k + 1)) both.push(k / 2); else if (!(k % 2 === 1 && sd.includes(k - 1))) one.push(k); } return { both, one }; };
+      const cands = pool.filter(c => !analyze(c).isLand).map(c => ({ c, b: base(c), sd: sides(c), ...split(sides(c)), rb: roleBits(c), cr: analyze(c).creature, mv: c.cmc, p: pr(c), inDeck: st.names.has(c.n) }));
+      const byName = new Map(cands.map(x => [x.c.n, x]));
+      const bestBasic = () => { const sh = (R.pipShare || []).slice().sort((a, b) => b.w - a.w); for (const x of sh) if (basicsCards[x.x]) return basicsCards[x.x]; return basicsCards[Object.keys(basicsCards)[0]]; };
+      const J0 = J(); let pairs = 0, rounds = 0; const swaps = [], tabu = new Set();
+      const validBudget = () => cap == null || st.total <= cap + 1e-9;
+      const doSwap = (out, x, d, tag) => {
+        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ROLES.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; });
+        if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
+        const xr = x.land ? null : ROLES.find((r, i) => (x.rb & (1 << i)) && rc[i] < tgt[i]) || ROLES.find((r, i) => (x.rb & (1 << i)) && (roleBits(out.c) & (1 << i)));
+        const slot = xr || (!x.land && synOf(x.c).s > 0 ? 'synergy' : 'flex');
+        removeEntry(out); const ox = byName.get(out.c.n); if (ox) ox.inDeck = false;
+        if (x.land) { const ex = deck.find(e => e.c === x.c); if (ex) { ex.qty++; st.total += pr(x.c); } else add(x.c, 'basic', 1, 0, 'optimiser: budget for a better spell'); }
+        else { add(x.c, slot, 1, x.b, 'optimiser swap (' + tag + ')'); x.inDeck = true; for (const k of x.sd) cnt[k] += 1; ROLES.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
+        swaps.push({ out: out.c.n, in: x.c.n, d, tag });
+      };
+      // exact change in J for one swap in the current state (used to verify paired moves)
+      const exactD = (out, x) => { const snap = { cnt: Float64Array.from(cnt), rc: rc.slice(), mv: mvSum };
+        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ROLES.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; }); if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
+        if (!x.land) { for (const k of x.sd) cnt[k] += 1; ROLES.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
+        const outV = analyze(out.c).isLand ? landVal(out.c) : base(out.c), inV = x.land ? 0 : x.b;
+        const synAfter = synTotal(), sfAfter = shortfall(), cpAfter = curvePen(mvSum);
+        cnt.set(snap.cnt); rc.splice(0, rc.length, ...snap.rc); mvSum = snap.mv;
+        return (inV - outV) + (synAfter - synTotal()) - W.role * 2 * (sfAfter - shortfall()) - (cpAfter - curvePen(mvSum)); };
+      for (; rounds < 120 && Date.now() - t0 < timeCap; rounds++) {
+        const outs = deck.filter(e => !e.locked && e.qty === 1 && e.slot !== 'combo' && e.slot !== 'include' && !analyze(e.c).isLand);
+        const moves = [], blocked = [];
+        const BUCKETS = [0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+        const down = BUCKETS.map(() => []); // per saving bucket: best few (d, out, x) with saving ≥ bucket
+        const pushDown = (sv, d, e, x) => { for (let b = 0; b < BUCKETS.length && BUCKETS[b] <= sv; b++) { const L2 = down[b]; if (L2.length < 6 || d > L2[L2.length - 1].d) { L2.push({ d, e, x }); L2.sort((a, b2) => b2.d - a.d); if (L2.length > 6) L2.pop(); } } };
+        const curNow = curvePen(mvSum), synNow = synTotal(), sfNow = shortfall();
+        const gain = new Float64Array(NP * 2), gainBoth = new Float64Array(NP);
+        for (const e of outs) {
+          const c = e.c, cs = sides(c), cb = roleBits(c), bc = base(c), pOut = pr(c);
+          for (const k of cs) cnt[k] -= 1;
+          let gNoC = 0;
+          for (let i = 0; i < NP; i++) { const en = cnt[2 * i], pay = cnt[2 * i + 1], g = G(i, en, pay); gNoC += g; gain[2 * i] = G(i, en + 1, pay) - g; gain[2 * i + 1] = G(i, en, pay + 1) - g; gainBoth[i] = G(i, en + 1, pay + 1) - g; }
+          for (const k of cs) cnt[k] += 1;
+          const lossC = synNow - Wl * gNoC;
+          let needMask = 0, openMask = 0;
+          ROLES.forEach((r, i) => { if ((cb & (1 << i)) && rc[i] <= tgt[i]) needMask |= 1 << i; if (!(cb & (1 << i)) && rc[i] < tgt[i]) openMask |= 1 << i; });
+          const cp = new Map();
+          const fixed = -bc - lossC + curNow;
+          for (let q = 0; q < cands.length; q++) {
+            const x = cands[q]; pairs++;
+            if (x.inDeck || (x.rb & needMask) !== needMask) continue; // never open a role shortfall
+            let sg = 0; const one = x.one, both = x.both; for (let k = 0; k < one.length; k++) sg += gain[one[k]]; for (let k = 0; k < both.length; k++) sg += gainBoth[both[k]];
+            let cpv = cp.get(x.mv); if (cpv === undefined) { cpv = curvePen(mvSum - c.cmc + x.mv); cp.set(x.mv, cpv); }
+            const d = x.b + fixed + Wl * sg + W.role * 2 * pc(x.rb & openMask) - cpv;
+            if (d > 1e-6) (cap != null && st.total - pOut + x.p > cap + 1e-9 ? blocked : moves).push({ e, x, d });
+            if (cap != null && pOut - x.p >= BUCKETS[0]) pushDown(pOut - x.p, d, e, x);
+          }
+        }
+        // nonbasic land → basic as a budget source
+        if (cap != null) { const bb = bestBasic(); if (bb) for (const e of deck) if (!e.locked && analyze(e.c).isLand && !isBasic(e.c) && e.qty === 1 && pr(e.c) - pr(bb) >= BUCKETS[0]) pushDown(pr(e.c) - pr(bb), landVal(bb) - landVal(e.c), e, { c: bb, land: true, p: pr(bb) }); }
+        // every budget-feasible improving move is tried in order (no cut-off), then the best budget-blocked ones for pairing
+        const ord = (a, b) => b.d - a.d || (a.x.c.n < b.x.c.n ? -1 : 1);
+        moves.sort(ord); blocked.sort(ord);
+        let applied = 0; const usedOut = new Set(), usedIn = new Set();
+        for (const m of moves.concat(blocked.slice(0, 300))) {
+          if (applied >= 8) break;
+          if (usedOut.has(m.e) || usedIn.has(m.x.c.n) || m.x.inDeck || !deck.includes(m.e)) continue;
+          if (cmin != null && analyze(m.e.c).creature && !m.x.cr && st.creatures - 1 < cmin) continue;
+          const dd = applied ? exactD(m.e, m.x) : m.d; if (dd <= 1e-6) continue;
+          const why = canAdd(m.x.c, { replacing: m.e });
+          if (!why) { doSwap(m.e, m.x, dd, 'single'); usedOut.add(m.e); usedIn.add(m.x.c.n); applied++; continue; }
+          if (why !== 'total budget' || cap == null) continue;
+          // pair with a cheaper swap elsewhere so the two together fit the budget and raise J
+          const over = st.total - pr(m.e.c) + m.x.p - cap;
+          const bi = BUCKETS.findIndex(b => b >= over - 1e-9); if (bi < 0) continue;
+          for (const dn of down[bi]) {
+            if (dn.e === m.e || dn.x.c === m.x.c || usedOut.has(dn.e) || tabu.has(dn.e.c.n) || !deck.includes(dn.e) || (dn.x.c && !dn.x.land && dn.x.inDeck)) continue;
+            if (dd + dn.d <= 1e-6) continue;
+            if (!dn.x.land && canAdd(dn.x.c, { replacing: dn.e })) continue;
+            if (canAdd(m.x.c, { replacing: m.e, slack: pr(dn.e.c) - dn.x.p })) continue; // other limits (bracket, combos, creatures) still block it
+            const d2 = exactD(dn.e, dn.x); if (dd + d2 <= 1e-6) continue;
+            // apply both, then keep them only if J really rose (state snapshot makes this exact and reversible)
+            const Jb = J(), snap = { deck: deck.map(e => [e, e.qty]), total: st.total, cnt: Object.assign({}, st.cnt), cr: st.creatures, names: new Set(st.names), pc: Float64Array.from(cnt), rc: rc.slice(), mv: mvSum, inD: cands.map(x => x.inDeck), sw: swaps.length };
+            doSwap(dn.e, dn.x, d2, 'budget pair');
+            const d1 = exactD(m.e, m.x); doSwap(m.e, m.x, d1, 'budget pair');
+            if (J() <= Jb + 1e-6 || validBudget() === false) {
+              deck.splice(0, deck.length, ...snap.deck.map(([e, q]) => { e.qty = q; return e; })); st.total = snap.total; st.cnt = snap.cnt; st.creatures = snap.cr; st.names = snap.names;
+              cnt.set(snap.pc); rc.splice(0, rc.length, ...snap.rc); mvSum = snap.mv; cands.forEach((x, i) => { x.inDeck = snap.inD[i]; }); swaps.length = snap.sw; continue;
+            }
+            usedOut.add(m.e); usedOut.add(dn.e); usedIn.add(m.x.c.n); tabu.add(m.x.c.n); applied += 2; break;
+          }
+        }
+        if (!applied) break;
+      }
+      const J1 = J();
+      R.optimize = { baseline: J0, final: J1, swaps, pairs, rounds, pool: cands.length, ms: Date.now() - t0, timedOut: Date.now() - t0 >= timeCap };
+      L('Optimise: deck score ' + J0.toFixed(1) + ' → ' + J1.toFixed(1) + ' after ' + swaps.length + ' swap(s) in ' + rounds + ' round(s); ' + pairs.toLocaleString() + ' (deck card, pool card) pairs scored across ' + cands.length.toLocaleString() + ' nonland candidates in ' + R.optimize.ms + ' ms' + (R.optimize.timedOut ? ' (time cap reached)' : '; no improving swap left') + '.');
+      for (const w of swaps) L('  ' + w.tag + ': ' + w.out + ' → ' + w.in + ' (' + (w.d >= 0 ? '+' : '') + w.d.toFixed(2) + ')');
+    }
 
     /* 8. validate + auto-repair */
     R._runBan = new Set();
@@ -1384,7 +1514,22 @@ const Engine = (function () {
     return lines.join('\n') + '\n';
   }
 
-  return { cardPower, POWER_PREF, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
+  /* ---------- enabler / payoff synergy pairs (used by the generator's optimiser and by the analysis) ---------- */
+  const PAIRS = [
+    { key: 'tokens', label: 'Tokens', en: c => /\bcreates? [^.]*tokens?/.test(c.low), pay: c => /tokens? you control|whenever (?:a|another|one or more) (?:nontoken )?(?:creature|token)s? (?:you control )?enters|\bpopulate|creatures you control get \+/.test(c.low), enDesc: 'creates tokens', payDesc: 'rewards tokens / creatures entering / anthem' },
+    { key: 'aristocrats', label: 'Sacrifice', en: c => /sacrifice (?:a|another|an?(?: \w+)?) (?:creature|permanent|artifact)[^.:]*:/.test(c.low) || /\bcreates? [^.]*creature tokens?/.test(c.low), pay: c => /whenever [^.]{0,50}(?:dies|is put into a graveyard from the battlefield)|whenever you sacrifice/.test(c.low), enDesc: 'sacrifice outlet or creature-token fodder', payDesc: 'death / sacrifice triggers' },
+    { key: 'counters', label: '+1/+1 counters', en: c => /put (?:a|one|two|three|x|that many|\w+) \+1\/\+1 counters?|\bproliferate|enters (?:the battlefield )?with [^.]*\+1\/\+1 counters?/.test(c.low), pay: c => /(?:with|has|have) (?:a|one or more) \+1\/\+1 counters? on (?:it|them)|for each \+1\/\+1 counter|whenever (?:one or more )?\+1\/\+1 counters? (?:are|is) put|double the number of [^.]*counters/.test(c.low), enDesc: 'places counters / proliferate', payDesc: 'rewards creatures with counters' },
+    { key: 'spells', label: 'Instants & sorceries', en: c => /\b(?:Instant|Sorcery)\b/.test(c.ft), pay: c => /whenever you cast (?:an|a) (?:instant|sorcery|noncreature)|\bmagecraft|instant (?:or|and) sorcery spells? you cast|copy target (?:instant|sorcery)/.test(c.low), enDesc: 'instant or sorcery card', payDesc: 'cast/copy triggers for spells' },
+    { key: 'landfall', label: 'Landfall', en: c => /play (?:an|two) additional lands?|search your library for [^.]*land cards?[\s\S]{0,120}?onto the battlefield|return [^.]*land cards? from your graveyard to the battlefield/.test(c.low) || analyze(c).land === 'fetch', pay: c => /\blandfall|whenever a land (?:you control )?enters|whenever one or more lands (?:you control )?enter/.test(c.low), enDesc: 'extra land drops / land to battlefield / fetch', payDesc: 'landfall triggers' },
+    { key: 'graveyard', label: 'Graveyard', en: c => /\bmills?\b|\bsurveil|\bdiscard (?:a|two|x|that many|your hand)|put the top [^.]* into your graveyard|\bdredge/.test(c.low), pay: c => /from your graveyard|cards? in your graveyard|\bflashback|\bescape|\bdelve|\bunearth|\bembalm|\beternalize/.test(c.low) || ['flashback', 'escape', 'delve', 'unearth', 'embalm', 'eternalize'].some(k => c.kw.includes(k)), enDesc: 'fills your graveyard', payDesc: 'uses cards in your graveyard' },
+    { key: 'artifacts', label: 'Artifacts', en: c => /\bArtifact\b/.test(c.ft) || /creates? [^.]*(?:treasure|clue|food|blood|map|powerstone)/.test(c.low), pay: c => /artifacts? you control|whenever (?:an|another|one or more) (?:nontoken )?artifacts?|for each artifact|artifact spells? you cast/.test(c.low), enDesc: 'artifact or artifact token maker', payDesc: 'artifact-count / artifact triggers' },
+    { key: 'enchantments', label: 'Enchantments', en: c => /\bEnchantment\b/.test(c.ft), pay: c => /enchantments? you control|whenever you cast an enchantment|\bconstellation|whenever (?:an|another) enchantment/.test(c.low), enDesc: 'enchantment card', payDesc: 'enchantment triggers / count' },
+    { key: 'lifegain', label: 'Lifegain', en: c => /\bgain (?:\d+|x|that much|life equal)[^.]*life|\blifelink/.test(c.low) || c.kw.includes('lifelink'), pay: c => /whenever you gain life|for each 1 life you gained|life you gained this turn/.test(c.low), enDesc: 'gains life', payDesc: 'lifegain triggers' },
+    { key: 'blink', label: 'Blink / ETB', en: c => /\bexile [^.]*you control[^.]*\.?[^.]*return (?:it|that card|them|those cards) to the battlefield|\bflicker/.test(c.low), pay: c => analyze(c).creature && /when (?:~|this creature) enters/.test(c.low), enDesc: 'flickers permanents', payDesc: 'creature with enter trigger' },
+    { key: 'draw', label: 'Draw triggers', en: c => !!analyze(c).roles.draw, pay: c => /whenever you draw/.test(c.low), enDesc: 'draws cards', payDesc: 'draw triggers' }
+  ];
+
+  return { cardPower, POWER_PREF, PAIRS, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
     norm, buildDB, lookup, nameKey, parseList, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
     slimVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes };
 })();
@@ -1409,19 +1554,7 @@ const Analysis = (function () {
   const BENCH = { lands: 37, ramp: 10, draw: 10, removal: 9, wipes: 3, protection: 3, recursion: 2, wincon: 3, avgMV: 3.0, engines: 3, cheapInteraction: 6, evasive: 8 };
 
   /* ---------- enabler / payoff synergy pairs ---------- */
-  const PAIRS = [
-    { key: 'tokens', label: 'Tokens', en: c => /\bcreates? [^.]*tokens?/.test(c.low), pay: c => /tokens? you control|whenever (?:a|another|one or more) (?:nontoken )?(?:creature|token)s? (?:you control )?enters|\bpopulate|creatures you control get \+/.test(c.low), enDesc: 'creates tokens', payDesc: 'rewards tokens / creatures entering / anthem' },
-    { key: 'aristocrats', label: 'Sacrifice', en: c => /sacrifice (?:a|another|an?(?: \w+)?) (?:creature|permanent|artifact)[^.:]*:/.test(c.low) || /\bcreates? [^.]*creature tokens?/.test(c.low), pay: c => /whenever [^.]{0,50}(?:dies|is put into a graveyard from the battlefield)|whenever you sacrifice/.test(c.low), enDesc: 'sacrifice outlet or creature-token fodder', payDesc: 'death / sacrifice triggers' },
-    { key: 'counters', label: '+1/+1 counters', en: c => /put (?:a|one|two|three|x|that many|\w+) \+1\/\+1 counters?|\bproliferate|enters (?:the battlefield )?with [^.]*\+1\/\+1 counters?/.test(c.low), pay: c => /(?:with|has|have) (?:a|one or more) \+1\/\+1 counters? on (?:it|them)|for each \+1\/\+1 counter|whenever (?:one or more )?\+1\/\+1 counters? (?:are|is) put|double the number of [^.]*counters/.test(c.low), enDesc: 'places counters / proliferate', payDesc: 'rewards creatures with counters' },
-    { key: 'spells', label: 'Instants & sorceries', en: c => /\b(?:Instant|Sorcery)\b/.test(c.ft), pay: c => /whenever you cast (?:an|a) (?:instant|sorcery|noncreature)|\bmagecraft|instant (?:or|and) sorcery spells? you cast|copy target (?:instant|sorcery)/.test(c.low), enDesc: 'instant or sorcery card', payDesc: 'cast/copy triggers for spells' },
-    { key: 'landfall', label: 'Landfall', en: c => /play (?:an|two) additional lands?|search your library for [^.]*land cards?[\s\S]{0,120}?onto the battlefield|return [^.]*land cards? from your graveyard to the battlefield/.test(c.low) || A(c).land === 'fetch', pay: c => /\blandfall|whenever a land (?:you control )?enters|whenever one or more lands (?:you control )?enter/.test(c.low), enDesc: 'extra land drops / land to battlefield / fetch', payDesc: 'landfall triggers' },
-    { key: 'graveyard', label: 'Graveyard', en: c => /\bmills?\b|\bsurveil|\bdiscard (?:a|two|x|that many|your hand)|put the top [^.]* into your graveyard|\bdredge/.test(c.low), pay: c => /from your graveyard|cards? in your graveyard|\bflashback|\bescape|\bdelve|\bunearth|\bembalm|\beternalize/.test(c.low) || ['flashback', 'escape', 'delve', 'unearth', 'embalm', 'eternalize'].some(k => c.kw.includes(k)), enDesc: 'fills your graveyard', payDesc: 'uses cards in your graveyard' },
-    { key: 'artifacts', label: 'Artifacts', en: c => /\bArtifact\b/.test(c.ft) || /creates? [^.]*(?:treasure|clue|food|blood|map|powerstone)/.test(c.low), pay: c => /artifacts? you control|whenever (?:an|another|one or more) (?:nontoken )?artifacts?|for each artifact|artifact spells? you cast/.test(c.low), enDesc: 'artifact or artifact token maker', payDesc: 'artifact-count / artifact triggers' },
-    { key: 'enchantments', label: 'Enchantments', en: c => /\bEnchantment\b/.test(c.ft), pay: c => /enchantments? you control|whenever you cast an enchantment|\bconstellation|whenever (?:an|another) enchantment/.test(c.low), enDesc: 'enchantment card', payDesc: 'enchantment triggers / count' },
-    { key: 'lifegain', label: 'Lifegain', en: c => /\bgain (?:\d+|x|that much|life equal)[^.]*life|\blifelink/.test(c.low) || c.kw.includes('lifelink'), pay: c => /whenever you gain life|for each 1 life you gained|life you gained this turn/.test(c.low), enDesc: 'gains life', payDesc: 'lifegain triggers' },
-    { key: 'blink', label: 'Blink / ETB', en: c => /\bexile [^.]*you control[^.]*\.?[^.]*return (?:it|that card|them|those cards) to the battlefield|\bflicker/.test(c.low), pay: c => A(c).creature && /when (?:~|this creature) enters/.test(c.low), enDesc: 'flickers permanents', payDesc: 'creature with enter trigger' },
-    { key: 'draw', label: 'Draw triggers', en: c => !!A(c).roles.draw, pay: c => /whenever you draw/.test(c.low), enDesc: 'draws cards', payDesc: 'draw triggers' }
-  ];
+  const PAIRS = E.PAIRS; // shared with the generator (engine.js)
 
   /* ---------- mana model per card ---------- */
   const MM = new WeakMap();
@@ -2002,27 +2135,46 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     } catch (e) { setStatus('Bulk file error: ' + e.message); showMsgs([e.message], []); }
     prog.classList.add('hidden'); renderSources();
   }
-  /* ---------- data in the site's repo (GitHub Pages): data/cards.json[.gz], data/combos.json[.gz] ----------
-     Reloads only when the file's ETag / Last-Modified changes; otherwise uses the copy stored in this browser. */
-  async function repoFile(names) {
-    if (!window.EDH_SITE || !/^https?:$/.test(location.protocol)) return null; // only the GitHub Pages build sets EDH_SITE
-    for (const n of names) {
-      try { const h = await fetch(n, { method: 'HEAD', cache: 'no-cache' }); if (h.ok) return { url: n, tag: h.headers.get('etag') || h.headers.get('last-modified') || '', size: +h.headers.get('content-length') || 0 }; } catch (e) { }
+  /* ---------- data in the site's repo (GitHub Pages): the newest Scryfall bulk file in data/ ----------
+     Finds it via the GitHub contents API (owner/repo from the Pages URL), else a server directory listing, else fixed names.
+     Accepts .json, .jsonl and their .gz forms, e.g. oracle-cards-20261016090200.jsonl.gz as downloaded from Scryfall.
+     Reloads only when the file's sha / ETag changes; otherwise uses the copy stored in this browser. */
+  const BULK_RE = /^(?:oracle-cards|default-cards|all-cards|unique-artwork|cards)[\w.-]*\.jsonl?(?:\.gz)?$/i;
+  const pickNewest = files => { const ok = files.filter(f => BULK_RE.test(f.name)); const rank = n => /^oracle/i.test(n) ? 0 : /^default/i.test(n) ? 1 : 2; ok.sort((a, b) => rank(a.name) - rank(b.name) || (a.name < b.name ? 1 : -1)); return ok[0] || null; };
+  async function repoFile() {
+    if (!window.EDH_SITE || !/^https?:$/.test(location.protocol)) return null; // only the site build sets EDH_SITE
+    const m = location.hostname.match(/^([\w-]+)\.github\.io$/i);
+    if (m) {
+      const seg = location.pathname.split('/').filter(Boolean)[0];
+      const repo = seg && !/\.html?$/i.test(seg) ? seg : m[1] + '.github.io';
+      try {
+        const r = await fetch('https://api.github.com/repos/' + m[1] + '/' + repo + '/contents/data', { cache: 'no-cache' });
+        if (r.ok) { const f = pickNewest((await r.json()).map(x => ({ name: x.name, size: x.size, sha: x.sha }))); if (f) return { url: 'data/' + f.name, tag: f.sha, size: f.size }; }
+      } catch (e) { }
     }
+    try {
+      const r = await fetch('data/', { cache: 'no-cache' });
+      if (r.ok && /html/.test(r.headers.get('content-type') || '')) { const names = [...(await r.text()).matchAll(/href="([^"?#/]+)"/g)].map(x => ({ name: decodeURIComponent(x[1]) })); const f = pickNewest(names); if (f) return headInfo('data/' + f.name); }
+    } catch (e) { }
+    for (const n of ['data/cards.json.gz', 'data/cards.json', 'data/cards.jsonl.gz']) { const h = await headInfo(n); if (h) return h; }
+    return null;
+  }
+  async function headInfo(n) {
+    try { const h = await fetch(n, { method: 'HEAD', cache: 'no-cache' }); if (h.ok) return { url: n, tag: h.headers.get('etag') || h.headers.get('last-modified') || '', size: +h.headers.get('content-length') || 0 }; } catch (e) { }
     return null;
   }
   async function fromRepo(f, loader) {
     const res = await fetch(f.url, { cache: 'no-cache' }); if (!res.ok || !res.body) throw new Error(f.url + ': HTTP ' + res.status);
-    const gz = /\.gz$/.test(f.url);
+    const gz = /\.gz$/.test(f.url) && !/gzip/i.test(res.headers.get('content-encoding') || ''); // a server that already sends Content-Encoding: gzip is unzipped by the browser
     if (gz && typeof DecompressionStream === 'undefined') throw new Error('this browser cannot unzip ' + f.url);
     const body = gz ? res.body.pipeThrough(new DecompressionStream('gzip')) : res.body;
     let used = false;
-    const src = { name: f.url, size: gz ? f.size * 7 : f.size, stream: () => { used = true; return body; }, text: () => used ? Promise.resolve('[]') : new Response(body).text() };
+    const src = { name: f.url.split('/').pop(), size: gz ? f.size * 8 : f.size, stream: () => { used = true; return body; }, text: () => used ? Promise.resolve('[]') : new Response(body).text() };
     await loader(src, { source: 'site data', tag: f.tag });
   }
   async function autoload() {
     const bulk = await IDB.get('bulk');
-    const rc = await repoFile(['data/cards.json.gz', 'data/cards.json']);
+    const rc = await repoFile();
     const fresh = (stored, f) => stored && stored.meta && f && f.tag && stored.meta.tag === f.tag;
     if (rc && !fresh(bulk, rc)) { try { await fromRepo(rc, loadBulk); } catch (e) { setStatus('Site card data: ' + e.message); } }
     if (!App.bulk && bulk && bulk.cards && bulk.cards.length) { App.bulk = Engine.buildDB(bulk.cards, bulk.meta); $('idbNote').textContent = 'Using stored card data: ' + (bulk.meta.file || '') + '.'; }
@@ -2354,7 +2506,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       for (const c of cmds) { const p = c.p[cur]; if (p == null) unpriced++; else price += p; }
       for (const e of deck) {
         const a = Engine.analyze(e.c), q = e.qty || 1, p = e.c.p[cur];
-        if (p == null) unpriced += q; else if (!(a.land === 'basic' && !App.S.budget.inclBasics)) price += p * q;
+        if (p == null) { if (a.land !== 'basic') unpriced += q; } else if (!(a.land === 'basic' && !App.S.budget.inclBasics)) price += p * q;
         for (const r of Object.keys(a.roles)) role[r] = (role[r] || 0) + q;
         if (a.creature) creatures += q;
         if (a.isLand && a.land !== 'basic') nonbasicLands += q;
@@ -2493,9 +2645,10 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     ].map(([k, v]) => '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>').join('');
   }
   function emptyView() {
-    if (App.bulk) return '<div class="empty"><h2>Ready</h2><p>' + App.bulk.all.length.toLocaleString() + ' cards loaded from ' + esc(App.bulk.meta.file || 'stored data') + (App.bulkCombos ? ' and ' + App.bulkCombos.count.toLocaleString() + ' combo variants' : '') + '. Enter a commander and press Generate deck.</p></div>';
-    return '<div class="empty"><h2>Load card data</h2><p>The generator runs offline from two files you download once.</p>' +
-      '<ol><li><b>Scryfall Oracle Cards</b> (or Default Cards) from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a>. Required.</li><li><b>Commander Spellbook variants</b> from <a href="https://json.commanderspellbook.com/variants.json" target="_blank" rel="noopener">json.commanderspellbook.com/variants.json</a>. Optional; enables combo detection and bracket combo limits.</li><li>Load both under Data source. They are parsed in this browser and kept in its storage for the next visit.</li><li>Enter a commander, then Generate deck.</li></ol></div>';
+    const about = '<p>Builds a legal 100-card Commander deck from every card in the Scryfall file, then optimises it. A first pass fills lands, role slots (ramp, draw, removal, wipes, protection, recursion, win conditions) and your themes. The optimiser then scores every card in the deck against every legal candidate and keeps making the best swap until no swap raises the deck score, staying inside your bracket, budget and filters. The Analysis tab rates the result (power level, speed, consistency, interaction, mana) with 100,000 simulated games, and Compare scores any other list the same way.</p>';
+    if (App.bulk) return '<div class="empty"><h2>Ready</h2><p>' + App.bulk.all.length.toLocaleString() + ' unique cards loaded from ' + esc(App.bulk.meta.file || 'stored data') + '. Pick a commander, a game plan and any themes, then Generate deck.</p>' + about + '</div>';
+    return '<div class="empty"><h2>Card data</h2>' + about + (window.EDH_SITE ? '<p>Card data loads from this site automatically. If it does not appear, load a Scryfall bulk file under Data source.</p>' :
+      '<ol><li>Download <b>Oracle Cards</b> from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a> (.json, .jsonl or .gz).</li><li>Load it under Data source. It is read in this browser and kept for the next visit.</li><li>Pick a commander, then Generate deck.</li></ol>') + '</div>';
   }
   function deckRows(entries, groupKey) {
     const R = App.R;
@@ -2639,7 +2792,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       else {
         App.R = R; App.openSwap = null; if (App.anSource !== 'paste') App.AN = null;
         showMsgs([], R.warnings, shortfallHTML(R));
-        setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates.');
+        const O = R.optimize;
+        setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '. Optimised: deck score ' + O.baseline.toFixed(1) + ' → ' + O.final.toFixed(1) + ' (' + O.swaps.length + ' swaps; ' + O.pairs.toLocaleString() + ' card pairs scored' + (O.timedOut ? '; time cap reached' : '; no better single swap left') + ').' : '.'));
       }
     } catch (e) { App.R = null; showMsgs([e.message || String(e)], []); setStatus('Error.'); console.error(e); }
     App.busy = false; setProg(null); renderSources(); renderAll();
@@ -2710,7 +2864,13 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   function wire() {
     document.querySelector('.settings').addEventListener('input', onFormChange);
     document.querySelector('.settings').addEventListener('change', onFormChange);
-    $('bulkFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadBulk(f); });
+    $('bulkFile').addEventListener('change', e => {
+      const f = e.target.files[0]; if (!f) return;
+      if (!/\.gz$/i.test(f.name)) { loadBulk(f); return; }
+      if (typeof DecompressionStream === 'undefined') { setStatus('This browser cannot unzip .gz files; unzip it first.'); return; }
+      const z = () => f.stream().pipeThrough(new DecompressionStream('gzip'));
+      loadBulk({ name: f.name, size: f.size * 8, lastModified: f.lastModified, stream: z, text: () => new Response(z()).text() });
+    });
     $('oFile').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; $('oList').value = await f.text(); App.S.owned.list = $('oList').value; persistSettings(); });
     $('forgetBtn').addEventListener('click', async () => { await IDB.del('bulk'); await IDB.del('combos'); $('idbNote').textContent = 'Stored data removed.'; });
     $('seedBtn').addEventListener('click', () => { const s = Math.random().toString(36).slice(2, 10); $('seed').value = s; App.S.seed = s; App.S.reroll = 0; persistSettings(); });
@@ -2781,6 +2941,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     if (hash && /^[zj][A-Za-z0-9_-]+$/.test(hash)) { try { S = await decodeSettings(hash); setStatus('Settings loaded from link.'); } catch (e) { } }
     if (!S) { try { const raw = LS.get('edhgen.settings'); if (raw) S = JSON.parse(raw); } catch (e) { } }
     App.S = deepAssign(uiDefaults(), S || {});
+    if (!S || S.weightsV !== 2) { App.S.weights = uiDefaults().weights; App.S.weightsV = 2; } // weights were recalibrated on real Scryfall data (Oct 2026)
     if (App.S.bl && ({ 1: 2, 2: 3, 3: 6 })[App.S.bracket] === +App.S.bl.tutor) App.S.bl.tutor = 999; // old defaults; tutor limits were removed Oct 21 2025
     writeForm(App.S); updateShareToken();
     wire(); renderSources(); renderAll();

@@ -54,27 +54,46 @@
     } catch (e) { setStatus('Bulk file error: ' + e.message); showMsgs([e.message], []); }
     prog.classList.add('hidden'); renderSources();
   }
-  /* ---------- data in the site's repo (GitHub Pages): data/cards.json[.gz], data/combos.json[.gz] ----------
-     Reloads only when the file's ETag / Last-Modified changes; otherwise uses the copy stored in this browser. */
-  async function repoFile(names) {
-    if (!window.EDH_SITE || !/^https?:$/.test(location.protocol)) return null; // only the GitHub Pages build sets EDH_SITE
-    for (const n of names) {
-      try { const h = await fetch(n, { method: 'HEAD', cache: 'no-cache' }); if (h.ok) return { url: n, tag: h.headers.get('etag') || h.headers.get('last-modified') || '', size: +h.headers.get('content-length') || 0 }; } catch (e) { }
+  /* ---------- data in the site's repo (GitHub Pages): the newest Scryfall bulk file in data/ ----------
+     Finds it via the GitHub contents API (owner/repo from the Pages URL), else a server directory listing, else fixed names.
+     Accepts .json, .jsonl and their .gz forms, e.g. oracle-cards-20261016090200.jsonl.gz as downloaded from Scryfall.
+     Reloads only when the file's sha / ETag changes; otherwise uses the copy stored in this browser. */
+  const BULK_RE = /^(?:oracle-cards|default-cards|all-cards|unique-artwork|cards)[\w.-]*\.jsonl?(?:\.gz)?$/i;
+  const pickNewest = files => { const ok = files.filter(f => BULK_RE.test(f.name)); const rank = n => /^oracle/i.test(n) ? 0 : /^default/i.test(n) ? 1 : 2; ok.sort((a, b) => rank(a.name) - rank(b.name) || (a.name < b.name ? 1 : -1)); return ok[0] || null; };
+  async function repoFile() {
+    if (!window.EDH_SITE || !/^https?:$/.test(location.protocol)) return null; // only the site build sets EDH_SITE
+    const m = location.hostname.match(/^([\w-]+)\.github\.io$/i);
+    if (m) {
+      const seg = location.pathname.split('/').filter(Boolean)[0];
+      const repo = seg && !/\.html?$/i.test(seg) ? seg : m[1] + '.github.io';
+      try {
+        const r = await fetch('https://api.github.com/repos/' + m[1] + '/' + repo + '/contents/data', { cache: 'no-cache' });
+        if (r.ok) { const f = pickNewest((await r.json()).map(x => ({ name: x.name, size: x.size, sha: x.sha }))); if (f) return { url: 'data/' + f.name, tag: f.sha, size: f.size }; }
+      } catch (e) { }
     }
+    try {
+      const r = await fetch('data/', { cache: 'no-cache' });
+      if (r.ok && /html/.test(r.headers.get('content-type') || '')) { const names = [...(await r.text()).matchAll(/href="([^"?#/]+)"/g)].map(x => ({ name: decodeURIComponent(x[1]) })); const f = pickNewest(names); if (f) return headInfo('data/' + f.name); }
+    } catch (e) { }
+    for (const n of ['data/cards.json.gz', 'data/cards.json', 'data/cards.jsonl.gz']) { const h = await headInfo(n); if (h) return h; }
+    return null;
+  }
+  async function headInfo(n) {
+    try { const h = await fetch(n, { method: 'HEAD', cache: 'no-cache' }); if (h.ok) return { url: n, tag: h.headers.get('etag') || h.headers.get('last-modified') || '', size: +h.headers.get('content-length') || 0 }; } catch (e) { }
     return null;
   }
   async function fromRepo(f, loader) {
     const res = await fetch(f.url, { cache: 'no-cache' }); if (!res.ok || !res.body) throw new Error(f.url + ': HTTP ' + res.status);
-    const gz = /\.gz$/.test(f.url);
+    const gz = /\.gz$/.test(f.url) && !/gzip/i.test(res.headers.get('content-encoding') || ''); // a server that already sends Content-Encoding: gzip is unzipped by the browser
     if (gz && typeof DecompressionStream === 'undefined') throw new Error('this browser cannot unzip ' + f.url);
     const body = gz ? res.body.pipeThrough(new DecompressionStream('gzip')) : res.body;
     let used = false;
-    const src = { name: f.url, size: gz ? f.size * 7 : f.size, stream: () => { used = true; return body; }, text: () => used ? Promise.resolve('[]') : new Response(body).text() };
+    const src = { name: f.url.split('/').pop(), size: gz ? f.size * 8 : f.size, stream: () => { used = true; return body; }, text: () => used ? Promise.resolve('[]') : new Response(body).text() };
     await loader(src, { source: 'site data', tag: f.tag });
   }
   async function autoload() {
     const bulk = await IDB.get('bulk');
-    const rc = await repoFile(['data/cards.json.gz', 'data/cards.json']);
+    const rc = await repoFile();
     const fresh = (stored, f) => stored && stored.meta && f && f.tag && stored.meta.tag === f.tag;
     if (rc && !fresh(bulk, rc)) { try { await fromRepo(rc, loadBulk); } catch (e) { setStatus('Site card data: ' + e.message); } }
     if (!App.bulk && bulk && bulk.cards && bulk.cards.length) { App.bulk = Engine.buildDB(bulk.cards, bulk.meta); $('idbNote').textContent = 'Using stored card data: ' + (bulk.meta.file || '') + '.'; }
@@ -406,7 +425,7 @@
       for (const c of cmds) { const p = c.p[cur]; if (p == null) unpriced++; else price += p; }
       for (const e of deck) {
         const a = Engine.analyze(e.c), q = e.qty || 1, p = e.c.p[cur];
-        if (p == null) unpriced += q; else if (!(a.land === 'basic' && !App.S.budget.inclBasics)) price += p * q;
+        if (p == null) { if (a.land !== 'basic') unpriced += q; } else if (!(a.land === 'basic' && !App.S.budget.inclBasics)) price += p * q;
         for (const r of Object.keys(a.roles)) role[r] = (role[r] || 0) + q;
         if (a.creature) creatures += q;
         if (a.isLand && a.land !== 'basic') nonbasicLands += q;
@@ -545,9 +564,10 @@
     ].map(([k, v]) => '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>').join('');
   }
   function emptyView() {
-    if (App.bulk) return '<div class="empty"><h2>Ready</h2><p>' + App.bulk.all.length.toLocaleString() + ' cards loaded from ' + esc(App.bulk.meta.file || 'stored data') + (App.bulkCombos ? ' and ' + App.bulkCombos.count.toLocaleString() + ' combo variants' : '') + '. Enter a commander and press Generate deck.</p></div>';
-    return '<div class="empty"><h2>Load card data</h2><p>The generator runs offline from two files you download once.</p>' +
-      '<ol><li><b>Scryfall Oracle Cards</b> (or Default Cards) from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a>. Required.</li><li><b>Commander Spellbook variants</b> from <a href="https://json.commanderspellbook.com/variants.json" target="_blank" rel="noopener">json.commanderspellbook.com/variants.json</a>. Optional; enables combo detection and bracket combo limits.</li><li>Load both under Data source. They are parsed in this browser and kept in its storage for the next visit.</li><li>Enter a commander, then Generate deck.</li></ol></div>';
+    const about = '<p>Builds a legal 100-card Commander deck from every card in the Scryfall file, then optimises it. A first pass fills lands, role slots (ramp, draw, removal, wipes, protection, recursion, win conditions) and your themes. The optimiser then scores every card in the deck against every legal candidate and keeps making the best swap until no swap raises the deck score, staying inside your bracket, budget and filters. The Analysis tab rates the result (power level, speed, consistency, interaction, mana) with 100,000 simulated games, and Compare scores any other list the same way.</p>';
+    if (App.bulk) return '<div class="empty"><h2>Ready</h2><p>' + App.bulk.all.length.toLocaleString() + ' unique cards loaded from ' + esc(App.bulk.meta.file || 'stored data') + '. Pick a commander, a game plan and any themes, then Generate deck.</p>' + about + '</div>';
+    return '<div class="empty"><h2>Card data</h2>' + about + (window.EDH_SITE ? '<p>Card data loads from this site automatically. If it does not appear, load a Scryfall bulk file under Data source.</p>' :
+      '<ol><li>Download <b>Oracle Cards</b> from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a> (.json, .jsonl or .gz).</li><li>Load it under Data source. It is read in this browser and kept for the next visit.</li><li>Pick a commander, then Generate deck.</li></ol>') + '</div>';
   }
   function deckRows(entries, groupKey) {
     const R = App.R;
@@ -691,7 +711,8 @@
       else {
         App.R = R; App.openSwap = null; if (App.anSource !== 'paste') App.AN = null;
         showMsgs([], R.warnings, shortfallHTML(R));
-        setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates.');
+        const O = R.optimize;
+        setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '. Optimised: deck score ' + O.baseline.toFixed(1) + ' → ' + O.final.toFixed(1) + ' (' + O.swaps.length + ' swaps; ' + O.pairs.toLocaleString() + ' card pairs scored' + (O.timedOut ? '; time cap reached' : '; no better single swap left') + ').' : '.'));
       }
     } catch (e) { App.R = null; showMsgs([e.message || String(e)], []); setStatus('Error.'); console.error(e); }
     App.busy = false; setProg(null); renderSources(); renderAll();
@@ -762,7 +783,13 @@
   function wire() {
     document.querySelector('.settings').addEventListener('input', onFormChange);
     document.querySelector('.settings').addEventListener('change', onFormChange);
-    $('bulkFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadBulk(f); });
+    $('bulkFile').addEventListener('change', e => {
+      const f = e.target.files[0]; if (!f) return;
+      if (!/\.gz$/i.test(f.name)) { loadBulk(f); return; }
+      if (typeof DecompressionStream === 'undefined') { setStatus('This browser cannot unzip .gz files; unzip it first.'); return; }
+      const z = () => f.stream().pipeThrough(new DecompressionStream('gzip'));
+      loadBulk({ name: f.name, size: f.size * 8, lastModified: f.lastModified, stream: z, text: () => new Response(z()).text() });
+    });
     $('oFile').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; $('oList').value = await f.text(); App.S.owned.list = $('oList').value; persistSettings(); });
     $('forgetBtn').addEventListener('click', async () => { await IDB.del('bulk'); await IDB.del('combos'); $('idbNote').textContent = 'Stored data removed.'; });
     $('seedBtn').addEventListener('click', () => { const s = Math.random().toString(36).slice(2, 10); $('seed').value = s; App.S.seed = s; App.S.reroll = 0; persistSettings(); });
@@ -833,6 +860,7 @@
     if (hash && /^[zj][A-Za-z0-9_-]+$/.test(hash)) { try { S = await decodeSettings(hash); setStatus('Settings loaded from link.'); } catch (e) { } }
     if (!S) { try { const raw = LS.get('edhgen.settings'); if (raw) S = JSON.parse(raw); } catch (e) { } }
     App.S = deepAssign(uiDefaults(), S || {});
+    if (!S || S.weightsV !== 2) { App.S.weights = uiDefaults().weights; App.S.weightsV = 2; } // weights were recalibrated on real Scryfall data (Oct 2026)
     if (App.S.bl && ({ 1: 2, 2: 3, 3: 6 })[App.S.bracket] === +App.S.bl.tutor) App.S.bl.tutor = 999; // old defaults; tutor limits were removed Oct 21 2025
     writeForm(App.S); updateShareToken();
     wire(); renderSources(); renderAll();

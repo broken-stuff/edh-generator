@@ -239,9 +239,9 @@ table.swaps td{vertical-align:top}
 <aside class="settings" aria-label="Deck settings">
 
 <details class="sec" id="secData"><summary>Data source <span class="hint" id="dataHint"></span></summary><div class="body">
-  <div class="note">Runs offline from downloaded JSON files. Files are parsed in this browser; nothing is sent anywhere.</div>
-  <label class="f">Scryfall bulk JSON (Oracle Cards or Default Cards)
-    <input type="file" id="bulkFile" accept=".json,application/json"></label>
+  <div class="note">The site loads the newest Scryfall file in its data folder automatically. You can also load your own; it is read in this browser and nothing is sent anywhere.</div>
+  <label class="f">Scryfall bulk file (Oracle Cards or Default Cards; .json, .jsonl or .gz)
+    <input type="file" id="bulkFile" accept=".json,.jsonl,.gz,application/json,application/gzip"></label>
   <div class="prog hidden" id="bulkProg"><i></i></div>
   <div class="note">Download from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a>. Default Cards gives full printing history for set/date filters and uses the lowest price across printings.</div>
   <div class="row"><button type="button" class="small" id="forgetBtn">Forget stored bulk data</button><span class="note" id="idbNote"></span></div>
@@ -348,8 +348,10 @@ table.swaps td{vertical-align:top}
     <label class="f">Owned bonus<input type="number" step="0.1" id="wOwned" data-k="weights.owned"></label>
     <label class="f">Bracket penalty<input type="number" step="0.1" id="wBr" data-k="weights.bracket"></label>
     <label class="f">Bracket power pull<input type="number" step="0.1" id="wPow" data-k="weights.power"></label>
+    <label class="f">Card quality<input type="number" step="0.1" id="wQual" data-k="weights.quality"></label>
+    <label class="f">Pair synergy<input type="number" step="0.1" id="wLink" data-k="weights.link"></label>
   </div>
-  <div class="note">score = syn·min(synergy,3) + role·(unfilled roles matched) + pop·(1 − log₁₀ rank / log₁₀ 40000) + curve·fit(MV) + owned − price·min(3, price ÷ (per-card cap, or 3×budget÷99)) − bracket·(limited flags) + power·pref(bracket)·cardPower + seeded noise. pref = −1, −0.4, 0.5, 1.3, 2 for B1–B5. fit(MV) = 1 − |MV − target| / (4 below, 3 above). Price only counts when a budget is set. With two or more themes, synergy slots go round-robin to the theme with the fewest cards relative to its weight.</div>
+  <div class="note">Card score = syn·min(tag synergy, 3) + pop·(1 − log₁₀ EDHREC rank / log₁₀ 40000) + (quality + power·pref(bracket))·cardPower + curve·fit(MV) + owned − price·min(3, price ÷ reference) − bracket·(limited flags) + seeded noise. pref = −0.3, 0.2, 0.6, 1.3, 2 for B1–B5; fit(MV) = 1 − |MV − target| / (4 below, 3 above); price counts only with a budget. Deck score = Σ card scores + pair synergy·Σ 2√(enablers × payoffs) per theme − 2·role·(role slots short) − 8·curve·(drift of average MV beyond ±0.15). The optimiser swaps until no single swap, or budget-neutral pair of swaps, raises the deck score.</div>
   <div class="row"><label class="f" style="flex:1">Seed (blank = derived from settings)<input type="text" id="seed" data-k="seed"></label><button type="button" class="small" id="seedBtn" style="align-self:flex-end">New seed</button></div>
   <label class="f">Variance <span id="varOut" class="mono-inline"></span><input type="range" min="0" max="1" step="0.05" id="variance" data-k="variance" data-type="num"></label>
   <div class="grid2">
