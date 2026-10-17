@@ -119,6 +119,14 @@ function legalCheck(R, label) {
   legalCheck(R, 'combo prefer w/ exclude');
   R = await E.generate(db, Object.assign({}, base, { commanders: ['Synth Mono Lord'], filters: { combos: 'prefer' } }), { combos: prov });
   console.log('combos found', R.combos.map(v => v.c.join('+')));
+  // dry-run replace: reports the rule a combo add would break and leaves the deck unchanged
+  R = await E.generate(db, Object.assign({}, base, { commanders: ['Synth Mono Lord'], bracket: 2, bl: E.bracketDefaults(2), include: 'Synth G 1-0' }), { combos: prov });
+  const before = R.deck.map(e => e.qty + e.c.n + e.locked).join('|'), tot = R.stats.total, cutE = R.deck.find(e => !E.analyze(e.c).isLand && !e.inc);
+  const fails = await R.checkReplace(cutE, E.lookup(db, 'Synth G 1-3'));
+  assert(fails.length && fails[0].id === 'bracket', 'checkReplace flags the 2-card infinite at bracket 2: ' + fails.map(r => r.id));
+  assert(R.deck.map(e => e.qty + e.c.n + e.locked).join('|') === before && Math.abs(R.stats.total - tot) < 1e-9 && R.ok, 'checkReplace leaves the deck as it was');
+  const altE = R.deck.map(e => ({ e, a: R.alternatives(e, 1)[0] })).find(x => x.a && !E.analyze(x.e.c).isLand);
+  assert(altE && (await R.checkReplace(altE.e, altE.a.c)).length === 0, 'checkReplace passes a legal swap');
   // Scryfall slimmer keeps everything norm() reads; norm() keeps P/T and the image path
   const { slim } = require('../tools/scryfall-slim.js');
   const full = card({ name: 'Slim Test', power: '2', toughness: '3', scryfall_uri: 'https://scryfall.com/card/x/1/slim-test?utm_source=api', image_uris: { small: 'https://cards.scryfall.io/small/front/a/b/ab12-cd.jpg?1', normal: 'https://cards.scryfall.io/normal/front/a/b/ab12-cd.jpg?1' }, legalities: { commander: 'legal', modern: 'legal' }, artist: 'X', all_parts: [] });

@@ -50,7 +50,7 @@ The same settings always produce the same deck.
 
 - **Setup:** commander, budget, game plan, themes and creature types.
 - **Commanders:** browse every legal commander. Filter by name, text, colour or theme, then send one to Setup with **Build**.
-- **Deck:** the list grouped by type. Lock cards you want to keep. **Swap** shows the five best alternatives for a card. **Rebuild around locks** rebuilds while keeping locked cards, and **Undo** reverts your last edit.
+- **Deck:** the list grouped by type. Lock cards you want to keep. **Swap** shows the five best alternatives for a card. **Rebuild around locks** rebuilds while keeping locked cards (if the locked cards can't fit the budget, the current deck stays), and **Undo** reverts your last edit.
 - **Primer:** a play guide built from the deck's own numbers, covering:
   - table talk for the pre-game conversation
   - mulligan odds and a turn-by-turn plan
@@ -66,7 +66,7 @@ The same settings always produce the same deck.
   - turn-by-turn odds of drawing ramp, draw, removal and win conditions
   - swap suggestions you can accept or deny
 - **Sample hand:** draw 7, take London mulligans, draw more.
-- **Combos:** combos already in the deck, and combos one card away with that card's price. **+ Add** shows what to cut.
+- **Combos:** combos already in the deck, and combos one card away with that card's price. **+ Add** shows what to cut and checks the swap first: it won't add a card that breaks your bracket or budget (it says which rule). Two-card infinites your bracket doesn't allow are marked "not allowed" and listed last.
 - **Stats:** curve, colour pips against sources, roles against targets, price, Game Changers, and a colour check of the odds of casting your most colour-hungry card on curve.
 - **Export / Validation / Log:** copy the list, see the legality and budget checks, and see why cards were left out.
 

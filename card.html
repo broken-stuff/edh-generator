@@ -1533,6 +1533,20 @@ const Engine = (function () {
       R.validation = await validate(R, ctx); R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
       return e;
     };
+    // dry run of a replace: which validation rules would newly fail. The deck is put back exactly as it was.
+    R.checkReplace = async function (entry, card) {
+      const i = deck.indexOf(entry); if (i < 0) return null;
+      const failed = new Set((R.validation ? R.validation.rules : []).filter(r => r.pass === false).map(r => r.id));
+      removeEntry(entry);
+      const e = add(card, entry.slot, 1, 0, 'check', { locked: true });
+      const v = await validate(R, ctx);
+      removeEntry(e);
+      deck.splice(i, 0, entry); st.names.add(entry.c.n);
+      st.total += (isBasic(entry.c) && !S.budget.inclBasics ? 0 : (price(entry.c) || 0)) * entry.qty;
+      const ea = analyze(entry.c); for (const k of Object.keys(st.cnt)) if (ea.flags[k]) st.cnt[k] += entry.qty; if (ea.creature) st.creatures += entry.qty;
+      R.validation = await validate(R, ctx); R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
+      return v.rules.filter(r => r.pass === false && !failed.has(r.id));
+    };
     // one-copy swap (used by accepted recommendations): splits multi-copy entries such as basics
     R.swapOne = async function (entry, card) {
       if ((entry.qty || 1) > 1) {

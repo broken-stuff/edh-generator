@@ -882,9 +882,13 @@
     opts = opts || {}; const R = App.R, inDeck = R ? new Set(R.commanders.map(c => c.n).concat(R.deck.map(e => e.c.n))) : new Set();
     const CI = R && R.stats ? R.CI : null;
     const canAdd = (n, c) => CI != null && !inDeck.has(n) && c && c.leg === 'legal' && [...c.ci].every(x => CI.includes(x));
+    // a 2-card infinite the bracket does not allow (limit already reached) can't be added without breaking validation
+    const lim2 = R && R.lim ? R.lim.combo2 : 999, two = R ? (R.combos || []).filter(x => x.inf && x.c.length <= 2).length : 0;
+    const barred = v => v.inf && v.c.length <= 2 && two >= lim2;
     const cardHTML = v => v.c.map(n => { const miss = opts.missing && opts.missing.includes(n), c = App.bulk && Engine.lookup(App.bulk, n);
       return '<span class="cbcard"><span class="' + (miss ? 'pup' : inDeck.has(n) ? '' : 'note') + '">' + (c ? cardLink(c, n) : esc(n)) + '</span>' + (v.cmd.includes(n) ? ' <span class="chip">commander</span>' : '') + (!inDeck.has(n) && c ? ' <span class="note">' + fmtP(c.p[(R ? R.settings : App.S).budget.cur]) + '</span>' : '') +
-        (canAdd(n, c) && !v.cmd.includes(n) ? ' <button type="button" class="small addbtn" data-cbadd="' + esc(n) + '" data-vid="' + esc(v.id) + '" title="Add ' + esc(n) + ' to the deck">+ Add</button>' : '') + '</span>'; }).join(' <span class="note">+</span> ');
+        (canAdd(n, c) && !v.cmd.includes(n) && barred(v) ? ' <span class="chip" title="Bracket ' + R.settings.bracket + ' allows ' + lim2 + ' two-card infinite combo' + (lim2 === 1 ? '' : 's') + '. Raise the bracket under Setup to add it.">not allowed at B' + R.settings.bracket + '</span>' : '') +
+        (canAdd(n, c) && !v.cmd.includes(n) && !barred(v) ? ' <button type="button" class="small addbtn" data-cbadd="' + esc(n) + '" data-vid="' + esc(v.id) + '" title="Add ' + esc(n) + ' to the deck">+ Add</button>' : '') + '</span>'; }).join(' <span class="note">+</span> ');
     return '<div class="scroll"><table class="t compact mrows"><thead><tr><th>Cards</th><th>Produces</th><th>Bracket tag</th><th class="n">MV</th><th class="n">Popularity</th><th></th></tr></thead><tbody>' +
       list.map(x => { const v = x.v || x; return '<tr data-vrow="' + esc(v.id) + '"><td class="m-full">' + cardHTML(v) + (v.t.length ? '<div class="note">Also needs: ' + esc(v.t.join(', ')) + '</div>' : '') + '</td><td class="why m-full2">' + esc(v.p.join(', ')) + '</td><td>' + (v.bt ? '<span class="chip">' + esc(BT[v.bt] || v.bt) + '</span>' : '') + '</td><td class="n"' + (v.mv != null ? ' data-l="MV"' : '') + '>' + (v.mv != null ? v.mv : '') + '</td><td class="n"' + (v.pop != null ? ' data-l="Popularity"' : '') + '>' + (v.pop != null ? v.pop.toLocaleString() : '') + '</td><td class="nw"><a href="' + sbLink(v) + '" target="_blank" rel="noopener">Steps ↗</a></td></tr>'; }).join('') +
       '</tbody></table></div>';
@@ -916,13 +920,22 @@
       if (card.gc && gcNow > limGc) msgs.push('<b class="pup">Game Changer ' + gcNow + ' of ' + limGc + ' allowed at Bracket ' + R.settings.bracket + '.</b>');
       const lost = Object.keys(Engine.analyze(cut.c).roles).filter(r => !Engine.analyze(card).roles[r]);
       if (lost.length) msgs.push('Removes a ' + lost.map(r => Engine.SLOT_LABEL[r].toLowerCase()).join(', ') + ' card.');
-      $('cbChk').innerHTML = msgs.join(' ') + ' Validation shows any rule this breaks.';
+      $('cbChk').innerHTML = msgs.join(' ');
+      const go = tr.querySelector('button[data-cbgo]'); go.disabled = true;
+      R.checkReplace(cut, card).then(fails => {
+        if (!tr.isConnected || $('cbCut').value !== cut.c.n) return;
+        go.disabled = !!(fails && fails.length);
+        if (fails && fails.length) $('cbChk').innerHTML = '<b class="pup">Can\'t add: this breaks ' + fails.map(r => esc(r.label) + ' (' + esc(r.detail) + ')').join('; ') + '.</b> ' + (fails.some(r => r.id === 'bracket') ? 'Raise the bracket under Setup, or pick a different combo. ' : fails.some(r => r.id === 'budget') ? 'Raise the budget, or cut a pricier card. ' : '') + msgs.join(' ');
+      });
     };
+    if (!cuts.length) { $('cbChk').textContent = 'Every nonland card is part of a combo or an include, so there is nothing to cut.'; tr.querySelector('button[data-cbgo]').disabled = true; return; }
     $('cbCut').addEventListener('change', check); check();
   }
   async function comboAddGo(name) {
     const R = App.R, cut = R && R.deck.find(e => e.c.n === $('cbCut').value), card = Engine.lookup(App.bulk, name); if (!cut || !card) return;
     const cutName = cut.c.n;
+    const fails = await R.checkReplace(cut, card);
+    if (fails && fails.length) { setStatus('Not added: ' + card.n + ' would break ' + fails.map(r => r.label).join(', ') + '.'); return; }
     await R.replace(cut, card, true);
     histOp({ op: 'replace', cut: cutName, add: card.n, locked: true }); App.QS = null; App.PR = null; if (App.anSource !== 'paste') App.AN = null;
     renderAll(); histPush('edit', cutName + ' → ' + card.n + ' (combo)');
@@ -938,7 +951,9 @@
       const found = (await cb.find(names, cmds)).sort((a, b) => (b.pop || 0) - (a.pop || 0));
       const CI = R.CI, inCI = c => [...c.ci].every(x => CI.includes(x)), have = new Set(names);
       const pool = n => { if (have.has(n)) return false; const c = Engine.lookup(App.bulk, n); return !!c && c.leg === 'legal' && inCI(c); };
-      const near = (await cb.almost(names, pool, 1)).filter(x => !x.v.cmd.length || x.v.cmd.every(n => cmds.includes(n))).sort((a, b) => (b.v.pop || 0) - (a.v.pop || 0)).slice(0, 40);
+      // combos the bracket allows come first; 2-card infinites over the bracket limit go last
+      const lim2 = R.lim ? R.lim.combo2 : 999, two = (R.combos || []).filter(x => x.inf && x.c.length <= 2).length, barredNow = v => v.inf && v.c.length <= 2 && two >= lim2 ? 1 : 0;
+      const near = (await cb.almost(names, pool, 1)).filter(x => !x.v.cmd.length || x.v.cmd.every(n => cmds.includes(n))).sort((a, b) => barredNow(a.v) - barredNow(b.v) || (b.v.pop || 0) - (a.v.pop || 0)).slice(0, 40);
       h += '<h3 class="an-sec">In this deck (' + found.length + ')</h3>' + (found.length ? comboRows(found) : '<p class="note">No complete Spellbook combo in this list.' + (R.settings.bracket <= 2 ? ' Brackets 1–2 exclude 2-card infinite combos.' : '') + '</p>');
       h += '<h3 class="an-sec">One card away (' + near.length + (near.length === 40 ? '+' : '') + ')</h3>' + (near.length ? '<p class="note">The missing card is in red with its price. + Add puts it in the deck in place of a card you choose and locks it.</p>' + comboRows(near.map(x => ({ v: x.v })), { missing: [].concat(...near.map(x => x.missing)) }) : '<p class="note">None.</p>');
     }
@@ -1039,7 +1054,7 @@
     if (App.busy) return;
     opts = opts || {};
     readForm();
-    const S = JSON.parse(JSON.stringify(App.S));
+    const S = JSON.parse(JSON.stringify(App.S)), prev = App.R && App.R.stats ? App.R : null; let built = false;
     App.busy = true; renderSources(); $('regenBtn').disabled = true; setProg(0.1); showMsgs([], []);
     const t0 = performance.now();
     try {
@@ -1051,9 +1066,10 @@
       const R = await Engine.generate(db, S, env);
       R.dbMeta = db.meta;
       if (db.meta.warnings && db.meta.warnings.length) R.warnings = db.meta.warnings.concat(R.warnings);
-      if (R.errors.length) { App.R = null; showMsgs(R.errors, R.warnings); setStatus('Not generated.'); }
+      if (R.errors.length && prev && opts.locks) { showMsgs(R.errors, R.warnings); setStatus('Not rebuilt: the locked cards can\'t fit these settings (see above). The current deck is unchanged.'); }
+      else if (R.errors.length) { App.R = null; showMsgs(R.errors, R.warnings); setStatus('Not generated.'); }
       else {
-        App.R = R; App.openSwap = null; App.QS = null; if (App.anSource !== 'paste') App.AN = null;
+        App.R = R; built = true; App.openSwap = null; App.QS = null; if (App.anSource !== 'paste') App.AN = null;
         if (App.tab === 'setup' && !App.restoring) { App.tab = 'deck'; window.scrollTo({ top: 0 }); }
         if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
@@ -1062,7 +1078,7 @@
       }
     } catch (e) { App.R = null; showMsgs([e.message || String(e)], []); setStatus('Error.'); console.error(e); }
     App.busy = false; setProg(null); renderSources(); renderAll();
-    if (App.R && !App.restoring) histPush('generate', opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
+    if (built && !App.restoring) histPush('generate', opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
     if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R) runAnalysis();
   }
 
