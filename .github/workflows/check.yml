@@ -1,0 +1,35 @@
+# Runs the engine and card explorer tests, and checks that index.html and card.html were rebuilt from src/.
+name: Check
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'index.html'
+      - 'card.html'
+      - '.github/workflows/check.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Tests
+        working-directory: src
+        run: |
+          node test.js
+          node stest.js
+      - name: Built pages match src/
+        working-directory: src
+        run: |
+          sh build.sh && sh build-site.sh "$RUNNER_TEMP/site" && sh build-card.sh "$RUNNER_TEMP/card.html"
+          ok=yes
+          cmp -s "$RUNNER_TEMP/site/index.html" ../index.html || { echo "::error file=index.html::index.html is out of date. Rebuild it from src/ (see README, Development)."; ok=no; }
+          cmp -s "$RUNNER_TEMP/card.html" ../card.html || { echo "::error file=card.html::card.html is out of date. Rebuild it from src/ (see README, Development)."; ok=no; }
+          [ "$ok" = yes ]
