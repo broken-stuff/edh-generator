@@ -3725,7 +3725,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const shown = list.slice(0, F.n);
     el.innerHTML = '<p class="note">' + list.length.toLocaleString() + ' of ' + commanderIndex().length.toLocaleString() + ' commanders match.' + (list.length > shown.length ? ' Showing ' + shown.length + '.' : '') + '</p>' +
       (shown.length ? '<div class="scroll"><table class="t compact cmdtable mrows"><thead><tr><th>Commander</th><th>Cost</th><th>Colours</th><th>Themes</th><th class="n">EDHREC</th><th class="n">Price</th><th></th></tr></thead><tbody>' +
-        shown.map(c => '<tr><td class="m-2">' + cardLink(c) + (pair(c) ? ' <span class="chip">' + pair(c) + '</span>' : '') + '<div class="note">' + esc(c.tl.replace(/^Legendary /, '')) + '</div></td><td class="cost">' + manaHTML(c.mc) + '</td><td class="nw">' + pipsHTML(c.ci) + '</td><td class="why m-full">' + esc(cmdThemes(c).slice(0, 3).map(k => Engine.TAGS[k].label).join(', ')) + '</td><td class="n" data-l="EDHREC">' + (c.rank ? '#' + c.rank.toLocaleString() : '—') + '</td><td class="n">' + (c.p[cur] != null ? fmtP(c.p[cur]) : '—') + '</td><td class="m-3"><button type="button" class="small" data-cuse="' + esc(c.n) + '">Build</button></td></tr>').join('') +
+        shown.map(c => '<tr><td class="m-2">' + cardLink(c) + (pair(c) ? ' <span class="chip">' + pair(c) + '</span>' : '') + '<div class="note">' + esc(c.tl) + '</div></td><td class="cost">' + manaHTML(c.mc) + '</td><td class="nw">' + pipsHTML(c.ci) + '</td><td class="why m-full">' + esc(cmdThemes(c).slice(0, 3).map(k => Engine.TAGS[k].label).join(', ')) + '</td><td class="n" data-l="EDHREC">' + (c.rank ? '#' + c.rank.toLocaleString() : '—') + '</td><td class="n">' + (c.p[cur] != null ? fmtP(c.p[cur]) : '—') + '</td><td class="m-3"><button type="button" class="small" data-cuse="' + esc(c.n) + '">Build</button></td></tr>').join('') +
         '</tbody></table></div>' : '') +
       (list.length > shown.length ? '<div class="row" style="margin-top:8px"><button type="button" class="small" data-cmore="1">Show 50 more</button></div>' : '') +
       '<p class="note">Themes are the generator\'s own synergy tags matched against each commander\'s rules text. Build sets the commander under Setup; add a partner or background there.</p>';
@@ -3786,7 +3786,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       '<div class="ins-h"><span class="note">#' + i + '</span><span class="ins-pct">' + pc + '% match</span></div>' +
       '<div class="ins-bar" aria-hidden="true"><i style="width:' + pc + '%"></i></div>' +
       '<div class="ins-n">' + cardLink(c) + ' <span class="cost">' + manaHTML(c.mc) + '</span></div>' +
-      '<div class="note">' + esc(c.tl.replace(/^Legendary /, '')) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
+      '<div class="note">' + esc(c.tl) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
       '<div>' + pipsHTML(c.ci) + (pair ? ' <span class="chip">' + pair + '</span>' : '') + (c.gc ? ' <span class="chip gc">Game Changer</span>' : '') + '</div>' +
       (imgOn() && c.img ? '</div></div>' : '</div>') +
       (r.why.length ? '<ul class="ins-why">' + r.why.map(w => '<li' + (w.neg ? ' class="neg"' : '') + '>' + esc(w.t) + '</li>').join('') + '</ul>' : '') +
@@ -3827,7 +3827,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const lean = Engine.styleProfile(c, App.bulkCombos ? comboCount : null).slice(0, 2), th = cmdThemes(c).slice(0, 4), pair = pairChip(c), k = App.bulkCombos ? comboCount(c.n) : null;
     return '<div class="ins-card">' + (imgOn() && c.img ? imgTag(c, 'sur-img') : '') +
       '<div class="ins-n">' + cardLink(c) + ' <span class="cost">' + manaHTML(c.mc) + '</span></div>' +
-      '<div class="note">' + esc(c.tl.replace(/^Legendary /, '')) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
+      '<div class="note">' + esc(c.tl) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
       '<div>' + pipsHTML(c.ci) + (pair ? ' <span class="chip">' + pair + '</span>' : '') + (c.gc ? ' <span class="chip gc">Game Changer</span>' : '') + '</div>' +
       (imgOn() && c.img ? '' : c.ot ? '<div class="cp-ot">' + manaHTML(c.ot).replace(/\n/g, '<br>') + '</div>' : '') +
       '<ul class="ins-why">' + (lean.length ? lean.map(s => '<li><b>' + esc(s.label) + ':</b> ' + esc(s.hit.join(', ')) + '</li>').join('') : '<li>No strong lean toward one play style in its rules text.</li>') +
