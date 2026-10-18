@@ -743,7 +743,7 @@
       combos: ['Combos', 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.'],
       log: ['Build log', 'Each step the generator and optimiser took.'], export: ['Export', 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.'],
       history: ['History', 'The last 25 decks and revisions in this browser. Tick two to compare them.'],
-      hand: ['Sample hand', 'Draw opening hands from this list, mulligan and draw on.'], commanders: ['Commanders', 'Every legal commander in the card data, by colour, theme and popularity.'], tests: ['Acceptance tests', 'Checks the generator against the loaded card data.'] }[App.tab];
+      hand: ['Sample hand', 'Draw opening hands from this list, mulligan and draw on.'], commanders: ['Commanders', 'Every legal commander in the card data, by colour, theme and popularity.'], inspire: ['Inspire me', 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.'], surprise: ['Surprise me', 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.'], tests: ['Acceptance tests', 'Checks the generator against the loaded card data.'] }[App.tab];
     $('pageHead').classList.toggle('hidden', setup || !PH);
     if (PH) $('pageHead').innerHTML = '<h2>' + PH[0] + '</h2><p class="note">' + PH[1] + '</p>';
     if (setup) return;
@@ -753,6 +753,8 @@
     if (App.tab === 'primer') return void renderPrimer();
     if (App.tab === 'combos') return void renderCombos();
     if (App.tab === 'commanders') return renderCommanders();
+    if (App.tab === 'inspire') return renderInspire();
+    if (App.tab === 'surprise') return renderSurprise();
     if (App.tab === 'hand') return renderHand();
     if (!App.R || !App.R.stats) { $('view').innerHTML = emptyView(); return; }
     switch (App.tab) {
@@ -1231,6 +1233,139 @@
       '<p class="note">Themes are the generator\'s own synergy tags matched against each commander\'s rules text. Build sets the commander under Setup; add a partner or background there.</p>';
   }
 
+  /* ---------- Inspire me: a short quiz that ranks every legal commander with Engine.inspire and says why each fits.
+     Surprise me: random commanders from the same pool. Both send a pick to Setup with Build. ---------- */
+  const comboCounts = new WeakMap();
+  function comboCount(n) {
+    const cb = App.bulkCombos; if (!cb) return null;
+    let M = comboCounts.get(cb); if (!M) comboCounts.set(cb, M = new Map());
+    if (M.has(n)) return M.get(n);
+    let k = 0, inf = 0; for (const v of cb.byCard.get(n) || []) if (v.r === 0) { k++; if (v.inf) inf++; }
+    const r = k ? { n: k, inf } : null; M.set(n, r); return r;
+  }
+  const INSP_DEF = { cols: '', mode: 'within', style: '', tribe: '', themes: [], power: '', pop: '', price: '' };
+  const QUICK_TRIBES = ['Elf', 'Dragon', 'Zombie', 'Goblin', 'Angel', 'Vampire', 'Human', 'Wizard', 'Merfolk', 'Dinosaur', 'Cat', 'Sliver'];
+  function inspState() {
+    if (!App.insp) { let s = {}; try { s = JSON.parse(LS.get('edhgen.inspire') || '{}'); } catch (e) { } App.insp = Object.assign({}, INSP_DEF, s, { n: 12, shown: !!s.shown }); }
+    return App.insp;
+  }
+  const saveInsp = () => { const Q = App.insp; LS.set('edhgen.inspire', JSON.stringify({ cols: Q.cols, mode: Q.mode, style: Q.style, tribe: Q.tribe, themes: Q.themes, power: Q.power, pop: Q.pop, price: Q.price, shown: Q.shown })); };
+  const pairChip = c => /\bpartner\b/i.test(c.ot) ? 'Partner' : /friends forever/i.test(c.ot) ? 'Friends forever' : /choose a background/i.test(c.ot) ? 'Background' : /doctor's companion/i.test(c.ot) ? 'Companion' : /\bBackground\b/.test(c.ft) ? 'Is a Background' : '';
+  const segHTML = (key, opts, cur) => '<div class="seg" data-iq="' + key + '">' + opts.map(([v, t]) => '<button type="button" data-v="' + esc(v) + '" aria-pressed="' + (String(cur) === v) + '">' + t + '</button>').join('') + '</div>';
+  const colSeg = (id, cols) => '<div class="seg" id="' + id + '">' + 'WUBRG'.split('').map(x => '<button type="button" data-icol="' + x + '" aria-pressed="' + cols.includes(x) + '" aria-label="' + x + '">' + pipsHTML(x) + '</button>').join('') + '</div>';
+  function renderInspire() {
+    if (!App.bulk) { $('view').innerHTML = emptyView(); return; }
+    const Q = inspState(), cur = App.S.budget.cur, sym = Engine.fmt(1, cur).replace(/[\d.,\s]/g, '') || '$';
+    const q = (n, h, note, body) => '<div class="qq"><div class="qn">' + n + '</div><div class="qb"><h3>' + h + '</h3>' + (note ? '<p class="note">' + note + '</p>' : '') + body + '</div></div>';
+    const types = [...Engine.creatureTypes(App.bulk)].sort();
+    $('view').innerHTML = '<div class="quiz">' +
+      q(1, 'Which colours do you want to play?', 'Leave them all off for any colours.', '<div class="row">' + colSeg('iqCols', Q.cols) + segHTML('mode', [['within', 'Within these'], ['exact', 'Exactly these'], ['incl', 'Including these']], Q.mode) + '</div>') +
+      q(2, 'How do you like to win?', '', '<div class="stylepick" data-iq="style">' + [['', 'No preference', 'Any play style']].concat(Object.keys(Engine.STYLES).map(k => [k, Engine.STYLES[k].label, Engine.STYLES[k].desc])).map(([v, l, d]) => '<button type="button" data-v="' + v + '" aria-pressed="' + (Q.style === v) + '"><b>' + esc(l) + '</b><span>' + esc(d) + '</span></button>').join('') + '</div>') +
+      q(3, 'Favourite creature type?', 'Optional. Any of the ' + types.length.toLocaleString() + ' creature types in the card data.', '<div class="row"><input type="search" id="iqTribe" list="iqTribeL" value="' + esc(Q.tribe) + '" placeholder="e.g. Elf, Dragon, Zombie" autocomplete="off" style="max-width:240px"><datalist id="iqTribeL">' + types.map(t => '<option value="' + esc(t) + '">').join('') + '</datalist></div><div class="chips" data-iq="tribe">' + QUICK_TRIBES.filter(t => types.includes(t)).map(t => '<button type="button" data-v="' + t + '" aria-pressed="' + (Q.tribe === t) + '">' + t + '</button>').join('') + '</div>') +
+      q(4, 'Themes you enjoy?', 'Pick any number; a commander scores for each one its rules text supports.', '<div class="chips" data-iq="themes">' + Object.keys(Engine.TAGS).map(k => '<button type="button" data-v="' + k + '" aria-pressed="' + Q.themes.includes(k) + '">' + esc(Engine.TAGS[k].label) + '</button>').join('') + '</div>') +
+      q(5, 'How strong should the table be?', '', segHTML('power', [['', 'Any'], ['casual', 'Casual (brackets 1–2)'], ['mid', 'Upgraded (3)'], ['high', 'High power (4–5)']], Q.power)) +
+      q(6, 'Popular or off the beaten path?', '', segHTML('pop', [['', 'No preference'], ['popular', 'Popular'], ['hidden', 'Hidden gems']], Q.pop)) +
+      q(7, 'Price limit for the commander card?', 'The deck budget is set later under Setup.', segHTML('price', [['', 'Any'], ['1', sym + '1'], ['5', sym + '5'], ['20', sym + '20']], Q.price)) +
+      '<div class="row qgo"><button type="button" class="primary" data-insp="go">Show my commanders</button><button type="button" data-insp="reset">Reset answers</button></div>' +
+      '</div><div id="inspRes"></div>';
+    if (Q.shown) renderInspireResults();
+  }
+  function renderInspireResults() {
+    const Q = App.insp, el = $('inspRes'); if (!el || !Q) return;
+    const cur = App.S.budget.cur;
+    const X = Engine.inspire(App.bulk, Object.assign({}, Q, { cur, price: Q.price === '' ? null : +Q.price }), { pool: commanderIndex(), combos: App.bulkCombos ? comboCount : null });
+    const answered = Object.keys(X.used).filter(k => X.used[k]).length + (Q.cols ? 1 : 0);
+    const shown = X.list.slice(0, Q.n);
+    el.innerHTML = '<h3 class="an-sec">Your commanders</h3><p class="note">' + X.list.length.toLocaleString() + ' of ' + X.pool.toLocaleString() + ' commanders pass your colour and price answers' + (answered ? ', ranked by how well they match the rest.' : '. Answer a question above to rank them; for now they are in EDHREC order.') +
+      (Q.style === 'combo' && !App.bulkCombos ? ' Combo data is not loaded, so Combo uses rules text only.' : '') + '</p>' +
+      (shown.length ? '<div class="ins-grid">' + shown.map((r, i) => inspCard(r, i + 1, cur)).join('') + '</div>' : '<p class="msg warn">No commander passes these colour and price answers.</p>') +
+      (X.list.length > shown.length ? '<div class="row" style="margin-top:10px"><button type="button" class="small" data-insp="more">Show 12 more</button></div>' : '') +
+      '<p class="note">Match is the weighted share of your answers each commander meets: play style 3, creature type 3, themes 2, power 1, popularity 1 (0.75 when you have no preference, so among equal fits the more played commander comes first). Play style reads the commander\'s own rules text and, for Combo, its Commander Spellbook combos. Creature type counts the type in its type line, its rules text, and how many creatures of that type share its colours.</p>';
+  }
+  function inspCard(r, i, cur) {
+    const c = r.c, pc = Math.round(r.pct * 100), pair = pairChip(c);
+    return '<div class="ins-card">' + (imgOn() && c.img ? '<div class="ins-top">' + imgTag(c, 'ins-img') + '<div>' : '<div>') +
+      '<div class="ins-h"><span class="note">#' + i + '</span><span class="ins-pct">' + pc + '% match</span></div>' +
+      '<div class="ins-bar" aria-hidden="true"><i style="width:' + pc + '%"></i></div>' +
+      '<div class="ins-n">' + cardLink(c) + ' <span class="cost">' + manaHTML(c.mc) + '</span></div>' +
+      '<div class="note">' + esc(c.tl.replace(/^Legendary /, '')) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
+      '<div>' + pipsHTML(c.ci) + (pair ? ' <span class="chip">' + pair + '</span>' : '') + (c.gc ? ' <span class="chip gc">Game Changer</span>' : '') + '</div>' +
+      (imgOn() && c.img ? '</div></div>' : '</div>') +
+      (r.why.length ? '<ul class="ins-why">' + r.why.map(w => '<li' + (w.neg ? ' class="neg"' : '') + '>' + esc(w.t) + '</li>').join('') + '</ul>' : '') +
+      '<div class="note">' + (c.rank ? 'EDHREC #' + c.rank.toLocaleString() : 'No EDHREC rank') + ' · ' + (r.price != null ? fmtP(r.price) : 'no price') + '</div>' +
+      '<div class="row"><button type="button" class="small primary" data-cuse="' + esc(c.n) + '">Build</button><a class="small" href="card.html#' + encodeURIComponent(c.n) + '" target="_blank" rel="noopener">Card explorer ↗</a></div></div>';
+  }
+
+  const SUR_DEF = { cols: '', pop: '', price: '' };
+  function surState() {
+    if (!App.sur) { let s = {}; try { s = JSON.parse(LS.get('edhgen.surprise') || '{}'); } catch (e) { } App.sur = Object.assign({}, SUR_DEF, s, { picks: [] }); }
+    return App.sur;
+  }
+  function surPool() {
+    const F = surState(), cur = App.S.budget.cur, idx = commanderIndex(), ranked = idx.filter(c => c.rank).length;
+    return idx.filter((c, i) => (!F.cols || [...c.ci].every(x => F.cols.includes(x))) &&
+      (F.pop !== 'top' || (c.rank && i < 500)) && (F.pop !== 'deep' || !c.rank || i >= Math.min(1000, ranked)) &&
+      (F.price === '' || (c.p[cur] != null && c.p[cur] <= +F.price)));
+  }
+  function surDraw(n, keep) {
+    const pool = surPool(), have = new Set((keep || []).map(c => c.n)), out = (keep || []).slice(), r = new Uint32Array(1);
+    let tries = 0;
+    while (out.length < n && have.size < pool.length && tries++ < 1000) { crypto.getRandomValues(r); const c = pool[r[0] % pool.length]; if (!have.has(c.n)) { have.add(c.n); out.push(c); } }
+    return out;
+  }
+  function renderSurprise() {
+    if (!App.bulk) { $('view').innerHTML = emptyView(); return; }
+    const F = surState(), cur = App.S.budget.cur, sym = Engine.fmt(1, cur).replace(/[\d.,\s]/g, '') || '$', pool = surPool();
+    if (!F.picks.length && pool.length) F.picks = surDraw(3);
+    $('view').innerHTML = '<div class="row" style="gap:10px 14px;align-items:flex-end">' +
+      '<div class="f"><span>Within colours</span>' + colSeg('surCols', F.cols) + '</div>' +
+      '<div class="f"><span>Popularity</span>' + segHTML('spop', [['', 'Any'], ['top', 'Top 500'], ['deep', 'Deep cuts']], F.pop) + '</div>' +
+      '<div class="f"><span>Commander price</span>' + segHTML('sprice', [['', 'Any'], ['1', sym + '1'], ['5', sym + '5'], ['20', sym + '20']], F.price) + '</div>' +
+      '<button type="button" class="primary" data-sur="all">Surprise me</button></div>' +
+      '<p class="note">' + pool.length.toLocaleString() + ' commanders in the draw. Top 500 and Deep cuts (outside the 1,000 most played) use EDHREC rank among commanders.</p>' +
+      (F.picks.length ? '<div class="ins-grid sur">' + F.picks.map((c, i) => surCard(c, i, cur)).join('') + '</div>' : '<p class="msg warn">No commander matches these filters.</p>');
+  }
+  function surCard(c, i, cur) {
+    const lean = Engine.styleProfile(c, App.bulkCombos ? comboCount : null).slice(0, 2), th = cmdThemes(c).slice(0, 4), pair = pairChip(c), k = App.bulkCombos ? comboCount(c.n) : null;
+    return '<div class="ins-card">' + (imgOn() && c.img ? imgTag(c, 'sur-img') : '') +
+      '<div class="ins-n">' + cardLink(c) + ' <span class="cost">' + manaHTML(c.mc) + '</span></div>' +
+      '<div class="note">' + esc(c.tl.replace(/^Legendary /, '')) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
+      '<div>' + pipsHTML(c.ci) + (pair ? ' <span class="chip">' + pair + '</span>' : '') + (c.gc ? ' <span class="chip gc">Game Changer</span>' : '') + '</div>' +
+      (imgOn() && c.img ? '' : c.ot ? '<div class="cp-ot">' + manaHTML(c.ot).replace(/\n/g, '<br>') + '</div>' : '') +
+      '<ul class="ins-why">' + (lean.length ? lean.map(s => '<li><b>' + esc(s.label) + ':</b> ' + esc(s.hit.join(', ')) + '</li>').join('') : '<li>No strong lean toward one play style in its rules text.</li>') +
+      (th.length ? '<li><b>Themes:</b> ' + esc(th.map(t => Engine.TAGS[t].label).join(', ')) + '</li>' : '') +
+      (k && !lean.some(s => s.key === 'combo') ? '<li>' + k.n.toLocaleString() + ' Commander Spellbook combo' + (k.n === 1 ? '' : 's') + '</li>' : '') + '</ul>' +
+      '<div class="note">' + (c.rank ? 'EDHREC #' + c.rank.toLocaleString() : 'No EDHREC rank') + ' · ' + (c.p[cur] != null ? fmtP(c.p[cur]) : 'no price') + '</div>' +
+      '<div class="row"><button type="button" class="small primary" data-cuse="' + esc(c.n) + '">Build</button><button type="button" class="small" data-sur="' + i + '">Reroll</button><a class="small" href="card.html#' + encodeURIComponent(c.n) + '" target="_blank" rel="noopener">Card explorer ↗</a></div></div>';
+  }
+  function wireDiscover() {
+    let tT = 0;
+    const rerank = () => { const Q = App.insp; saveInsp(); if (Q.shown) { Q.n = 12; renderInspireResults(); } };
+    $('view').addEventListener('input', e => { if (e.target.id === 'iqTribe' && App.insp) { App.insp.tribe = e.target.value.trim(); document.querySelectorAll('[data-iq="tribe"] button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === App.insp.tribe)); clearTimeout(tT); tT = setTimeout(rerank, 250); } });
+    $('view').addEventListener('click', e => {
+      if (App.tab === 'inspire') {
+        const Q = inspState(), col = e.target.closest('#iqCols button[data-icol]'), opt = e.target.closest('[data-iq] button[data-v]'), act = e.target.closest('button[data-insp]');
+        if (col) { const x = col.dataset.icol; Q.cols = Q.cols.includes(x) ? Q.cols.replace(x, '') : Q.cols + x; col.setAttribute('aria-pressed', Q.cols.includes(x)); rerank(); }
+        else if (opt) {
+          const key = opt.closest('[data-iq]').dataset.iq, v = opt.dataset.v;
+          if (key === 'themes') { const i = Q.themes.indexOf(v); if (i >= 0) Q.themes.splice(i, 1); else Q.themes.push(v); opt.setAttribute('aria-pressed', i < 0); }
+          else { Q[key] = key === 'tribe' && Q.tribe === v ? '' : v; opt.parentNode.querySelectorAll('button[data-v]').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === Q[key])); if (key === 'tribe') $('iqTribe').value = Q.tribe; }
+          rerank();
+        }
+        else if (act && act.dataset.insp === 'go') { Q.shown = true; Q.n = 12; saveInsp(); renderInspireResults(); $('inspRes').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+        else if (act && act.dataset.insp === 'reset') { App.insp = Object.assign({}, INSP_DEF, { themes: [], n: 12, shown: false }); saveInsp(); renderInspire(); }
+        else if (act && act.dataset.insp === 'more') { Q.n += 12; renderInspireResults(); }
+      } else if (App.tab === 'surprise') {
+        const F = surState(), col = e.target.closest('#surCols button[data-icol]'), opt = e.target.closest('[data-iq] button[data-v]'), act = e.target.closest('button[data-sur]');
+        const save = () => LS.set('edhgen.surprise', JSON.stringify({ cols: F.cols, pop: F.pop, price: F.price }));
+        if (col) { const x = col.dataset.icol; F.cols = F.cols.includes(x) ? F.cols.replace(x, '') : F.cols + x; save(); F.picks = []; renderSurprise(); }
+        else if (opt) { F[{ spop: 'pop', sprice: 'price' }[opt.closest('[data-iq]').dataset.iq]] = opt.dataset.v; save(); F.picks = []; renderSurprise(); }
+        else if (act && act.dataset.sur === 'all') { F.picks = surDraw(3); renderSurprise(); }
+        else if (act) { const i = +act.dataset.sur, keep = F.picks.filter((_, j) => j !== i), nw = surDraw(keep.length + 1, F.picks).slice(F.picks.length); if (nw.length) { F.picks[i] = nw[0]; renderSurprise(); } }
+      }
+    });
+  }
+
   /* ---------- table talk: what a playgroup asks about before a game, from the same flags the bracket rules use ---------- */
   function tableFeel(R) {
     const all = R.commanders.concat(R.deck.map(e => e.c)), by = f => all.filter(c => Engine.analyze(c).flags[f]).map(c => c.n);
@@ -1410,6 +1545,7 @@
       if (b && App.R) { const v = b.dataset.sh, S = App.SH; if (v === 'new') shDeal(0); else if (v === 'mull') shDeal(Math.min(6, (S ? S.mull : 0) + 1)); else if (v === 'draw' && S && S.lib.length) { S.hand.push(S.lib.shift()); S.drawn++; } hidePop(); renderHand(); return; }
       if (t && App.SH && App.SH.need) { e.stopPropagation(); e.preventDefault(); const S = App.SH, c = S.hand.splice(+t.dataset.hc, 1)[0]; if (c) { S.bottom.push(c); S.lib.push(c); S.need--; } hidePop(); renderHand(); }
     });
+    wireDiscover();
     let cbrT = 0;
     $('view').addEventListener('input', e => { if (e.target.id === 'cbrQ' && App.cbr) { App.cbr.q = e.target.value; App.cbr.n = 50; clearTimeout(cbrT); cbrT = setTimeout(renderCmdResults, 150); } });
     $('view').addEventListener('change', e => { const F = App.cbr, k = { cbrMode: 'mode', cbrTheme: 'theme', cbrSort: 'sort' }[e.target.id]; if (F && k) { F[k] = e.target.value; F.n = 50; renderCmdResults(); } });

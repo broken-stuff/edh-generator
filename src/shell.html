@@ -400,6 +400,35 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
   #printArea .px-pt{align-self:flex-end;font-weight:600;font-size:9pt}
 }
 @media (max-width:560px){table.swaps thead{display:none}table.swaps tr{display:grid;grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--line);padding:6px 0}table.swaps td{display:block;border:0;padding:2px 4px}table.swaps td:last-child{grid-column:1/-1}}
+/* Inspire me quiz and Surprise me draws */
+.quiz{display:flex;flex-direction:column}
+.quiz .qq{display:grid;grid-template-columns:28px minmax(0,1fr);gap:4px 12px;padding:14px 0;border-top:1px solid var(--line)}
+.quiz .qq:first-child{border-top:0;padding-top:0}
+.quiz .qn{width:26px;height:26px;border-radius:50%;background:var(--accent-soft);color:var(--ink);display:grid;place-items:center;font-weight:600;font-size:calc(12px*var(--fz))}
+.quiz h3{margin:2px 0 6px;font-size:calc(15px*var(--fz));font-weight:600}
+.quiz .qb>.note{margin:0 0 8px}
+.quiz .qb .chips{margin-top:8px}
+.quiz .qgo{padding-top:14px;border-top:1px solid var(--line)}
+.stylepick{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.stylepick button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:9px 12px;border-radius:12px;min-height:56px}
+.stylepick button span{font-size:calc(12px*var(--fz));color:var(--muted);font-weight:400}
+.stylepick button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.stylepick button[aria-pressed="true"] span{color:inherit;opacity:.85}
+.ins-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;margin-top:10px}
+.ins-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.ins-top{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;align-items:start}
+.ins-img{width:96px;aspect-ratio:488/680;border-radius:6px;object-fit:cover;background:var(--card-2)}
+.sur-img{width:100%;max-width:300px;align-self:center;aspect-ratio:488/680;border-radius:12px;object-fit:cover;background:var(--card-2)}
+.ins-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ins-pct{font-weight:600;font-variant-numeric:tabular-nums}
+.ins-bar{height:6px;border-radius:999px;background:var(--card-2);overflow:hidden;margin-bottom:4px}
+.ins-bar i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.ins-n{font-weight:600;font-size:calc(15px*var(--fz))}
+.ins-why{margin:2px 0;padding-left:18px;display:flex;flex-direction:column;gap:3px;font-size:calc(13px*var(--fz))}
+.ins-why li.neg{color:var(--warn)}
+.ins-card .cp-ot{font-size:calc(12.5px*var(--fz));line-height:1.45;color:var(--ink);background:var(--card-2);border-radius:10px;padding:8px 10px}
+.ins-card .row{margin-top:auto}
+.ins-card a.small{font-size:calc(12px*var(--fz))}
 </style>
 
 
@@ -437,6 +466,8 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
   <div class="grp-h">Build</div>
   <button role="tab" aria-selected="true" data-tab="setup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Setup</span></button>
   <button role="tab" aria-selected="false" data-tab="commanders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4 4 5-7 5 7 4-4-2 11H5z"/></svg><span>Commanders</span></button>
+  <button role="tab" aria-selected="false" data-tab="inspire"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1.1 1.3 1.1 2.2h5c0-.9.5-1.7 1.1-2.2A6 6 0 0 0 12 3z"/></svg><span>Inspire me</span></button>
+  <button role="tab" aria-selected="false" data-tab="surprise"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="16" cy="16" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="16" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="16" r="1.2" fill="currentColor"/></svg><span>Surprise me</span></button>
   <button role="tab" aria-selected="false" data-tab="deck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg><span>Deck</span></button>
   <button role="tab" aria-selected="false" data-tab="primer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
   <button role="tab" aria-selected="false" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg><span>History</span></button>
