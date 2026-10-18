@@ -50,6 +50,12 @@ The same settings always produce the same deck.
 
 - **Setup:** commander, budget, game plan, themes and creature types.
 - **Commanders:** browse every legal commander. Filter by name, text, colour or theme, then send one to Setup with **Build**.
+- **Inspire me:** a seven-question quiz (colours, play style, creature type, themes, power, popularity, commander price). Every legal commander gets a match score and a list of reasons:
+  - **Play style** (Aggressive, Control, Combo, Value engine, Go big) reads the commander's rules text, such as attack triggers, counterspells, board wipes, untap effects or cost reduction. Combo also counts the commander's Commander Spellbook combos.
+  - **Creature type** checks the commander's type line and rules text, and counts the creatures of that type in its colours. Commanders that are or name the type come first.
+  - **Themes** use the same synergy tags as Setup. **Power** looks at Game Changer status, infinite combos and the card-power estimate. **Popularity** is EDHREC rank among commanders.
+  - Match is the weighted share of your answers it meets: play style 3, creature type 3, themes 2, power 1, popularity 1.
+- **Surprise me:** three random commanders, filtered by colours, popularity (top 500 or outside the top 1,000) and price. Each shows its rules text, the play styles and themes it leans toward, and can be rerolled or sent to Setup with **Build**.
 - **Deck:** the list grouped by type. Lock cards you want to keep. **Swap** shows the five best alternatives for a card. **Rebuild around locks** rebuilds while keeping locked cards (if the locked cards can't fit the budget, the current deck stays), and **Undo** reverts your last edit.
 - **Primer:** a play guide built from the deck's own numbers, covering:
   - table talk for the pre-game conversation

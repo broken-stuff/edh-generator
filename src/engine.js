@@ -320,6 +320,127 @@ const Engine = (function () {
     return { ok: false, msg: a.n + ' and ' + b.n + ' cannot be paired: no shared Partner, Partner with, Friends forever, Background or Doctor\'s companion relationship in their oracle text.' };
   }
 
+  /* ---------- Inspire me: ranks commanders against quiz answers (colours, play style, creature type, themes, power,
+     popularity, price). Every point carries the reason the page shows. Weights are this tool's own; they order commanders,
+     they are not a published rating. ---------- */
+  const STYLES = {
+    aggro: { label: 'Aggressive', desc: 'Attack early and keep up the pressure', sig: [
+      ['attack trigger', c => /whenever ~ attacks|whenever (?:a|an|one or more|another) [^.]{0,30}you control attacks?|whenever you attack/.test(c.low), 1.5],
+      ['extra combat', c => /additional combat/.test(c.low), 1.5],
+      ['combat-damage trigger', c => /deals? combat damage to (?:a player|an opponent|one or more players)/.test(c.low), 1],
+      ['pumps or hastes your team', c => /creatures you control (?:get \+|have haste|gain haste)|attacking creatures you control get|creatures you control (?:have|gain) [^.]{0,30}(?:double strike|trample|menace)/.test(c.low), 1],
+      ['haste', c => c.kw.includes('haste'), 1],
+      ['trample, menace or double strike', c => ['trample', 'menace', 'double strike'].some(k => c.kw.includes(k)), 0.5],
+      ['damages opponents directly', c => TAGS.burn.re.test(c.low), 0.75],
+      ['cheap to cast (MV ≤ 3)', c => c.cmc <= 3, 0.5]] },
+    control: { label: 'Control', desc: 'Answer threats and win the long game', sig: [
+      ['counters spells', c => /counter target/.test(c.low), 1.5],
+      ['board wipe', c => analyze(c).roles.wipes, 1.5],
+      ['taxes or restricts opponents', c => analyze(c).flags.stax, 1.5],
+      ['removes permanents', c => analyze(c).roles.removal, 1],
+      ['taps or locks down creatures', c => /tap (?:up to \w+ )?target|(?:doesn't|don't) untap|can't attack|can't block/.test(c.low), 0.75],
+      ['draws cards', c => analyze(c).roles.draw, 0.75],
+      ['flash or instant speed', c => c.kw.includes('flash') || /\binstants?\b/.test(c.low), 0.5]] },
+    combo: { label: 'Combo', desc: 'Assemble pieces and win in one turn', sig: [
+      ['untaps permanents', c => /\buntap (?:target|all|each|another|up to|~|it|that)/.test(c.low), 1],
+      ['tutors', c => analyze(c).flags.tutor, 1],
+      ['copies spells or abilities', c => /\bcop(?:y|ies) (?:target|that|it|the next|each)/.test(c.low), 0.75],
+      ['cast or activate triggers', c => /whenever you (?:cast|activate)/.test(c.low), 0.5],
+      ['cost reduction', c => /costs? \{\d+\} less|cost \{x\} less|less to (?:cast|activate)/.test(c.low), 0.5]] },
+    value: { label: 'Value engine', desc: 'Grind out card and board advantage', sig: [
+      ['triggers every turn', c => /at the beginning of (?:your|each)/.test(c.low), 1],
+      ['draws cards', c => analyze(c).roles.draw, 1],
+      ['returns cards from the graveyard', c => analyze(c).roles.recursion, 1],
+      ['enter triggers', c => /whenever (?:another|a|an|one or more) [^.]{0,40}enters/.test(c.low), 0.75],
+      ['makes tokens', c => TAGS.tokens.re.test(c.low), 0.75],
+      ['ramps', c => analyze(c).roles.ramp, 0.75]] },
+    big: { label: 'Go big', desc: 'Ramp into huge creatures and spells', sig: [
+      ['rewards big spells or creatures', c => /(?:mana value|power) (?:[4-9]|\d\d) or greater|with (?:mana value|power) [5-9]|greatest (?:power|mana value)/.test(c.low), 1.5],
+      ['ramps', c => analyze(c).roles.ramp, 1],
+      ['cost reduction', c => /costs? \{\d+\} less|cost \{x\} less|less to cast/.test(c.low), 1],
+      ['extra lands or landfall', c => TAGS.landfall.re.test(c.low), 0.75],
+      ['high mana value (MV ≥ 6)', c => c.cmc >= 6, 1],
+      ['power 6 or more', c => c.pow != null && c.pow >= 6, 1]] }
+  };
+  // pop with no answer still counts a little (0.75), so among equal fits the better-supported commander comes first
+  const INSPIRE_W = { style: 3, tribe: 3, themes: 2, power: 1, pop: 1, popAny: 0.75 };
+  // combos(name) → { n, inf }: Commander Spellbook combos that include the card (optional)
+  function styleFit(c, key, combos) {
+    const S = STYLES[key], hit = []; let p = 0;
+    for (const [label, test, pts] of S.sig) if (test(c)) { hit.push(label); p += pts; }
+    if (key === 'combo' && combos) { const k = combos(c.n); if (k && k.n) { p += Math.min(2, 0.5 * Math.log2(1 + k.n)); hit.unshift('in ' + k.n.toLocaleString('en-US') + ' Commander Spellbook combo' + (k.n === 1 ? '' : 's') + (k.inf ? ' (' + k.inf.toLocaleString('en-US') + ' infinite)' : '')); } }
+    return { fit: Math.min(1, p / 3), hit };
+  }
+  // the play styles a commander leans toward, strongest first
+  function styleProfile(c, combos) { return Object.keys(STYLES).map(k => Object.assign({ key: k, label: STYLES[k].label }, styleFit(c, k, combos))).filter(x => x.fit >= 0.5).sort((a, b) => b.fit - a.fit); }
+  const subtypes = c => c.tl.split(' // ').map(f => (f.split('—')[1] || '')).join(' ');
+  function tribeCounts(db, T) {
+    const M = db._tribe || (db._tribe = new Map()); if (M.has(T)) return M.get(T);
+    const re = new RegExp('\\b' + escRe(T) + '\\b'), by = {};
+    for (const c of db.all) if (c.leg === 'legal' && c.stype !== 'funny' && /\b(?:Creature|Kindred|Tribal)\b/.test(c.tl) && re.test(subtypes(c))) by[c.ci] = (by[c.ci] || 0) + 1;
+    M.set(T, by); return by;
+  }
+  const ciWithin = (ci, outer) => [...ci].every(x => outer.includes(x));
+  function colourOK(c, cols, mode) {
+    if (!cols) return true;
+    if (mode === 'exact') return c.ci === WUBRG.split('').filter(x => cols.includes(x)).join('');
+    if (mode === 'incl') return [...cols].every(x => c.ci.includes(x));
+    return ciWithin(c.ci, cols);
+  }
+  // A: { cols, mode: within|exact|incl, style, tribe, themes: [TAGS keys], power: casual|mid|high, pop: popular|hidden, price, cur }
+  function inspire(db, A, opts) {
+    opts = opts || {}; A = A || {};
+    const pool = opts.pool || db.all.filter(c => commanderEligibility(c).ok), combos = opts.combos || null, cur = A.cur || 'usd';
+    const T = (A.tribe || '').trim(), tl = T.toLowerCase(), tp = T ? plural(T) : '';
+    const tType = T ? new RegExp('\\b' + escRe(T) + '\\b', 'i') : null, tText = T ? new RegExp('\\b(?:' + escRe(tl) + '|' + escRe(tp) + ')\\b') : null;
+    const tc = T ? tribeCounts(db, T) : null;
+    // popularity = EDHREC rank percentile among commanders (1 = most played, 0 = no rank)
+    const ranked = pool.filter(c => c.rank).sort((a, b) => a.rank - b.rank), pctOf = new Map(ranked.map((c, i) => [c, 1 - i / ranked.length]));
+    const themes = (A.themes || []).filter(k => TAGS[k]);
+    const used = { style: !!STYLES[A.style], tribe: !!T, themes: themes.length > 0, power: !!A.power, pop: !!A.pop };
+    const wSum = Object.keys(used).reduce((s, k) => s + (used[k] ? INSPIRE_W[k] : 0), 0) + (used.pop ? 0 : INSPIRE_W.popAny);
+    const Tp = tp.charAt(0).toUpperCase() + tp.slice(1);
+    const out = [];
+    for (const c of pool) {
+      if (!colourOK(c, A.cols || '', A.mode || 'within')) continue;
+      const price = c.p[cur];
+      if (A.price != null && A.price !== '' && (price == null || price > +A.price)) continue;
+      const why = [], fit = {}; let tied = false;
+      if (used.style) { const s = styleFit(c, A.style, combos); fit.style = s.fit; if (s.hit.length) why.push({ part: 'style', t: STYLES[A.style].label + ': ' + s.hit.join(', ') }); }
+      if (used.tribe) {
+        const names = tText.test(c.low), is = tType.test(subtypes(c)), ch = c.kw.includes('changeling'); tied = names || is || ch;
+        let depth = 0; for (const k in tc) if (ciWithin(k, c.ci)) depth += tc[k];
+        fit.tribe = (names ? 0.6 : 0) + (is || ch ? 0.25 : 0) + 0.15 * Math.min(1, depth / 60);
+        const bits = [];
+        if (names) bits.push('rules text names ' + Tp); if (is) bits.push('is ' + (/^[aeiou]/i.test(T) ? 'an ' : 'a ') + T); else if (ch) bits.push('Changeling (every creature type)');
+        bits.push(depth.toLocaleString('en-US') + ' ' + T + ' creature' + (depth === 1 ? '' : 's') + ' in its colours');
+        why.push({ part: 'tribe', t: T + ': ' + bits.join(', ') });
+      }
+      if (used.themes) {
+        const hit = themes.filter(k => { const t = TAGS[k]; return (t.re && t.re.test(c.low)) || (t.type && t.type.test(c.tl)) || (t.flag && analyze(c).flags[t.flag]); });
+        fit.themes = hit.length / themes.length;
+        if (hit.length) why.push({ part: 'themes', t: 'Themes in its rules text: ' + hit.map(k => TAGS[k].label).join(', ') });
+      }
+      const k = combos ? combos(c.n) : null, inf = k ? k.inf || 0 : 0, cp = cardPower(c);
+      if (used.power) {
+        if (A.power === 'casual') { fit.power = Math.max(0, 1 - (c.gc ? 0.7 : 0) - 0.3 * Math.min(1, inf / 10)); if (c.gc) why.push({ part: 'power', t: 'Game Changer: limited to brackets 3 and up', neg: true }); else why.push({ part: 'power', t: 'Not a Game Changer, fits brackets 1–2' }); }
+        else if (A.power === 'mid') { fit.power = c.gc ? 0.5 : 1; if (c.gc) why.push({ part: 'power', t: 'Game Changer: counts toward the bracket 3 limit of 3', neg: true }); }
+        else { fit.power = Math.min(1, 0.5 * cp / 0.6 + (c.gc ? 0.3 : 0) + 0.2 * Math.min(1, inf / 10)); const b = []; if (c.gc) b.push('Game Changer'); if (inf) b.push(inf + ' infinite combo' + (inf === 1 ? '' : 's')); b.push('card power ' + cp.toFixed(2)); why.push({ part: 'power', t: 'High power: ' + b.join(', ') }); }
+      }
+      const p = pctOf.get(c) || 0, top = Math.max(1, Math.ceil((1 - p) * 100));
+      if (used.pop) {
+        fit.pop = A.pop === 'hidden' ? (c.rank ? 1 - p : 0.5) : p;
+        why.push({ part: 'pop', t: c.rank ? (A.pop === 'hidden' ? 'Less played: ' : 'Popular: ') + 'EDHREC #' + c.rank.toLocaleString('en-US') + ', ' + (top <= 50 ? 'top ' + top + '%' : 'bottom ' + (101 - top) + '%') + ' of commanders' : 'No EDHREC rank yet' });
+      } else fit.popAny = p;
+      let s = 0; for (const key in fit) s += INSPIRE_W[key] * fit[key];
+      const pct = s / wSum;
+      // a chosen creature type is a gate: commanders that are or name the type rank above those that only share its colours
+      out.push({ c, pct, score: pct + (tied ? 1 : 0), fit, why, price });
+    }
+    out.sort((a, b) => b.score - a.score || (a.c.rank || 1e9) - (b.c.rank || 1e9));
+    return { list: out, pool: pool.length, used };
+  }
+
   /* ---------- combos (Commander Spellbook) ---------- */
   // Decodes the site's compact Spellbook files (tools/spellbook-shard.js) into variant objects:
   // { id, c: card names, cmd: names that must be the commander, p: produced features, t: required templates, r: template count,
@@ -1159,6 +1280,6 @@ const Engine = (function () {
 
   return { cardPower, POWER_PREF, PAIRS, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
     norm, buildDB, lookup, nameKey, parseList, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
-    spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes };
+    spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes, STYLES, inspire, styleProfile };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;

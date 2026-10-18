@@ -134,4 +134,20 @@ function legalCheck(R, label) {
   assert(n1.pt === '2/3' && n1.img === 'front/a/b/ab12-cd.jpg', 'norm keeps P/T and image path');
   assert(JSON.stringify(Object.assign({}, n1, { uri: '' })) === JSON.stringify(Object.assign({}, n2, { uri: '' })) && n2.uri === 'https://scryfall.com/card/x/1/slim-test', 'slimmed card normalises the same');
   assert(E.norm(card({ name: 'Bad Img', image_uris: { normal: 'https://evil.example/x.jpg' } })).img === '', 'image path only from cards.scryfall.io');
+  // Inspire me: quiz answers rank commanders, with reasons
+  {
+    const L = (name, tl, ot, ci, o) => E.norm(card(Object.assign({ name, type_line: 'Legendary Creature — ' + tl, oracle_text: ot, color_identity: ci.split(''), cmc: 3, power: '3', toughness: '3' }, o || {})));
+    const cs = [L('Insp Elf Lord', 'Elf Warrior', 'Haste\nWhenever Insp Elf Lord attacks, other Elves you control get +1/+1 until end of turn.', 'G', { keywords: ['Haste'], edhrec_rank: 900 }),
+      L('Insp Counter Sage', 'Human Wizard', 'Flash\nWhenever you cast an instant spell, counter target spell. Draw a card.', 'U', { keywords: ['Flash'], edhrec_rank: 100 }),
+      L('Insp Big Beast', 'Beast', 'Creature spells you cast with mana value 6 or greater cost {2} less.', 'G', { cmc: 7, power: '8', toughness: '8', edhrec_rank: 5000 })];
+    const idb = E.buildDB(cs.concat(raw.map(E.norm).filter(Boolean)), {});
+    const top = A => E.inspire(idb, A).list[0];
+    assert(top({ style: 'aggro', tribe: 'Elf' }).c.n === 'Insp Elf Lord', 'inspire: aggressive Elf → the Elf lord');
+    assert(top({ style: 'control' }).c.n === 'Insp Counter Sage', 'inspire: control → the counterspell commander');
+    assert(top({ style: 'big', cols: 'G' }).c.n === 'Insp Big Beast', 'inspire: go big in green → the big beast');
+    assert(E.inspire(idb, { cols: 'U' }).list.every(r => /^U?$/.test(r.c.ci)), 'inspire: colours filter is within the chosen colours');
+    const r = top({ style: 'aggro', tribe: 'Elf' });
+    assert(r.why.some(w => /Elves/.test(w.t)) && r.why.some(w => /attack trigger/.test(w.t)) && r.pct > 0 && r.pct <= 1, 'inspire: reasons name the matched signals, match between 0 and 1');
+    assert(E.styleProfile(cs[1]).some(s => s.key === 'control'), 'styleProfile: counterspell commander leans control');
+  }
 })();
