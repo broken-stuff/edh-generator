@@ -142,7 +142,7 @@ sh build.sh && sh build-site.sh && mv site/index.html ../index.html && rm -r sit
 sh build-card.sh                                                                    # card explorer  → ../card.html
 ```
 
-`card.html` takes its styles from `shell.html` and its engine from `engine.js`, so rebuild it after changing either of those too.
+`card.html` takes its styles from `shell.html` and its engine from `engine.js`, so rebuild it after changing either of those too. The **Check** workflow (`.github/workflows/check.yml`) runs the tests below on every pull request and fails if either page doesn't match a fresh build.
 
 **Test** (synthetic cards named "Synth …", so no real data is needed):
 
