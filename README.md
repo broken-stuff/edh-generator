@@ -20,7 +20,7 @@ No account, server or install. Nothing you enter leaves your browser. The only o
 - [Card data](#card-data)
 - [How it works](#how-it-works)
 - [Development](#development)
-- [Credits and legal](#credits-and-legal)
+- [Credits and legal](#credits-and-legal) (MIT License)
 
 ## Quick start
 
@@ -167,4 +167,4 @@ node sens.js     # prints a table of how decks respond to bracket, budget and ga
 
 - Card data and images: [Scryfall](https://scryfall.com). Combo data: [Commander Spellbook](https://commanderspellbook.com). Popularity ranks: [EDHREC](https://edhrec.com), through Scryfall's data.
 - broken-stuff EDH generator is unofficial Fan Content permitted under the [Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
-- The repository has no license file yet, so default copyright applies to the code.
+- Code: [MIT License](LICENSE). Anyone may use, copy, change and share it. The license covers this repository's code, not the card data, card images or combo data, which stay under their owners' terms.
