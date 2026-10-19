@@ -2,14 +2,14 @@
  "format": "edhgen-data/1",
  "files": [
   {
-   "name": "oracle-cards-20261016090200.jsonl.gz",
-   "size": 7060734,
-   "sha256": "129e66b997544e00f0184b2fe56234a1c38b9452976d2062789fb59ff6f38a3e"
+   "name": "oracle-cards-20261018210200.jsonl.gz",
+   "size": 7076996,
+   "sha256": "350f9a38d287132df5234f31add1d20aeed8a2fa9ae4b7c72d873b530137af8b"
   }
  ],
  "spellbook": {
   "manifest": "spellbook/manifest.json",
-  "variants": 113405,
-  "timestamp": "2026-10-16T13:13:08.234581+00:00"
+  "variants": 113606,
+  "timestamp": "2026-10-19T05:12:20.299001+00:00"
  }
 }
