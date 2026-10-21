@@ -50,6 +50,50 @@ const Analysis = (function () {
   const lC = (n, k) => k < 0 || k > n ? -Infinity : lf[n] - lf[k] - lf[n - k];
   const hyp = (N, K, n, k) => Math.exp(lC(K, k) + lC(N - K, n - k) - lC(N, n));
   const atLeast = (N, K, n, k) => { let p = 0; for (let i = k; i <= Math.min(n, K); i++) p += hyp(N, K, n, i); return p; };
+  // P(at least k of the K colour sources among n cards | at least t of the L lands among them), K ⊆ L: Karsten's definition of
+  // castable on curve (the chance of the colour, given you hit your land drops). Exact over the three groups.
+  function castOdds(N, L, K, n, k, t) {
+    let num = 0, den = 0;
+    for (let a = 0; a <= Math.min(K, n); a++) for (let b = 0; b <= Math.min(L - K, n - a); b++) {
+      if (a + b < t) continue;
+      const p = Math.exp(lC(K, a) + lC(L - K, b) + lC(N - L, n - a - b) - lC(N, n)); den += p; if (a >= k) num += p;
+    }
+    return den > 0 ? Math.min(1, num / den) : 0;
+  }
+  // Karsten's published 99-card figures (19 sources for C on turn 1, 30 for CC on turn 2) give 81% and 87% under castOdds on
+  // the play; his figures also count mulligans, which this leaves out. Cards below CAST_OK are flagged, below CAST_BAD are serious.
+  const CAST_OK = 0.85, CAST_BAD = 0.75;
+  // colours a land or ramp card can produce for a deck of colour identity CI (fetches count what they find)
+  function colourSources(c, CI) {
+    const a = A(c);
+    if (a.land === 'fetch') { if (/basic land/.test(c.low)) return CI.split(''); const map = { plains: 'W', island: 'U', swamp: 'B', mountain: 'R', forest: 'G' }; return [...new Set((c.low.match(/plains|island|swamp|mountain|forest/g) || []).map(x => map[x]))]; }
+    if (a.land === 'command' || /mana of any (?:one )?colou?r/.test(c.low)) return CI.split('');
+    return c.pm.filter(x => 'WUBRG'.includes(x));
+  }
+  // deck: [{ c, qty }] → { N, L, landSrc, cast } for the colour check (commanders included as cards)
+  function colourCheck(deck, cmds, CI) {
+    const landSrc = { W: 0, U: 0, B: 0, R: 0, G: 0 }; let N = 0, L = 0;
+    for (const e of deck) { const q = e.qty || 1; N += q; if (!A(e.c).isLand) continue; L += q; for (const x of colourSources(e.c, CI)) if (CI.includes(x)) landSrc[x] += q; }
+    const cards = cmds.map(c => ({ c, cmd: true })).concat(deck.filter(e => !A(e.c).isLand).map(e => ({ c: e.c })));
+    return { N, L, landSrc, cast: castCheck(cards, N, L, landSrc) };
+  }
+  // cards: [{ c, cmd? }]; landSrc: colour → lands producing it; returns one row per card and colour, worst first
+  function castCheck(cards, N, L, landSrc) {
+    const rows = [];
+    for (const { c, cmd } of cards) {
+      // X spells are judged as cast with X = 2
+      const mc = (c.mc || '').split(' // ')[0], t = Math.max(1, Math.round(c.cmc || 0) + (/\{X\}/.test(mc) ? 2 : 0)), n = Math.min(N, 7 + t - 1);
+      for (const X of 'WUBRG') {
+        const k = (mc.match(new RegExp('\\{' + X + '\\}', 'g')) || []).length; if (!k) continue;
+        const K = Math.min(L, landSrc[X] || 0);
+        rows.push({ n: c.n, mc: c.mc, color: X, k, t, sources: K, p: castOdds(N, L, K, n, k, t), cmd: !!cmd });
+      }
+    }
+    return rows.sort((a, b) => a.p - b.p || a.t - b.t || (a.n < b.n ? -1 : 1));
+  }
+  // Land count from the curve: 31.42 + 3.13 × average MV − 0.28 × cheap ramp/draw (MV ≤ 2), attributed to Frank Karsten,
+  // minus about 1.35 lands for Commander's free mulligan (scrollvault.net/guides/how-many-lands.html; a secondary source).
+  const karstenLands = (avgMV, cheap) => 31.42 + 3.13 * avgMV - 0.28 * cheap - 1.35;
 
   /* ---------- goldfish simulation ---------- */
   function simulate(cards, cmds, games, seed) {
@@ -165,25 +209,24 @@ const Analysis = (function () {
     for (const c of cmds) { const p = E.pips(c.mc); for (const k in pp) pp[k] += p[k]; }
     for (const e of nonland) { const p = E.pips(e.c.mc); for (const k in pp) pp[k] += p[k] * e.qty; }
     const pipTotal = Object.values(pp).reduce((a, b) => a + b, 0);
-    const srcOf = c => {
-      const a = A(c);
-      if (a.land === 'fetch') { if (/basic land/.test(c.low)) return CI.split(''); const map = { plains: 'W', island: 'U', swamp: 'B', mountain: 'R', forest: 'G' }; return [...new Set((c.low.match(/plains|island|swamp|mountain|forest/g) || []).map(x => map[x]))]; }
-      if (a.land === 'command' || /mana of any (?:one )?colou?r/.test(c.low)) return CI.split('');
-      return c.pm.filter(x => 'WUBRG'.includes(x));
-    };
+    const srcOf = c => colourSources(c, CI);
     const landSrc = { W: 0, U: 0, B: 0, R: 0, G: 0 }, allSrc = { W: 0, U: 0, B: 0, R: 0, G: 0 };
     for (const e of all) { const a = A(e.c); if (!(a.isLand || a.roles.ramp)) continue; for (const x of srcOf(e.c)) if (CI.includes(x)) { allSrc[x] += e.qty; if (a.isLand) landSrc[x] += e.qty; } }
     const tapped = lands.filter(e => manaModel(e.c).tapped).map(e => e.c.n);
+    const deckSize = qty(all);
+    const cast = castCheck(cmds.map(c => ({ c, cmd: true })).concat(nonland.map(e => ({ c: e.c }))), deckSize, nLands, landSrc);
     const colors = CI.split('').map(x => {
       const pipShare = pipTotal ? pp[x] / pipTotal : 0, srcTotal = Object.values(landSrc).reduce((a, b) => a + b, 0) || 1;
       const srcShare = landSrc[x] / srcTotal;
-      const warn = (pipShare >= 0.15 && landSrc[x] < 10) ? 'fewer than 10 land sources' : (srcShare < pipShare - 0.10 ? Math.round(srcShare * 100) + '% of sources for ' + Math.round(pipShare * 100) + '% of pips' : '');
-      return { color: x, pips: pp[x], pipShare, landSources: landSrc[x], allSources: allSrc[x], srcShare, warn };
+      const mine = cast.filter(r => r.color === x), low = mine.filter(r => r.p < CAST_OK), worst = mine[0] || null;
+      const warn = low.length ? low.length + ' card' + (low.length > 1 ? 's' : '') + ' below ' + Math.round(CAST_OK * 100) + '% castable on curve; worst ' + worst.n + ' (' + worst.k + ' ' + x + ' by turn ' + worst.t + '): ' + Math.round(worst.p * 100) + '% with ' + landSrc[x] + ' land sources' : '';
+      return { color: x, pips: pp[x], pipShare, landSources: landSrc[x], allSources: allSrc[x], srcShare, warn, worst, low: low.length, severe: low.some(r => r.p < CAST_BAD) };
     });
-    const deckSize = qty(all);
     const openingLands = { p2to5: (() => { let p = 0; for (let k = 2; k <= 5; k++) p += hyp(deckSize, nLands, 7, k); return p; })(), p3plus: atLeast(deckSize, nLands, 7, 3) };
     const nRamp2 = count(c => A(c).roles.ramp && c.cmc <= 2 && !A(c).isLand);
     const pRampEarly = atLeast(deckSize, nRamp2, 8, 1); // 7 cards + turn-2 draw
+    const cheapRD = count(c => !A(c).isLand && c.cmc <= 2 && (A(c).roles.ramp || A(c).roles.draw));
+    const landEst = { lands: Math.round(karstenLands(avgMV, cheapRD) * 10) / 10, avgMV, cheap: cheapRD };
 
     /* simulation */
     const seed = E.hashStr(all.map(e => e.c.n).sort().join('|') + '#' + cmds.map(c => c.n).join('|'));
@@ -258,7 +301,7 @@ const Analysis = (function () {
     axes.push({ key: 'speed', label: 'Speed', factors: speed });
     const tappedShare = nLands ? tapped.length / nLands : 0;
     const colorOk = colors.length ? colors.filter(c => !c.warn).length / colors.length : 1;
-    axes.push({ key: 'mana', label: 'Mana & ramp', factors: [F('Lands', nLands, P(targets.lands, 'lands'), 1 - Math.abs(nLands - targets.lands) / 6), F('Ramp pieces', role('ramp'), P(targets.ramp, 'ramp'), ratio(role('ramp'), targets.ramp)), F('Ramp at MV ≤ 2 (P ≥1 by turn 2)', nRamp2 + ' (' + Math.round(pRampEarly * 100) + '%)', '≥ 70%', pRampEarly / 0.7), F('Colors with adequate sources', colors.length - colors.filter(c => c.warn).length + '/' + colors.length, 'all', colorOk), F('Lands entering tapped', tapped.length, '≤ 4', 1 - Math.max(0, tapped.length - 4) / 8), F('Missed natural land drop by turn 4 (sim)', Math.round(sim.missLandDropT4 * 100) + '%', '≤ 40%', 1 - Math.max(0, sim.missLandDropT4 - 0.4) / 0.3)] });
+    axes.push({ key: 'mana', label: 'Mana & ramp', factors: [F('Lands', nLands, P(targets.lands, 'lands'), 1 - Math.abs(nLands - targets.lands) / 6), F('Ramp pieces', role('ramp'), P(targets.ramp, 'ramp'), ratio(role('ramp'), targets.ramp)), F('Ramp at MV ≤ 2 (P ≥1 by turn 2)', nRamp2 + ' (' + Math.round(pRampEarly * 100) + '%)', '≥ 70%', pRampEarly / 0.7), F('Colors with adequate sources', colors.length - colors.filter(c => c.warn).length + '/' + colors.length, 'all', colorOk), F('Lands vs curve estimate (Karsten)', nLands + ' / ' + landEst.lands.toFixed(1), '± 2', 1 - Math.max(0, Math.abs(nLands - landEst.lands) - 2) / 4), F('Lands entering tapped', tapped.length, '≤ 4', 1 - Math.max(0, tapped.length - 4) / 8), F('Missed natural land drop by turn 4 (sim)', Math.round(sim.missLandDropT4 * 100) + '%', '≤ 40%', 1 - Math.max(0, sim.missLandDropT4 - 0.4) / 0.3)] });
     axes.push({ key: 'cards', label: 'Card advantage', factors: [F('Card draw sources', role('draw'), P(targets.draw, 'draw'), ratio(role('draw'), targets.draw)), F('Repeatable draw engines (permanents)', engines.length, '≥ ' + targets.engines, ratio(engines.length, targets.engines)), F('Tutors', tutors.length, 'context · avg ' + POP.tutors, 0.6 + Math.min(0.4, tutors.length * 0.1))] });
     const covKeys = ['creature', 'artifact', 'enchantment', 'planeswalker'];
     axes.push({ key: 'interaction', label: 'Interaction', factors: [F('Targeted removal / counters', role('removal'), P(targets.removal, 'removal'), ratio(role('removal'), targets.removal)), F('Board wipes', role('wipes'), P(targets.wipes, 'wipes'), ratio(role('wipes'), targets.wipes)), F('Instant-speed interaction', instantInteraction.length, '≥ 50% of interaction', removalCards.length ? instantInteraction.length / removalCards.length / 0.5 : 0), F('Permanent types answerable', covKeys.filter(k => coverage[k].length).length + '/4', '4/4', covKeys.filter(k => coverage[k].length).length / 4), F('Graveyard hate', gyHate.length, '≥ 1', gyHate.length ? 1 : 0.4)] });
@@ -310,12 +353,12 @@ const Analysis = (function () {
     const iProt = take(c => A(c).roles.protection);
     const vInt = vec('interaction', 'Interaction', 22, [comp('Free counterspells', iCounterF.length, 3.5, iCounterF), comp('Counterspells', iCounter.length, 2.5, iCounter), comp('Instant-speed spot removal', iInst.length, 2, iInst), comp('Sorcery-speed removal', iSorc.length, 1.2, iSorc), comp('Board wipes', iWipe.length, 1.2, iWipe), comp('Stax / hate pieces', iStax.length, 1, iStax), comp('Protection', iProt.length, 0.8, iProt)]);
     // Mana base: quality and fixing only; lowers headroom, never adds power
-    const colorWarn = colors.filter(c => c.warn).length;
+    const colorWarn = colors.filter(c => c.warn).length + colors.filter(c => c.severe).length * 0.5;
     const multiLands = lands.filter(e => srcOf(e.c).filter(x => CI.includes(x)).length >= 2).reduce((s, e) => s + e.qty, 0);
     const fixShare = nLands ? multiLands / nLands : 0;
     const mbParts = [
       { label: 'Unconditional taplands beyond 2', n: Math.max(0, tapped.length - 2), w: -6 },
-      { label: 'Colors below source check', n: colorWarn, w: -15 },
+      { label: 'Colors with cards below ' + Math.round(CAST_OK * 100) + '% castable on curve (severe below ' + Math.round(CAST_BAD * 100) + '% counts 1.5)', n: colorWarn, w: -10 },
       { label: 'Lands off target by more than 2', n: Math.max(0, Math.abs(nLands - targets.lands) - 2), w: -5 },
       { label: CI.length >= 3 ? 'Multicolor lands < 30% in 3+ colors' : 'Fixing (n/a below 3 colors)', n: CI.length >= 3 && fixShare < 0.3 ? 1 : 0, w: -10 }
     ].map(p => Object.assign(p, { pts: p.n * p.w, cards: [] }));
@@ -432,10 +475,11 @@ const Analysis = (function () {
       const have = role(r), t = +targets[r] || 0;
       if (have < t) addRec(t - have >= 3 ? 'high' : 'med', E.SLOT_LABEL[r] + ': ' + have + ' of ' + t + '. Candidates ranked by theme fit and EDHREC rank:', pick(c => !A(c).isLand && A(c).roles[r], 5));
     }
+    if (Math.abs(nLands - landEst.lands) > 2) addRec(nLands < landEst.lands - 3 ? 'high' : 'med', 'Lands: ' + nLands + '; the curve estimate is ' + landEst.lands.toFixed(1) + ' (31.42 + 3.13 × avg MV ' + avgMV.toFixed(2) + ' − 0.28 × ' + cheapRD + ' cheap ramp/draw − 1.35 for the free mulligan; Frank Karsten\'s formula).', []);
     if (nLands < targets.lands - 2) addRec('high', 'Lands: ' + nLands + ' (target ' + targets.lands + '). Simulated missed land drop by turn 4: ' + Math.round(sim.missLandDropT4 * 100) + '%.', []);
     if (nLands > targets.lands + 3) addRec('med', 'Lands: ' + nLands + ' (target ' + targets.lands + '). Simulated flood at turn 6: ' + Math.round(sim.flood6 * 100) + '%.', []);
     if (avgMV > targets.avgMV + 0.4) addRec('med', 'Average MV ' + avgMV.toFixed(2) + ' exceeds target ' + targets.avgMV.toFixed(1) + '. Highest-MV nonland cards without a role: ' + perCard.filter(x => !x.roles.length).sort((a, b) => b.c.cmc - a.c.cmc).slice(0, 5).map(x => x.c.n + ' (' + x.c.cmc + ')').join(', ') + '.', []);
-    for (const c of colors) if (c.warn) addRec('med', c.color + ' mana: ' + c.warn + '. Lands producing ' + c.color + ' in your identity:', pick(x => A(x).isLand && srcOf(x).includes(c.color) && srcOf(x).length >= 2, 5));
+    for (const c of colors) if (c.warn) addRec(c.severe ? 'high' : 'med', c.color + ' mana: ' + c.warn + '. Lands producing ' + c.color + ' in your identity:', pick(x => A(x).isLand && srcOf(x).includes(c.color) && srcOf(x).length >= 2, 5));
     if (tapped.length > 6) addRec('low', tapped.length + ' lands enter tapped unconditionally: ' + tapped.join(', ') + '.', []);
     for (const p of pairStats.filter(p => p.active && p.status !== 'balanced')) {
       const needEn = p.status.startsWith('payoff') || p.status === 'payoffs without enablers';
@@ -490,7 +534,7 @@ const Analysis = (function () {
     return {
       at: new Date().toISOString(), CI, deckSize, nLands, nNon, avgMV, overall, axes, sim,
       prob: { openingLands, pRampEarly, nRamp2 },
-      mana: { colors, tapped, pipTotal },
+      mana: { colors, tapped, pipTotal, cast, castOk: CAST_OK, landEst },
       interaction: { coverage, gyHate, instantInteraction, cheapInteraction, removal: role('removal'), wipes: role('wipes') },
       cards: { draw: drawCards.map(c => c.n), engines, tutors },
       resilience: { protection, recursion, cmdProtect, indestructibleSelf },
@@ -509,7 +553,7 @@ const Analysis = (function () {
     }
     return out;
   }
-  const snap = X => ({ src: Object.fromEntries(X.mana.colors.map(c => [c.color, c.landSources])), warn: X.mana.colors.filter(c => c.warn).length, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, typical: X.power.win.typical, keep: X.sim.keep7, t4: X.sim.manaByTurn[4], v: Object.fromEntries(X.power.vectors.map(v => [v.key, v.score])), axes: Object.fromEntries(X.axes.map(a => [a.key, a.score])) });
+  const snap = X => ({ src: Object.fromEntries(X.mana.colors.map(c => [c.color, c.landSources])), warn: X.mana.colors.filter(c => c.warn).length, castLow: X.mana.cast.filter(r => r.p < CAST_OK).length, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, typical: X.power.win.typical, keep: X.sim.keep7, t4: X.sim.manaByTurn[4], v: Object.fromEntries(X.power.vectors.map(v => [v.key, v.score])), axes: Object.fromEntries(X.axes.map(a => [a.key, a.score])) });
   function impactPrep(db, deck, cmds, opts) {
     const games = opts.impactGames || 5000;
     const seed = E.hashStr('impact#' + cmds.map(c => c.n).join('|'));
@@ -523,7 +567,7 @@ const Analysis = (function () {
     const dv = Object.keys(a.v).map(k => [k, a.v[k] - b.v[k]]).filter(x => x[1] !== 0);
     const da = Object.keys(a.axes).map(k => [k, a.axes[k] - b.axes[k]]).filter(x => x[1] !== 0);
     const dsrc = Object.keys(a.src).map(k => [k, a.src[k] - (b.src[k] || 0)]).filter(x => x[1] !== 0);
-    return Object.assign({}, p, { d: { src: dsrc, warn: a.warn - b.warn, pl: Math.round((a.pl - b.pl) * 10) / 10, fund: a.fund - b.fund, minB: a.minB - b.minB, typical: a.typical - b.typical, keep: a.keep - b.keep, t4: a.t4 - b.t4, vectors: dv, axes: da }, after: a });
+    return Object.assign({}, p, { d: { src: dsrc, warn: a.warn - b.warn, castLow: a.castLow - b.castLow, pl: Math.round((a.pl - b.pl) * 10) / 10, fund: a.fund - b.fund, minB: a.minB - b.minB, typical: a.typical - b.typical, keep: a.keep - b.keep, t4: a.t4 - b.t4, vectors: dv, axes: da }, after: a });
   }
   function impact(db, deck, cmds, opts, plans) { const prep = impactPrep(db, deck, cmds, opts); return plans.map(p => impactOne(prep, p)); }
 
@@ -548,6 +592,6 @@ const Analysis = (function () {
     return { cmd, main };
   }
 
-  return { run, impact, impactPrep, impactOne, applySwap, simulate, manaModel, parseDecklist, PAIRS, BENCH, POP, hyp };
+  return { run, impact, impactPrep, impactOne, applySwap, simulate, manaModel, parseDecklist, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;

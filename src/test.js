@@ -171,5 +171,11 @@ function legalCheck(R, label) {
     assert(P1.cmd.length === 1 && P1.cmd[0].name === 'Synth Rainbow' && P1.main.length === 2 && P1.main[1].qty === 26, 'parse: "// COMMANDER" header, blank line ends the commander section');
     const P2 = An.parseDecklist('Commander (1)\n1 A\n1 B\nDeck\n1 C\n\nSideboard:\n1 D');
     assert(P2.cmd.length === 2 && P2.main.length === 1, 'parse: "Commander (1)" header with partners, sideboard skipped');
+    // colour check: Karsten's definition (colour given land drops); his 99-card figures 19 (C, T1) and 30 (CC, T2) at 37 lands
+    assert(Math.abs(An.castOdds(99, 37, 19, 7, 1, 1) - 0.813) < 0.002 && Math.abs(An.castOdds(99, 37, 30, 8, 2, 2) - 0.872) < 0.002, 'castOdds: 19 sources C on T1 = 81.3%, 30 sources CC on T2 = 87.2%');
+    assert(An.castOdds(99, 37, 37, 9, 3, 3) === 1 && An.castOdds(99, 37, 0, 9, 1, 3) === 0, 'castOdds: all lands of the colour → 1, none → 0');
+    const ck = An.castCheck([{ c: { n: 'X', mc: '{X}{W}{W}', cmc: 2 } }, { c: { n: 'Y', mc: '{W}', cmc: 1 } }], 99, 37, { W: 20 });
+    assert(ck.length === 2 && ck.find(r => r.n === 'X').t === 4 && ck[0].p <= ck[1].p, 'castCheck: X spells judged at X = 2, rows sorted worst first');
+    assert(Math.abs(An.karstenLands(3, 10) - 36.66) < 0.01, 'karstenLands: 31.42 + 3.13 × 3 − 0.28 × 10 − 1.35 = 36.66');
   }
 })();

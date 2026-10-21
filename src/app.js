@@ -443,6 +443,7 @@
       const d = p.d, eff = [];
       for (const [k, v] of d.src || []) eff.push('<span class="' + cls(v) + '">' + k + ' land sources ' + sign(v) + '</span>');
       if (d.warn) eff.push('<span class="' + cls(-d.warn) + '">Colors flagged ' + sign(d.warn) + '</span>');
+      if (d.castLow) eff.push('<span class="' + cls(-d.castLow) + '">Cards below ' + Math.round(Analysis.CAST_OK * 100) + '% castable ' + sign(d.castLow) + '</span>');
       if (d.pl) eff.push('<span class="' + cls(d.pl) + '">Power ' + sign(d.pl, 1) + '</span>');
       if (d.fund) eff.push('<span class="' + cls(d.fund) + '">Fundamentals ' + sign(d.fund) + '</span>');
       for (const [k, v] of d.vectors) eff.push('<span class="' + cls(v) + '">' + VL[k] + ' ' + sign(v) + '</span>');
@@ -626,7 +627,8 @@
         .map(r => '<tr><td>' + r[0] + '</td><td class="n">' + r[1] + '</td></tr>').join('') + '</tbody></table></div>';
     const mana = '<div class="an-card"><h3>Mana base</h3><table class="t compact"><thead><tr><th>Color</th><th class="n">Pips</th><th class="n">Pip %</th><th class="n">Land src</th><th class="n">All src</th><th>Check</th></tr></thead><tbody>' +
       X.mana.colors.map(c => '<tr><td>' + pipsHTML(c.color) + '</td><td class="n">' + c.pips.toFixed(1).replace(/\.0$/, '') + '</td><td class="n">' + pct(c.pipShare) + '</td><td class="n">' + c.landSources + '</td><td class="n">' + c.allSources + '</td><td>' + (c.warn ? '<span class="chip flag">' + esc(c.warn) + '</span>' : '<span class="chip">ok</span>') + '</td></tr>').join('') +
-      '</tbody></table><p class="note">Lands entering tapped (' + X.mana.tapped.length + '): ' + cardList(X.mana.tapped) + '</p></div>';
+      '</tbody></table>' + (() => { const low = X.mana.cast.filter(r => r.p < X.mana.castOk); return low.length ? '<p class="note">Below ' + Math.round(X.mana.castOk * 100) + '% castable on curve (' + low.length + '): ' + low.slice(0, 8).map(r => esc(r.n) + ' ' + r.k + r.color + ' T' + r.t + ' ' + pct(r.p)).join(' · ') + (low.length > 8 ? ' …' : '') + '</p>' : ''; })() +
+      '<p class="note">Lands: ' + X.nLands + ' · curve estimate ' + X.mana.landEst.lands.toFixed(1) + ' (Karsten).</p><p class="note">Lands entering tapped (' + X.mana.tapped.length + '): ' + cardList(X.mana.tapped) + '</p></div>';
     const cov = X.interaction.coverage;
     const inter = '<div class="an-card"><h3>Interaction coverage</h3><table class="t compact"><tbody>' +
       [['Creatures', cov.creature], ['Artifacts', cov.artifact], ['Enchantments', cov.enchantment], ['Planeswalkers', cov.planeswalker], ['Lands', cov.land], ['Spells (counters)', cov.spell], ['Graveyards', X.interaction.gyHate]]
@@ -648,7 +650,8 @@
     const method = '<details class="an-method"><summary class="note" style="cursor:pointer">Method and assumptions</summary><ul class="note">' +
       '<li>Role, flag and theme detection use the oracle-text rules listed under Advanced → Tag and flag rules. Themes are enabler/payoff pairs; a link is one card on the opposite side of the same theme (commander counts 3).</li>' +
       '<li>Targets come from your Category targets and target average MV. "avg" next to a target is the mean per deck across EDHREC decklists (<a href="https://edhrec.com/articles/the-deck-of-many-things-card-frequencies-by-type-and-function-across-edh" target="_blank" rel="noopener">EDHREC, Jul 2022</a>: 35.9 lands, 12.7 ramp, 7.6 draw, 8.5 spot removal, 2.7 wipes, 3.0 tutors); it describes what players build, not an optimum. Other targets are heuristics shown next to each factor.</li>' +
-      '<li>Color sources: Frank Karsten\'s 99-card figures call for about 19 sources to cast a single-pip card on turn 1 and 30 for a double-pip card on turn 2 at ~90% (<a href="https://scrollvault.net/guides/mana-bases.html" target="_blank" rel="noopener">summary</a>). The color warning here is a looser share-of-pips check.</li>' +
+      '<li>Color sources: for every card, the exact chance of having its colored pips from lands by the turn equal to its mana value, given you hit your land drops (Frank Karsten\'s definition; mana rocks and dorks not counted). A color is flagged when any card is below ' + Math.round(Analysis.CAST_OK * 100) + '%. Karsten\'s 99-card figures (19 sources for one pip on turn 1, 30 for two on turn 2; <a href="https://scrollvault.net/guides/mana-bases.html" target="_blank" rel="noopener">summary</a>) give 81% and 87% under this model, because his also count mulligans.</li>' +
+      '<li>Land estimate: 31.42 + 3.13 × average MV − 0.28 × cheap ramp and draw (MV ≤ 2) − 1.35 for the free mulligan, attributed to Frank Karsten (<a href="https://scrollvault.net/guides/how-many-lands.html" target="_blank" rel="noopener">summary</a>). This deck: ' + X.mana.landEst.lands.toFixed(1) + ' (avg MV ' + X.mana.landEst.avgMV.toFixed(2) + ', ' + X.mana.landEst.cheap + ' cheap ramp/draw).</li>' +
       '<li>Goldfish: seeded, ' + s.games + ' games, no opponents. One free mulligan when the opening 7 has fewer than 2 or more than 5 lands. Draws from turn 2. Each turn it plays an untapped land if possible, casts ramp first, then the commander, then the largest spells that fit. Mana rocks add mana immediately, creatures next turn, land-search ramp adds tapped lands. Colors, rituals and card draw are not modeled.</li>' +
       '<li>Exact probabilities use the hypergeometric distribution over the ' + X.deckSize + '-card library.</li>' +
       '<li>Power model follows the structure documented by <a href="https://scrycheck.com/docs" target="_blank" rel="noopener">ScryCheck</a>: five vectors (speed, consistency, interaction, mana base, threats), combo families from Spellbook, archetype-dependent weights, a strategy ceiling from four signals, a 1–10 scale with ± uncertainty, best/typical/contested win turns and a recommended minimum bracket. ScryCheck does not publish its weights, so every weight and curve here is this tool\'s own, shown on each card, and uncalibrated against labeled decks. Typical win turn maps power to WotC turn expectations (PL 5 → T8, 7 → T6, 8 → T5, 9 → T4). Raw power = 1 + 9·(0.7·vector mix + 0.3·card quality)/100. Card power (0–1) is an oracle-text heuristic: fast mana +0.45, Game Changer +0.35, tutor +0.2–0.35, cheap instant removal +0.3, MV≤1 ramp +0.3, free spells +0.25, cheap repeatable draw +0.2, plus 0.25×EDHREC popularity. Vector components weight each card by 0.6 + card power, so a like-for-like upgrade moves the score. ScryCheck\'s Playgroup.gg anchor, edhtop16 metagame test and per-card power ratings need online data and are not reproduced.</li>' +
@@ -1555,24 +1558,16 @@
     histPush('edit', 'Undid ' + opLabel(last)); setStatus('Undid ' + opLabel(last) + '.');
   }
 
-  /* ---------- colour check: exact odds of having enough sources of each colour for its hardest card on curve ---------- */
+  /* ---------- colour check: chance of each colour for its hardest card on curve, given the land drops (Karsten's definition) ---------- */
   function colourCheckHTML(R) {
     const cols = (R.CI || '').split('').filter(x => 'WUBRG'.includes(x)); if (!cols.length) return '';
-    const N = R.deck.reduce((s, e) => s + e.qty, 0), atLeast = (K, n, k) => { let p = 0; for (let i = k; i <= Math.min(n, K); i++) p += Analysis.hyp(N, K, n, i); return Math.min(1, p); };
-    const cards = R.commanders.map(c => ({ c, cmd: true })).concat(R.deck.filter(e => !Engine.analyze(e.c).isLand).map(e => ({ c: e.c })));
-    const rows = cols.map(X => {
-      const K = R.stats.sources[X] || 0; let worst = null;
-      for (const { c, cmd } of cards) {
-        const mc = (c.mc || '').split(' // ')[0], k = (mc.match(new RegExp('\\{' + X + '\\}', 'g')) || []).length; if (!k) continue;
-        const t = Math.max(1, Math.round(c.cmc)), p = atLeast(K, Math.min(N, 7 + t - 1), k);
-        if (!worst || p < worst.p - 1e-9 || (Math.abs(p - worst.p) < 1e-9 && t < worst.t)) worst = { c, k, t, p, cmd };
-      }
-      return { X, K, worst };
-    }).filter(r => r.worst);
+    const K = Analysis.colourCheck(R.deck, R.commanders, R.CI), ok = Analysis.CAST_OK;
+    const rows = cols.map(X => ({ X, K: K.landSrc[X], worst: K.cast.find(r => r.color === X), low: K.cast.filter(r => r.color === X && r.p < ok).length })).filter(r => r.worst);
     if (!rows.length) return '';
-    return '<div class="wide"><h3>Colour check</h3><div class="scroll"><table class="t"><thead><tr><th>Colour</th><th class="n">Sources</th><th>Hardest on curve</th><th class="n">Needs</th><th class="n">P</th></tr></thead><tbody>' +
-      rows.map(r => '<tr><td>' + pipsHTML(r.X) + '</td><td class="n">' + r.K + '</td><td>' + cardLink(r.worst.c) + (r.worst.cmd ? ' <span class="chip">commander</span>' : '') + '</td><td class="n nw">' + r.worst.k + ' by T' + r.worst.t + '</td><td class="n' + (r.worst.p < 0.9 ? ' badc' : '') + '">' + Math.round(r.worst.p * 100) + '%</td></tr>').join('') +
-      '</tbody></table></div><p class="note">P is the exact hypergeometric chance of having drawn at least that many sources of the colour by that turn on the play (7 + turn − 1 cards from ' + N + '), ignoring mulligans and fetching. Frank Karsten\'s guideline is 90%; red is below it.</p></div>';
+    const byName = new Map(R.commanders.concat(R.deck.map(e => e.c)).map(c => [c.n, c]));
+    return '<div class="wide"><h3>Colour check</h3><div class="scroll"><table class="t"><thead><tr><th>Colour</th><th class="n">Land sources</th><th>Hardest on curve</th><th class="n">Needs</th><th class="n">P</th><th class="n">Cards below ' + Math.round(ok * 100) + '%</th></tr></thead><tbody>' +
+      rows.map(r => '<tr><td>' + pipsHTML(r.X) + '</td><td class="n">' + r.K + '</td><td>' + cardLink(byName.get(r.worst.n)) + (r.worst.cmd ? ' <span class="chip">commander</span>' : '') + '</td><td class="n nw">' + r.worst.k + ' by T' + r.worst.t + '</td><td class="n' + (r.worst.p < ok ? ' badc' : '') + '">' + Math.round(r.worst.p * 100) + '%</td><td class="n">' + r.low + '</td></tr>').join('') +
+      '</tbody></table></div><p class="note">P is the exact chance of having at least that many lands of the colour by that turn on the play (7 + turn − 1 cards from ' + K.N + '), given you have hit your land drops (' + K.L + ' lands). This is Frank Karsten\'s definition. His published 99-card figures (19 sources for one pip on turn 1, 30 for two on turn 2) come out at 81% and 87% here, because he also counts mulligans; red is below ' + Math.round(ok * 100) + '%. Mana rocks and dorks are not counted.</p></div>';
   }
 
   /* ---------- keyboard shortcuts ---------- */
