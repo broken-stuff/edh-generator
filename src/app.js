@@ -344,7 +344,9 @@
       return { deck, cmds, unknown, label: 'Pasted list' };
     }
     if (!App.R || !App.R.stats) return { error: 'Generate a deck first, or switch to "Pasted list".' };
-    return { deck: App.R.deck, cmds: App.R.commanders, unknown: [], label: 'Generated deck', combos: App.R.combos };
+    // imported cards are locked so rebuilds keep them, but analysis may still suggest cutting them
+    const deck = App.R.deck.map(e => e.imp ? Object.assign({}, e, { locked: false }) : e);
+    return { deck, cmds: App.R.commanders, unknown: [], label: App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck', combos: App.R.combos };
   }
   const anGames = () => { const g = +App.anGames || 100000; return [1500, 10000, 25000, 50000, 100000].includes(g) ? g : 100000; };
   async function runAnalysis() {
@@ -535,7 +537,7 @@
   }
   function renderAnalysis() {
     const X = App.AN;
-    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">Generated deck</button><button type="button" data-an="src-paste" aria-pressed="' + (App.anSource === 'paste') + '">Pasted list</button><button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
+    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">' + (App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck') + '</button><button type="button" data-an="src-paste" aria-pressed="' + (App.anSource === 'paste') + '">Pasted list</button><button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
       (App.anSource === 'paste' || App.anSource === 'compare' ? '<label class="f" style="margin-top:8px">' + (App.anSource === 'compare' ? 'List to compare against the generated deck. ' : '') + 'Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="anText" rows="8" spellcheck="false">' + esc(App.anText || '') + '</textarea></label>' : '');
     if (!X) { $('view').innerHTML = src + '<p class="note" style="margin-top:10px">Scores speed, mana, card advantage, interaction, resilience, synergy, consistency and win pressure from card data, exact probabilities and a seeded goldfish simulation. Runs entirely in this page.</p>'; return; }
     if (X.error) { $('view').innerHTML = src + '<div class="msg err" style="margin-top:10px">' + esc(X.error) + (X.unknown && X.unknown.length ? '<br>Unknown names: ' + esc(X.unknown.join(', ')) : '') + '</div>'; return; }
@@ -806,7 +808,7 @@
     const R = App.R; if (!R || !R.stats || !App.bulk) return null;
     const key = deckKey(R);
     if (App.PR && App.PR.key === key) return App.PR.X;
-    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label === 'Generated deck' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label !== 'Pasted list' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
     const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, combos: R.combos && R.combos.length ? R.combos : null, games: 10000 });
     App.PR = { key, X }; return X;
   }
@@ -992,7 +994,7 @@
     const R = App.R; if (!R || !R.stats || !App.bulk) return null;
     const key = deckKey(R);
     if (App.QS && App.QS.key === key) return App.QS;
-    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label === 'Generated deck' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label !== 'Pasted list' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
     const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, games: 4000 });
     App.QS = { key, pl: X.power.pl, plLabel: X.power.label, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, winBest: X.power.win.best, winCont: X.power.win.contested, arch: X.power.primary, score: R.deckScore ? R.deckScore() : null, games: X.sim.games };
     return App.QS;
@@ -1064,7 +1066,8 @@
       const db = await getDB();
       setProg(0.6); setStatus('Scoring and filling slots…');
       await new Promise(r => setTimeout(r, 0));
-      const env = { combos: comboProvider(), locks: opts.locks || [], bans: opts.bans || [] };
+      if (opts.imported) { S.include = ''; S.exclude = ''; } // the imported list is the deck, so include/exclude lists don't apply
+      const env = { combos: comboProvider(), locks: opts.locks || [], bans: opts.bans || [], imported: !!opts.imported };
       const R = await Engine.generate(db, S, env);
       R.dbMeta = db.meta;
       if (db.meta.warnings && db.meta.warnings.length) R.warnings = db.meta.warnings.concat(R.warnings);
@@ -1073,15 +1076,45 @@
       else {
         App.R = R; built = true; App.openSwap = null; App.QS = null; if (App.anSource !== 'paste') App.AN = null;
         if (App.tab === 'setup' && !App.restoring) { App.tab = 'deck'; window.scrollTo({ top: 0 }); }
-        if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans }, ops: [] };
+        if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans, imported: env.imported }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
         const O = R.optimize;
         setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '. Optimised: deck score ' + O.baseline.toFixed(1) + ' → ' + O.final.toFixed(1) + ' (' + O.swaps.length + ' swaps; ' + O.pairs.toLocaleString() + ' card pairs scored' + (O.timedOut ? '; time cap reached' : '; no better single swap left') + ').' : '.'));
       }
     } catch (e) { App.R = null; showMsgs([e.message || String(e)], []); setStatus('Error.'); console.error(e); }
     App.busy = false; setProg(null); renderSources(); renderAll();
-    if (built && !App.restoring) histPush('generate', opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
+    if (built && opts.onBuilt) opts.onBuilt(App.R);
+    if (built && !App.restoring) histPush('generate', opts.imported && !prev ? 'Imported deck' : opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
     if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R) runAnalysis();
+  }
+
+  /* ---------- import: a pasted list becomes the working deck, every card locked ---------- */
+  async function importDeck() {
+    const note = $('impNote'), say = t => { note.textContent = t; };
+    if (!App.bulk) { say('Load the card data first (Card data section).'); return; }
+    const P = Analysis.parseDecklist($('impText').value);
+    readForm();
+    const cmdNames = P.cmd.length ? P.cmd.map(x => x.name) : App.S.commanders.map(s => (s || '').trim()).filter(Boolean);
+    const unknown = [], cmds = [];
+    for (const n of cmdNames) { const c = Engine.lookup(App.bulk, n); if (c) cmds.push(c); else unknown.push(n); }
+    if (!cmds.length) { say('No commander found. Put it under a "Commander" header, tag it [Commander], or fill the Commander field.' + (unknown.length ? ' Not in the card data: ' + unknown.join('; ') + '.' : '')); return; }
+    const locks = [];
+    for (const it of P.main) {
+      const c = Engine.lookup(App.bulk, it.name); if (!c) { unknown.push(it.name); continue; }
+      if (cmds.includes(c)) continue;
+      const ex = locks.find(l => l.name === c.n); if (ex) ex.qty += it.qty; else locks.push({ name: c.n, qty: it.qty });
+    }
+    if (!locks.length) { say('No cards found in the list.'); return; }
+    App.S.commanders = [cmds[0].n, cmds[1] ? cmds[1].n : '']; App.S.reroll = 0;
+    writeForm(App.S); persistSettings();
+    const n = locks.reduce((s, l) => s + l.qty, 0);
+    say('Importing ' + n + ' cards…');
+    await runGenerate({ locks, bans: [], imported: true, onBuilt: R => {
+      const filled = R.deck.filter(e => !e.locked).reduce((s, e) => s + e.qty, 0), kept = R.deck.filter(e => e.locked).reduce((s, e) => s + e.qty, 0);
+      const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' for ' + cmds.map(c => c.n).join(' + ') + '.' + (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') + (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (filled ? ' ' + filled + ' slot' + (filled === 1 ? '' : 's') + ' filled by the generator (unlocked).' : '');
+      say(msg); setStatus(msg);
+    } });
+    if (!App.R || !App.R.deck.length) say('Not imported; see the messages above.');
   }
 
   /* ---------- acceptance tests (run against loaded data) ---------- */
@@ -1502,11 +1535,12 @@
     $('forgetBtn').addEventListener('click', async () => { await IDB.del('bulk'); await IDB.del('combos'); $('idbNote').textContent = 'Stored data removed.'; });
     $('seedBtn').addEventListener('click', () => { const s = Math.random().toString(36).slice(2, 10); $('seed').value = s; App.S.seed = s; App.S.reroll = 0; persistSettings(); });
     $('genBtn').addEventListener('click', () => { App.S.reroll = 0; runGenerate(); });
+    $('impBtn').addEventListener('click', importDeck);
     $('regenBtn').addEventListener('click', () => {
       if (!App.R) return;
       App.S.reroll = 0; // same settings + same locks = same deck
       const locks = App.R.deck.filter(e => e.locked && !e.inc).map(e => ({ name: e.c.n, slot: e.slot, qty: e.qty }));
-      runGenerate({ locks, bans: App.R.bans || [] });
+      runGenerate({ locks, bans: App.R.bans || [], imported: !!(App.chain && App.chain.env && App.chain.env.imported) });
     });
     $('testBtn').addEventListener('click', runTests);
     document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; hidePop(); App.tab = b.dataset.tab; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 }); if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis(); });
@@ -1570,7 +1604,7 @@
       const b = e.target.closest('button[data-act]'); if (!b || !App.R) return;
       const entry = App.R.deck[+b.dataset.i]; if (!entry) return;
       const act = b.dataset.act;
-      if (act === 'lock') { entry.locked = !entry.locked; renderView(); }
+      if (act === 'lock') { entry.locked = !entry.locked; entry.imp = false; renderView(); }
       else if (act === 'swap') { App.openSwap = App.openSwap === entry ? null : entry; renderView(); }
       else if (act === 'use') { const alt = App.R.alternatives(entry, 5)[+b.dataset.j]; if (alt) { const cut = entry.c.n; await App.R.replace(entry, alt.c, true); histOp({ op: 'replace', cut, add: alt.c.n, locked: true }); App.QS = null; App.openSwap = null; renderAll(); histPush('edit', cut + ' → ' + alt.c.n); } }
       else if (act === 'remove') { const cut = entry.c.n; const ne = await App.R.remove(entry); histOp({ op: 'remove', cut }); App.QS = null; App.openSwap = null; renderAll(); histPush('edit', 'Removed ' + cut + (ne && ne.c ? ' → ' + ne.c.n : '')); }

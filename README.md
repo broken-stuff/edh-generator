@@ -47,6 +47,7 @@ The pages are in the left menu (a tab strip on phones), in three groups.
 ### Build
 
 - **Setup:** commander (and partner), bracket, budget, game plan, themes and creature types. **Save, load, share** saves settings as a JSON file, loads one back, or gives a share token: add it to the page address as `#token` and anyone who opens that link gets the same settings.
+- **Import a deck** (on Setup): paste your current list (Moxfield, Archidekt, MTGO or plain `1 Name`; set codes, collector numbers and `*F*` are ignored) and press **Import deck**. It becomes the working deck with every card locked, so Deck, Swap, Analysis, Combos, Primer and Export all work on it. Budget, bracket and include/exclude settings never remove your cards; Validation shows what fails. A short list is filled to 100 with unlocked cards. Analysis can still suggest cutting imported cards.
 - **Commanders:** every legal commander. Filter by name, text, colour or theme, then send one to Setup with **Build**.
 - **Inspire me:** a seven-question quiz (colours, play style, creature type, themes, power, popularity, commander price). Every legal commander gets a match score and its reasons:
   - **Play style** (Aggressive, Control, Combo, Value engine, Go big) reads the commander's rules text, such as attack triggers, counterspells, board wipes, untap effects or cost reduction. Combo also counts the commander's Commander Spellbook combos.

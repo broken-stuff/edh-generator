@@ -512,6 +512,11 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
   <div class="ac"><label class="f">Second commander (Partner, Partner with, Friends forever, Background, Doctor's companion)<input type="search" id="cmd2" data-k="commanders.1" autocomplete="off" placeholder="Optional" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd2L"></ul></div>
   <div class="note" id="cmdNote"></div>
 </div></details>
+<details class="sec" id="secImport"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></svg></span>Import a deck<span class="hint"></span></summary><div class="body">
+  <label class="f">Your current list (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header, tagged [Commander], or in the Commander field above)<textarea id="impText" rows="8" spellcheck="false" placeholder="Commander&#10;1 Yennett, Cryptic Sovereign&#10;&#10;Deck&#10;1 Sol Ring (C21) 263&#10;..."></textarea></label>
+  <div class="row"><button type="button" class="small" id="impBtn">Import deck</button><span class="note" id="impNote"></span></div>
+  <p class="note">Every imported card is locked. If the list is short of 100, the generator fills only the missing slots and leaves those unlocked. Settings such as budget and bracket don't remove your cards; the Validation tab shows what fails.</p>
+</div></details>
 <details class="sec" open id="secBudget"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/></svg></span>Budget <span class="hint" id="budHint"></span></summary><div class="body">
   <div class="chips" id="qBudget" role="group" aria-label="Budget presets"><button type="button" data-b="25">$25</button><button type="button" data-b="50">$50</button><button type="button" data-b="100">$100</button><button type="button" data-b="250">$250</button><button type="button" data-b="500">$500</button><button type="button" data-b="">No limit</button></div>
   <div class="grid2">
@@ -1246,17 +1251,17 @@ const Engine = (function () {
     const excludeSet = new Set();
     for (const it of parseList(S.exclude)) { const c = lookup(db, it.name); if (c) excludeSet.add(c.n); else R.warnings.push('Exclude list: unknown card "' + it.name + '".'); }
     const bans = new Set(env.bans || []);
-    const incs = [];
+    const incs = [], incW = env.imported ? 'Import' : 'Include';
     const locks = (env.locks || []).map(x => typeof x === 'string' ? { name: x } : x);
     for (const it of parseList(S.include).map(x => ({ name: x.name, qty: x.qty, slot: 'include' })).concat(locks.map(l => ({ name: l.name, qty: l.qty || 1, slot: 'locked', prev: l.slot })))) {
       const c = lookup(db, it.name);
-      if (!c) { R.warnings.push('Include list: unknown card "' + it.name + '".'); continue; }
+      if (!c) { R.warnings.push(incW + ' list: unknown card "' + it.name + '".'); continue; }
       if (cmds.includes(c)) continue;
       if (incs.some(x => x.c === c)) continue;
       const a = analyze(c);
-      if (c.leg !== 'legal') { R.warnings.push('Include rejected: ' + c.n + ' is ' + c.leg + ' in Commander.'); continue; }
-      if (!subsetCI(c.ci, CI)) { R.warnings.push('Include rejected: ' + c.n + ' (identity ' + (c.ci || 'C') + ') is outside commander identity ' + (CI || 'C') + '.'); continue; }
-      if (excludeSet.has(c.n)) { R.warnings.push('Include rejected: ' + c.n + ' is also on the exclude list.'); continue; }
+      if (c.leg !== 'legal') { R.warnings.push(incW + ' rejected: ' + c.n + ' is ' + c.leg + ' in Commander.'); continue; }
+      if (!subsetCI(c.ci, CI)) { R.warnings.push(incW + ' rejected: ' + c.n + ' (identity ' + (c.ci || 'C') + ') is outside commander identity ' + (CI || 'C') + '.'); continue; }
+      if (excludeSet.has(c.n)) { R.warnings.push(incW + ' rejected: ' + c.n + ' is also on the exclude list.'); continue; }
       let qty = it.qty;
       if (qty > a.exempt) { R.warnings.push(c.n + ': quantity ' + qty + ' reduced to ' + (a.exempt === Infinity ? qty : a.exempt) + ' (singleton rule).'); qty = Math.min(qty, a.exempt); }
       incs.push({ c, qty, slot: it.slot, prev: it.prev });
@@ -1280,7 +1285,8 @@ const Engine = (function () {
       const incQty = incs.reduce((s, e) => s + e.qty, 0);
       const minTotal = cmdCost + incCost + Math.max(0, mainSize - incQty) * floor;
       R.minTotal = minTotal;
-      if (minTotal > cap + 1e-9) {
+      if (minTotal > cap + 1e-9 && env.imported) R.warnings.push('Budget: the imported list costs at least ' + fmt(minTotal, cur) + ', over the ' + fmt(cap, cur) + ' cap. The cards are kept and the budget rule will fail.');
+      else if (minTotal > cap + 1e-9) {
         R.errors.push('Budget infeasible: minimum achievable total is ' + fmt(minTotal, cur) + ' (commanders ' + fmt(cmdCost, cur) + ' + includes ' + fmt(incCost, cur) + ' + ' + Math.max(0, mainSize - incQty) + ' cheapest slots at ' + fmt(floor, cur) + (S.budget.inclBasics ? ' each, basic lands counted' : '') + '). Cap ' + fmt(cap, cur) + ' is short by ' + fmt(minTotal - cap, cur) + '. Binding constraint: ' + (cmdCost > cap ? 'commander price alone' : incCost + cmdCost > cap ? 'commanders + include list' : 'basic-land cost of the remaining slots') + '.');
         return R;
       }
@@ -1415,7 +1421,7 @@ const Engine = (function () {
     function add(c, slot, qty, score, extra, flags) {
       qty = qty || 1;
       const a = analyze(c);
-      const e = { c, qty, slot, score: score != null ? score : base(c), why: reason(c, slot, extra), locked: !!(flags && flags.locked), inc: !!(flags && flags.inc) };
+      const e = { c, qty, slot, score: score != null ? score : base(c), why: reason(c, slot, extra), locked: !!(flags && flags.locked), inc: !!(flags && flags.inc), imp: !!(flags && flags.imp) };
       deck.push(e); st.names.add(c.n);
       st.total += (isBasic(c) && !S.budget.inclBasics ? 0 : (price(c) || 0)) * qty;
       for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k] += qty;
@@ -1434,9 +1440,9 @@ const Engine = (function () {
     const dyn = c => { const a = analyze(c); let need = 0; for (const r of ROLES) if (a.roles[r] && roleCount(r) < (+S.targets[r] || 0)) need++; return base(c) + (need ? W.role * (1 + 0.25 * (need - 1)) : 0); }; // extra roles add a little, so multi-role filler cannot outrank staples
 
     /* 1. includes / locks */
-    for (const e of incs) add(e.c, e.slot === 'locked' ? (e.prev || 'locked') : 'include', e.qty, null, e.slot === 'locked' ? 'locked by user' : 'include list', { locked: true, inc: e.slot === 'include' });
+    for (const e of incs) add(e.c, e.slot === 'locked' ? (e.prev || 'locked') : 'include', e.qty, null, e.slot === 'locked' ? 'locked by user' : 'include list', { locked: true, inc: e.slot === 'include', imp: !!env.imported && e.slot === 'locked' });
     if (incs.length) L('Includes/locks: ' + incs.map(e => (e.qty > 1 ? e.qty + 'x ' : '') + e.c.n).join(', ') + '.');
-    if (size() > mainSize) { R.errors.push('Include list has ' + size() + ' cards; maximum is ' + mainSize + ' with ' + cmds.length + ' commander(s).'); return R; }
+    if (size() > mainSize) { R.errors.push((env.imported ? 'Imported list' : 'Include list') + ' has ' + size() + ' cards; maximum is ' + mainSize + ' with ' + cmds.length + ' commander(s).'); return R; }
 
     /* 2. lands (nonbasic now, basics after nonland fill) */
     const landTarget = Math.max(0, Math.min(mainSize, +S.targets.lands || 0));
@@ -2842,7 +2848,9 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       return { deck, cmds, unknown, label: 'Pasted list' };
     }
     if (!App.R || !App.R.stats) return { error: 'Generate a deck first, or switch to "Pasted list".' };
-    return { deck: App.R.deck, cmds: App.R.commanders, unknown: [], label: 'Generated deck', combos: App.R.combos };
+    // imported cards are locked so rebuilds keep them, but analysis may still suggest cutting them
+    const deck = App.R.deck.map(e => e.imp ? Object.assign({}, e, { locked: false }) : e);
+    return { deck, cmds: App.R.commanders, unknown: [], label: App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck', combos: App.R.combos };
   }
   const anGames = () => { const g = +App.anGames || 100000; return [1500, 10000, 25000, 50000, 100000].includes(g) ? g : 100000; };
   async function runAnalysis() {
@@ -3033,7 +3041,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
   }
   function renderAnalysis() {
     const X = App.AN;
-    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">Generated deck</button><button type="button" data-an="src-paste" aria-pressed="' + (App.anSource === 'paste') + '">Pasted list</button><button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
+    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">' + (App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck') + '</button><button type="button" data-an="src-paste" aria-pressed="' + (App.anSource === 'paste') + '">Pasted list</button><button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
       (App.anSource === 'paste' || App.anSource === 'compare' ? '<label class="f" style="margin-top:8px">' + (App.anSource === 'compare' ? 'List to compare against the generated deck. ' : '') + 'Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="anText" rows="8" spellcheck="false">' + esc(App.anText || '') + '</textarea></label>' : '');
     if (!X) { $('view').innerHTML = src + '<p class="note" style="margin-top:10px">Scores speed, mana, card advantage, interaction, resilience, synergy, consistency and win pressure from card data, exact probabilities and a seeded goldfish simulation. Runs entirely in this page.</p>'; return; }
     if (X.error) { $('view').innerHTML = src + '<div class="msg err" style="margin-top:10px">' + esc(X.error) + (X.unknown && X.unknown.length ? '<br>Unknown names: ' + esc(X.unknown.join(', ')) : '') + '</div>'; return; }
@@ -3304,7 +3312,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const R = App.R; if (!R || !R.stats || !App.bulk) return null;
     const key = deckKey(R);
     if (App.PR && App.PR.key === key) return App.PR.X;
-    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label === 'Generated deck' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label !== 'Pasted list' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
     const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, combos: R.combos && R.combos.length ? R.combos : null, games: 10000 });
     App.PR = { key, X }; return X;
   }
@@ -3490,7 +3498,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const R = App.R; if (!R || !R.stats || !App.bulk) return null;
     const key = deckKey(R);
     if (App.QS && App.QS.key === key) return App.QS;
-    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label === 'Generated deck' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label !== 'Pasted list' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
     const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, games: 4000 });
     App.QS = { key, pl: X.power.pl, plLabel: X.power.label, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, winBest: X.power.win.best, winCont: X.power.win.contested, arch: X.power.primary, score: R.deckScore ? R.deckScore() : null, games: X.sim.games };
     return App.QS;
@@ -3562,7 +3570,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       const db = await getDB();
       setProg(0.6); setStatus('Scoring and filling slots…');
       await new Promise(r => setTimeout(r, 0));
-      const env = { combos: comboProvider(), locks: opts.locks || [], bans: opts.bans || [] };
+      if (opts.imported) { S.include = ''; S.exclude = ''; } // the imported list is the deck, so include/exclude lists don't apply
+      const env = { combos: comboProvider(), locks: opts.locks || [], bans: opts.bans || [], imported: !!opts.imported };
       const R = await Engine.generate(db, S, env);
       R.dbMeta = db.meta;
       if (db.meta.warnings && db.meta.warnings.length) R.warnings = db.meta.warnings.concat(R.warnings);
@@ -3571,15 +3580,45 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       else {
         App.R = R; built = true; App.openSwap = null; App.QS = null; if (App.anSource !== 'paste') App.AN = null;
         if (App.tab === 'setup' && !App.restoring) { App.tab = 'deck'; window.scrollTo({ top: 0 }); }
-        if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans }, ops: [] };
+        if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans, imported: env.imported }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
         const O = R.optimize;
         setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '. Optimised: deck score ' + O.baseline.toFixed(1) + ' → ' + O.final.toFixed(1) + ' (' + O.swaps.length + ' swaps; ' + O.pairs.toLocaleString() + ' card pairs scored' + (O.timedOut ? '; time cap reached' : '; no better single swap left') + ').' : '.'));
       }
     } catch (e) { App.R = null; showMsgs([e.message || String(e)], []); setStatus('Error.'); console.error(e); }
     App.busy = false; setProg(null); renderSources(); renderAll();
-    if (built && !App.restoring) histPush('generate', opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
+    if (built && opts.onBuilt) opts.onBuilt(App.R);
+    if (built && !App.restoring) histPush('generate', opts.imported && !prev ? 'Imported deck' : opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
     if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R) runAnalysis();
+  }
+
+  /* ---------- import: a pasted list becomes the working deck, every card locked ---------- */
+  async function importDeck() {
+    const note = $('impNote'), say = t => { note.textContent = t; };
+    if (!App.bulk) { say('Load the card data first (Card data section).'); return; }
+    const P = Analysis.parseDecklist($('impText').value);
+    readForm();
+    const cmdNames = P.cmd.length ? P.cmd.map(x => x.name) : App.S.commanders.map(s => (s || '').trim()).filter(Boolean);
+    const unknown = [], cmds = [];
+    for (const n of cmdNames) { const c = Engine.lookup(App.bulk, n); if (c) cmds.push(c); else unknown.push(n); }
+    if (!cmds.length) { say('No commander found. Put it under a "Commander" header, tag it [Commander], or fill the Commander field.' + (unknown.length ? ' Not in the card data: ' + unknown.join('; ') + '.' : '')); return; }
+    const locks = [];
+    for (const it of P.main) {
+      const c = Engine.lookup(App.bulk, it.name); if (!c) { unknown.push(it.name); continue; }
+      if (cmds.includes(c)) continue;
+      const ex = locks.find(l => l.name === c.n); if (ex) ex.qty += it.qty; else locks.push({ name: c.n, qty: it.qty });
+    }
+    if (!locks.length) { say('No cards found in the list.'); return; }
+    App.S.commanders = [cmds[0].n, cmds[1] ? cmds[1].n : '']; App.S.reroll = 0;
+    writeForm(App.S); persistSettings();
+    const n = locks.reduce((s, l) => s + l.qty, 0);
+    say('Importing ' + n + ' cards…');
+    await runGenerate({ locks, bans: [], imported: true, onBuilt: R => {
+      const filled = R.deck.filter(e => !e.locked).reduce((s, e) => s + e.qty, 0), kept = R.deck.filter(e => e.locked).reduce((s, e) => s + e.qty, 0);
+      const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' for ' + cmds.map(c => c.n).join(' + ') + '.' + (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') + (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (filled ? ' ' + filled + ' slot' + (filled === 1 ? '' : 's') + ' filled by the generator (unlocked).' : '');
+      say(msg); setStatus(msg);
+    } });
+    if (!App.R || !App.R.deck.length) say('Not imported; see the messages above.');
   }
 
   /* ---------- acceptance tests (run against loaded data) ---------- */
@@ -4000,11 +4039,12 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     $('forgetBtn').addEventListener('click', async () => { await IDB.del('bulk'); await IDB.del('combos'); $('idbNote').textContent = 'Stored data removed.'; });
     $('seedBtn').addEventListener('click', () => { const s = Math.random().toString(36).slice(2, 10); $('seed').value = s; App.S.seed = s; App.S.reroll = 0; persistSettings(); });
     $('genBtn').addEventListener('click', () => { App.S.reroll = 0; runGenerate(); });
+    $('impBtn').addEventListener('click', importDeck);
     $('regenBtn').addEventListener('click', () => {
       if (!App.R) return;
       App.S.reroll = 0; // same settings + same locks = same deck
       const locks = App.R.deck.filter(e => e.locked && !e.inc).map(e => ({ name: e.c.n, slot: e.slot, qty: e.qty }));
-      runGenerate({ locks, bans: App.R.bans || [] });
+      runGenerate({ locks, bans: App.R.bans || [], imported: !!(App.chain && App.chain.env && App.chain.env.imported) });
     });
     $('testBtn').addEventListener('click', runTests);
     document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; hidePop(); App.tab = b.dataset.tab; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 }); if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis(); });
@@ -4068,7 +4108,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       const b = e.target.closest('button[data-act]'); if (!b || !App.R) return;
       const entry = App.R.deck[+b.dataset.i]; if (!entry) return;
       const act = b.dataset.act;
-      if (act === 'lock') { entry.locked = !entry.locked; renderView(); }
+      if (act === 'lock') { entry.locked = !entry.locked; entry.imp = false; renderView(); }
       else if (act === 'swap') { App.openSwap = App.openSwap === entry ? null : entry; renderView(); }
       else if (act === 'use') { const alt = App.R.alternatives(entry, 5)[+b.dataset.j]; if (alt) { const cut = entry.c.n; await App.R.replace(entry, alt.c, true); histOp({ op: 'replace', cut, add: alt.c.n, locked: true }); App.QS = null; App.openSwap = null; renderAll(); histPush('edit', cut + ' → ' + alt.c.n); } }
       else if (act === 'remove') { const cut = entry.c.n; const ne = await App.R.remove(entry); histOp({ op: 'remove', cut }); App.QS = null; App.openSwap = null; renderAll(); histPush('edit', 'Removed ' + cut + (ne && ne.c ? ' → ' + ne.c.n : '')); }
