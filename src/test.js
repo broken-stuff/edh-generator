@@ -215,7 +215,7 @@ function legalCheck(R, label) {
     let ticks = 0;
     const DS = await Dp.search(PX, dctx, Dp.localExec, async () => { ticks++; }, { g1: 200, g2: 300, cuts: 6, nonland: 10, popular: 2, perRole: 1, perVector: 1, lands: 3, single: 2, pairs: 2, confirm: 14, rounds: 3, lead: 4, altFor: 1, altCuts: 2 });
     const pc2 = DS.pkg.map(x => x.cut);
-    assert(DS.stats.evals > 10 && ticks === DS.stats.evals + 1 && DS.pkg.every(x => !inDeckN.has(x.add.n) && x.add.leg === 'legal' && inDeckN.has(x.cut.n) && !keepN.has(x.cut.n) && x.m >= Dp.MIN_GAIN) && new Set(pc2).size === pc2.length && DS.pkg.every((x, i) => !i || x.total >= DS.pkg[i - 1].total), 'deep search: ' + DS.stats.evals + ' measured lists; package of ' + DS.pkg.length + ' with new legal adds, distinct cuts, each step gaining ' + Dp.MIN_GAIN + '+');
+    assert(DS.stats.evals > 10 && ticks === DS.stats.evals + 1 && DS.pkg.every(x => !inDeckN.has(x.add.n) && x.add.leg === 'legal' && inDeckN.has(x.cut.n) && !keepN.has(x.cut.n)) && new Set(pc2).size === pc2.length && (!DS.pkg.length || DS.pkg[DS.pkg.length - 1].total >= Dp.MIN_GAIN * DS.pkg.length), 'deep search: ' + DS.stats.evals + ' measured lists; package of ' + DS.pkg.length + ' with new legal adds, distinct cuts, total gain ≥ ' + Dp.MIN_GAIN + ' per swap (' + DS.stats.refined + ' refined)');
     const DR = Dp.rows(PX, DS);
     assert(DR.length === DS.pkg.length + DS.singles.reduce((s, it) => s + it.adds.length, 0) && DR.every(r => r.d && r.after && r.cut && r.add && /^(Package|Deep search)$/.test(r.group)), 'deep rows: one accept/deny row per swap, with the measured effect');
     // mechanics graph: Oracle text → needs/makes; linked pairs

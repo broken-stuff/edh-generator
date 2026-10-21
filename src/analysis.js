@@ -112,7 +112,7 @@ const Analysis = (function () {
   const EVN = ['spell.any', 'spell.noncreature', 'spell.creature', 'creature.enters', 'token.enters', 'artifact.enters', 'enchantment.enters', 'land.enters', 'card.draw', 'life.gain', 'life.loss', 'counter.placed', 'creature.dies', 'sacrifice', 'attack', 'damage.player', 'upkeep', 'end', 'combat', 'gy.enter'];
   const EVI = Object.fromEntries(EVN.map((k, i) => [k, i])), EV = EVI;
   const EF = { card: 1, mana: 2, 'token.creature': 4, 'token.treasure': 8, 'token.artifact': 512, drain: 16, life: 32, damage: 64, counter: 128, 'gy.fill': 256 };
-  const TRIG_TARGET = 7; // trigger output by T6 of themed generated decks: 4.8–8.5 (Atraxa, Krenko, Meren, Edgar, Talrand, Omnath)
+  const TRIG_TARGET = 8; // trigger output by T6 of themed generated decks: 5.7–10.3 (Atraxa, Krenko, Meren, Edgar, Talrand, Omnath)
   const effBits = list => list.reduce((b, k) => b | (EF[k] || 0), 0);
   const SMC = new WeakMap();
   function simModel(c, CI) {
@@ -158,6 +158,22 @@ const Analysis = (function () {
       }
       if (tr.length) s.trig = tr;
       s.outlet = P.abil.some(a => a.kind === 'activated' && a.needs.includes('fodder.creature'));
+      // activated abilities (not mana abilities): tap, mana cost, sacrifice-a-creature cost, loyalty; effect bits as for triggers
+      const act = [];
+      for (const ab of P.abil) {
+        if (ab.kind !== 'activated') continue; const ef = effBits(ab.makes.filter(k => k !== 'mana')); if (!ef) continue;
+        const cost = (ab.text.match(/^([^:"]{1,140}?):/) || [])[1] || ''; if (/\{x\}/.test(cost)) continue;
+        const loy = /^[+−-]?\d+$/.test(cost.trim()) ? +cost.trim().replace('−', '-') : null;
+        if (loy != null && loy < 0) continue;
+        const mana = (cost.match(/\{(\d+)\}/g) || []).reduce((n, x) => n + +x.slice(1, -1), 0) + (cost.match(/\{[wubrgc]\}/g) || []).length;
+        if (s.tokens && s.tokens.per && ef & 4) continue; // already a per-turn token engine
+        act.push({ ef, tap: /\{t\}/.test(cost), mana, sac: /sacrifice (?:a|an|another)[^,:]*creature|exile (?:a|another) creature you control/.test(cost), loy: loy != null });
+      }
+      if (act.length) s.act = act;
+      // statics: token and counter doublers, extra ETB triggers, generic cost reduction
+      const st = P.needs;
+      s.ampTok = st.has('amp.token') ? 1 : 0; s.ampCtr = st.has('amp.counter') ? 1 : 0; s.ampTrig = st.has('amp.trigger') || st.has('amp.etb') ? 1 : 0;
+      s.reduce = P.abil.some(a => a.kind === 'static' && /spells? (?:you cast )?costs? \{1\} less|costs? \{1\} less to cast/.test(a.text)) ? 1 : 0;
     }
     byCI[CI] = s; return s;
   }
@@ -238,16 +254,22 @@ const Analysis = (function () {
         if (tCur <= 6) tg.fires++;
         if (ef & 1) { if (tCur <= 6) tg.cards++; draw(1); }
         if (ef & 2) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); }
-        if (ef & 4) { if (tCur <= 6) tg.tok++; enter({ pow: 1, ev: false, t: tCur + 1, tok: true }); }
+        if (ef & 4) for (let k = 0; k <= ampTok; k++) { if (tCur <= 6) tg.tok++; enter({ pow: 1, ev: false, t: tCur + 1, tok: true }); }
         if (ef & 8) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); fire(EV['artifact.enters']); fire(EV['token.enters']); }
         if (ef & 16) { if (tCur <= 6) tg.dmg += 3; fire(EV['life.loss']); }
         if (ef & 32) fire(EV['life.gain']);
         if (ef & 64) { if (tCur <= 6) tg.dmg += 1; fire(EV['life.loss']); }
-        if (ef & 128) { if (board.length) board[board.length - 1].pow++; if (tCur <= 6) tg.ctr++; fire(EV['counter.placed']); }
+        if (ef & 128) { const n = 1 + ampCtr; if (board.length) board[board.length - 1].pow += n; if (tCur <= 6) tg.ctr += n; fire(EV['counter.placed']); }
         if (ef & 256) fire(EV['gy.enter']);
         if (ef & 512 && !(ef & 12)) { fire(EV['artifact.enters']); fire(EV['token.enters']); }
       };
-      const listen = m => { if (m.trig) for (const tr of m.trig) for (const e of tr.ev) lis[e].push(tr.ef); if (m.outlet) outlets++; };
+      let ampTok = 0, ampCtr = 0, ampTrig = 0, reduce = 0; const acts = [];
+      const listen = m => {
+        if (m.trig) for (const tr of m.trig) for (const e of tr.ev) { lis[e].push(tr.ef); if (ampTrig && (e === EV['creature.enters'] || e === EV['artifact.enters'])) lis[e].push(tr.ef); }
+        if (m.outlet) outlets++; if (m.act) for (const a of m.act) acts.push(a);
+        if (m.ampTok) ampTok = 1; if (m.ampCtr) ampCtr = 1; if (m.reduce) reduce++;
+        if (m.ampTrig && !ampTrig) { ampTrig = 1; for (const e of [EV['creature.enters'], EV['artifact.enters']]) lis[e] = lis[e].concat(lis[e]); }
+      };
       let tCur = 0;
       const enter = b => { board.push(b); dmg += drainEnter; fire(EV['creature.enters']); if (b.tok) fire(EV['token.enters']); };
       started = true;
@@ -267,7 +289,7 @@ const Analysis = (function () {
           fire(EV['land.enters']);
         }
         if (landsPlayed > before) dropT[t]++;
-        const src = lands.concat(rocks, dorksReady); const avail = src.length; curSrc = src;
+        const src = lands.concat(rocks, dorksReady); for (let k = 0; k < Math.min(reduce, 3); k++) src.push(ciMask); const avail = src.length; curSrc = src;
         mana[t] += avail; landsT[t] += lands.length + landsNext.length;
         let spentN = avail;
         const cast = c => {
@@ -275,7 +297,7 @@ const Analysis = (function () {
           hand.splice(hand.indexOf(c), 1); spellsT[t]++; if (t <= 6) gSpells++;
           fire(EV['spell.any']); fire(m.isCre ? EV['spell.creature'] : EV['spell.noncreature']);
           if (m.rampPerm) { const mk = m.mask || 0; for (let k = 0; k < m.rampPerm; k++) { if (m.dork) dorksNext.push(mk); else { rocks.push(mk); src.push(mk); } } }
-          if (m.rampLand) rampLandsNext += m.rampLand;
+          if (m.rampLand) { rampLandsNext += m.rampLand; fire(EV['land.enters'], m.rampLand); } // fetched lands enter now (tapped): landfall
           if (m.extraDrop) extraDrops = Math.max(extraDrops, m.extraDrop);
           if (m.engine) engines++;
           if (m.draw) draw(m.draw);
@@ -300,6 +322,8 @@ const Analysis = (function () {
         }
         // re-sort only when a cast drew or tutored cards
         for (let again = true; again && src.length;) { again = false; const h1 = hand.length, list = hand.filter(c => !isL(c)).sort((a, b) => M(b).cmc - M(a).cmc); for (const c of list) { if (!src.length) break; if (M(c).cmc <= src.length && cast(c) && hand.length >= h1) { again = true; break; } } }
+        // activated abilities with mana left: one loyalty ability per planeswalker, tap abilities once, others up to twice
+        if (tb > 0) for (const a of acts) { if (a.sac) continue; const times = a.loy || a.tap ? 1 : 2; for (let r = 0; r < times; r++) { if (a.mana && !pay(src, a.mana, [])) break; resolve(a.ef); } }
         spentN -= src.length;
         // token engines make their tokens; then combat (anthems, this turn's overrun) and drains
         for (const e of tokenEngines) for (let k = 0; k < e.n; k++) enter({ pow: e.pow, ev: e.ev, t: t + 1 });
@@ -313,7 +337,8 @@ const Analysis = (function () {
         const two = prevAvail + avail; prevAvail = avail;
         lines.forEach((l, i) => { if (!lineT[i] && l.keys.every(k => seen.has(k) || (cmdNames.has(k) && cmdCast)) && two >= l.cost) lineT[i] = t; });
         // end step: with a sacrifice outlet and a death payoff, tokens are sacrificed (up to 6); then end-step triggers
-        if (outlets && lis[EV['creature.dies']].length) { let k = 0; for (let i = board.length - 1; i >= 0 && k < 6; i--) if (board[i].tok) { board.splice(i, 1); k++; fire(EV['creature.dies']); fire(EV.sacrifice); } }
+        const sacEf = acts.find(a => a.sac && !a.mana);
+        if (outlets && (lis[EV['creature.dies']].length || sacEf)) { let k = 0; for (let i = board.length - 1; i >= 0 && k < 6; i--) if (board[i].tok) { board.splice(i, 1); k++; fire(EV['creature.dies']); fire(EV.sacrifice); if (sacEf && tb > 0) { tb--; resolve(sacEf.ef); } } }
         fire(EV.end); curSrc = null;
         spentT[t] += spentN; handT[t] += hand.length; drawnT[t] += pos - h0; if (cmdCast) cmdByT[t]++;
         if (t <= 6) { gSpent += spentN; gAvail += avail; }

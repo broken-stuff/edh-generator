@@ -2415,7 +2415,7 @@ const Analysis = (function () {
   const EVN = ['spell.any', 'spell.noncreature', 'spell.creature', 'creature.enters', 'token.enters', 'artifact.enters', 'enchantment.enters', 'land.enters', 'card.draw', 'life.gain', 'life.loss', 'counter.placed', 'creature.dies', 'sacrifice', 'attack', 'damage.player', 'upkeep', 'end', 'combat', 'gy.enter'];
   const EVI = Object.fromEntries(EVN.map((k, i) => [k, i])), EV = EVI;
   const EF = { card: 1, mana: 2, 'token.creature': 4, 'token.treasure': 8, 'token.artifact': 512, drain: 16, life: 32, damage: 64, counter: 128, 'gy.fill': 256 };
-  const TRIG_TARGET = 7; // trigger output by T6 of themed generated decks: 4.8–8.5 (Atraxa, Krenko, Meren, Edgar, Talrand, Omnath)
+  const TRIG_TARGET = 8; // trigger output by T6 of themed generated decks: 5.7–10.3 (Atraxa, Krenko, Meren, Edgar, Talrand, Omnath)
   const effBits = list => list.reduce((b, k) => b | (EF[k] || 0), 0);
   const SMC = new WeakMap();
   function simModel(c, CI) {
@@ -2461,6 +2461,22 @@ const Analysis = (function () {
       }
       if (tr.length) s.trig = tr;
       s.outlet = P.abil.some(a => a.kind === 'activated' && a.needs.includes('fodder.creature'));
+      // activated abilities (not mana abilities): tap, mana cost, sacrifice-a-creature cost, loyalty; effect bits as for triggers
+      const act = [];
+      for (const ab of P.abil) {
+        if (ab.kind !== 'activated') continue; const ef = effBits(ab.makes.filter(k => k !== 'mana')); if (!ef) continue;
+        const cost = (ab.text.match(/^([^:"]{1,140}?):/) || [])[1] || ''; if (/\{x\}/.test(cost)) continue;
+        const loy = /^[+−-]?\d+$/.test(cost.trim()) ? +cost.trim().replace('−', '-') : null;
+        if (loy != null && loy < 0) continue;
+        const mana = (cost.match(/\{(\d+)\}/g) || []).reduce((n, x) => n + +x.slice(1, -1), 0) + (cost.match(/\{[wubrgc]\}/g) || []).length;
+        if (s.tokens && s.tokens.per && ef & 4) continue; // already a per-turn token engine
+        act.push({ ef, tap: /\{t\}/.test(cost), mana, sac: /sacrifice (?:a|an|another)[^,:]*creature|exile (?:a|another) creature you control/.test(cost), loy: loy != null });
+      }
+      if (act.length) s.act = act;
+      // statics: token and counter doublers, extra ETB triggers, generic cost reduction
+      const st = P.needs;
+      s.ampTok = st.has('amp.token') ? 1 : 0; s.ampCtr = st.has('amp.counter') ? 1 : 0; s.ampTrig = st.has('amp.trigger') || st.has('amp.etb') ? 1 : 0;
+      s.reduce = P.abil.some(a => a.kind === 'static' && /spells? (?:you cast )?costs? \{1\} less|costs? \{1\} less to cast/.test(a.text)) ? 1 : 0;
     }
     byCI[CI] = s; return s;
   }
@@ -2541,16 +2557,22 @@ const Analysis = (function () {
         if (tCur <= 6) tg.fires++;
         if (ef & 1) { if (tCur <= 6) tg.cards++; draw(1); }
         if (ef & 2) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); }
-        if (ef & 4) { if (tCur <= 6) tg.tok++; enter({ pow: 1, ev: false, t: tCur + 1, tok: true }); }
+        if (ef & 4) for (let k = 0; k <= ampTok; k++) { if (tCur <= 6) tg.tok++; enter({ pow: 1, ev: false, t: tCur + 1, tok: true }); }
         if (ef & 8) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); fire(EV['artifact.enters']); fire(EV['token.enters']); }
         if (ef & 16) { if (tCur <= 6) tg.dmg += 3; fire(EV['life.loss']); }
         if (ef & 32) fire(EV['life.gain']);
         if (ef & 64) { if (tCur <= 6) tg.dmg += 1; fire(EV['life.loss']); }
-        if (ef & 128) { if (board.length) board[board.length - 1].pow++; if (tCur <= 6) tg.ctr++; fire(EV['counter.placed']); }
+        if (ef & 128) { const n = 1 + ampCtr; if (board.length) board[board.length - 1].pow += n; if (tCur <= 6) tg.ctr += n; fire(EV['counter.placed']); }
         if (ef & 256) fire(EV['gy.enter']);
         if (ef & 512 && !(ef & 12)) { fire(EV['artifact.enters']); fire(EV['token.enters']); }
       };
-      const listen = m => { if (m.trig) for (const tr of m.trig) for (const e of tr.ev) lis[e].push(tr.ef); if (m.outlet) outlets++; };
+      let ampTok = 0, ampCtr = 0, ampTrig = 0, reduce = 0; const acts = [];
+      const listen = m => {
+        if (m.trig) for (const tr of m.trig) for (const e of tr.ev) { lis[e].push(tr.ef); if (ampTrig && (e === EV['creature.enters'] || e === EV['artifact.enters'])) lis[e].push(tr.ef); }
+        if (m.outlet) outlets++; if (m.act) for (const a of m.act) acts.push(a);
+        if (m.ampTok) ampTok = 1; if (m.ampCtr) ampCtr = 1; if (m.reduce) reduce++;
+        if (m.ampTrig && !ampTrig) { ampTrig = 1; for (const e of [EV['creature.enters'], EV['artifact.enters']]) lis[e] = lis[e].concat(lis[e]); }
+      };
       let tCur = 0;
       const enter = b => { board.push(b); dmg += drainEnter; fire(EV['creature.enters']); if (b.tok) fire(EV['token.enters']); };
       started = true;
@@ -2570,7 +2592,7 @@ const Analysis = (function () {
           fire(EV['land.enters']);
         }
         if (landsPlayed > before) dropT[t]++;
-        const src = lands.concat(rocks, dorksReady); const avail = src.length; curSrc = src;
+        const src = lands.concat(rocks, dorksReady); for (let k = 0; k < Math.min(reduce, 3); k++) src.push(ciMask); const avail = src.length; curSrc = src;
         mana[t] += avail; landsT[t] += lands.length + landsNext.length;
         let spentN = avail;
         const cast = c => {
@@ -2578,7 +2600,7 @@ const Analysis = (function () {
           hand.splice(hand.indexOf(c), 1); spellsT[t]++; if (t <= 6) gSpells++;
           fire(EV['spell.any']); fire(m.isCre ? EV['spell.creature'] : EV['spell.noncreature']);
           if (m.rampPerm) { const mk = m.mask || 0; for (let k = 0; k < m.rampPerm; k++) { if (m.dork) dorksNext.push(mk); else { rocks.push(mk); src.push(mk); } } }
-          if (m.rampLand) rampLandsNext += m.rampLand;
+          if (m.rampLand) { rampLandsNext += m.rampLand; fire(EV['land.enters'], m.rampLand); } // fetched lands enter now (tapped): landfall
           if (m.extraDrop) extraDrops = Math.max(extraDrops, m.extraDrop);
           if (m.engine) engines++;
           if (m.draw) draw(m.draw);
@@ -2603,6 +2625,8 @@ const Analysis = (function () {
         }
         // re-sort only when a cast drew or tutored cards
         for (let again = true; again && src.length;) { again = false; const h1 = hand.length, list = hand.filter(c => !isL(c)).sort((a, b) => M(b).cmc - M(a).cmc); for (const c of list) { if (!src.length) break; if (M(c).cmc <= src.length && cast(c) && hand.length >= h1) { again = true; break; } } }
+        // activated abilities with mana left: one loyalty ability per planeswalker, tap abilities once, others up to twice
+        if (tb > 0) for (const a of acts) { if (a.sac) continue; const times = a.loy || a.tap ? 1 : 2; for (let r = 0; r < times; r++) { if (a.mana && !pay(src, a.mana, [])) break; resolve(a.ef); } }
         spentN -= src.length;
         // token engines make their tokens; then combat (anthems, this turn's overrun) and drains
         for (const e of tokenEngines) for (let k = 0; k < e.n; k++) enter({ pow: e.pow, ev: e.ev, t: t + 1 });
@@ -2616,7 +2640,8 @@ const Analysis = (function () {
         const two = prevAvail + avail; prevAvail = avail;
         lines.forEach((l, i) => { if (!lineT[i] && l.keys.every(k => seen.has(k) || (cmdNames.has(k) && cmdCast)) && two >= l.cost) lineT[i] = t; });
         // end step: with a sacrifice outlet and a death payoff, tokens are sacrificed (up to 6); then end-step triggers
-        if (outlets && lis[EV['creature.dies']].length) { let k = 0; for (let i = board.length - 1; i >= 0 && k < 6; i--) if (board[i].tok) { board.splice(i, 1); k++; fire(EV['creature.dies']); fire(EV.sacrifice); } }
+        const sacEf = acts.find(a => a.sac && !a.mana);
+        if (outlets && (lis[EV['creature.dies']].length || sacEf)) { let k = 0; for (let i = board.length - 1; i >= 0 && k < 6; i--) if (board[i].tok) { board.splice(i, 1); k++; fire(EV['creature.dies']); fire(EV.sacrifice); if (sacEf && tb > 0) { tb--; resolve(sacEf.ef); } } }
         fire(EV.end); curSrc = null;
         spentT[t] += spentN; handT[t] += hand.length; drawnT[t] += pos - h0; if (cmdCast) cmdByT[t]++;
         if (t <= 6) { gSpent += spentN; gAvail += avail; }
@@ -3291,8 +3316,10 @@ const Deep = (function () {
   const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
   const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
   const A = c => E.analyze(c);
-  const G1 = 1500, G2 = 5000, MIN_GAIN = 0.5;
-  const DEF = { g1: G1, g2: G2, cuts: 24, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3 };
+  const G1 = 1500, G2 = 5000, MIN_GAIN = 0.5, REFINE_GAIN = 0.3;
+  const DEF = { g1: G1, g2: G2, cuts: 24, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1 };
+  // thorough (~60 s): twice the screen, half again the cuts, 100 confirmed, a longer package and a wider refinement
+  const WIDE = Object.assign({}, DEF, { cuts: 36, nonland: 800, popular: 80, perRole: 6, perVector: 6, lands: 36, single: 40, pairs: 24, confirm: 100, rounds: 12, lead: 16, altFor: 4, refineAdds: 6, refineCuts: 2 });
 
   /* ---------- evaluator: the part that runs in each worker ---------- */
   // init: { cards: [card], deck: [{ n, qty, locked }], cmds: [name], opts, combos: [variant] | null, comp: { addName: [variant] } }
@@ -3463,11 +3490,34 @@ const Deep = (function () {
         t.it.adds.forEach((a, i) => { pkg.push({ add: a, cut: t.cs[i], step: k + 1, m: (r.g - gPrev) / t.it.adds.length, total: r.g, r, kind: t.it.kind, v: t.it.v }); used.add(t.cs[i]); added.add(a); });
         gPrev = r.g;
       }
+      // 4. refine: with the rest of the package fixed, each single-card swap is measured against other adds, other cuts and
+      //    leaving it out; a replacement must beat the package by REFINE_GAIN, a swap that adds nothing is dropped
+      let refined = 0;
+      if (o.refine && pkg.length >= 2) {
+        total = done + pkg.length * (2 + o.refineAdds + o.refineCuts);
+        for (let i = 0; i < pkg.length; i++) {
+          const p = pkg[i]; if (p.kind === 'pair') continue;
+          const rest = pkg.filter((_, j) => j !== i), restSw = rest.map(q => sw(q.cut, q.add)), inPkg = new Set(pkg.map(q => q.add)), usedC = new Set(rest.map(q => q.cut));
+          const alts = A(p.add).isLand ? [] : ranked.filter(it => it.kind === 'add' && !inPkg.has(it.adds[0])).slice(0, o.refineAdds).map(it => [p.cut, it.adds[0]]);
+          const cutAlts = A(p.add).isLand ? [] : order.filter(y => !usedC.has(y.c) && y.c !== p.cut).slice(0, o.refineCuts).map(y => [y.c, p.add]);
+          const tries = [[null, null]].concat(alts, cutAlts);
+          const rR = await run(tries.map(([c, a]) => ({ games: o.g2, swaps: c ? restSw.concat([sw(c, a)]) : restSw })));
+          if (rR[0].g >= gPrev - 1e-9) { pkg.splice(i, 1); gPrev = rR[0].g; i--; refined++; continue; }
+          let bi = -1, best = gPrev + REFINE_GAIN;
+          rR.forEach((r, j) => { if (j && r.after.minB <= Math.max(bracket, X.power.minBracket) && r.g > best) { best = r.g; bi = j; } });
+          if (bi > 0) { const [c, a] = tries[bi]; pkg[i] = Object.assign({}, p, { cut: c, add: a, kind: 'add', v: null }); gPrev = rR[bi].g; refined++; }
+        }
+        // restate each step's marginal gain and the running total on the final package
+        if (refined && pkg.length) {
+          const rP = await run(pkg.map((_, j) => ({ games: o.g2, swaps: pkg.slice(0, j + 1).map(q => sw(q.cut, q.add)) })));
+          let prev = 0; pkg.forEach((q, j) => { q.step = j + 1; q.r = rP[j]; q.total = rP[j].g; q.m = rP[j].g - prev; prev = rP[j].g; });
+        }
+      }
       total = done; if (progress) await progress(done, total);
       // best single swaps: one row per added card, at most o.pairsShown pairs
       const shown = new Set(); let np = 0;
       const singles = ranked.filter(it => it.g2 >= MIN_GAIN && !it.adds.some(a => shown.has(a.n)) && (it.kind !== 'pair' || np++ < o.pairsShown) && (it.adds.forEach(a => shown.add(a.n)), true)).slice(0, o.shown);
-      return { singles, pkg, why: C.why, order: order.map(x => x.c), stats: { evals, cands: items.length, adds: allAdds.length, cuts: cuts.length, confirmed: conf.length, ref: ref.n, workers: exec.n } };
+      return { singles, pkg, why: C.why, order: order.map(x => x.c), stats: { evals, refined, cands: items.length, adds: allAdds.length, cuts: cuts.length, confirmed: conf.length, ref: ref.n, workers: exec.n } };
     } finally { exec.close(); }
   }
 
@@ -3482,7 +3532,7 @@ const Deep = (function () {
     return out;
   }
 
-  return { search, rows, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, DEF };
+  return { search, rows, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, DEF, WIDE };
 })();
 if (typeof module !== 'undefined') module.exports = Deep;
 </script>
@@ -3922,24 +3972,24 @@ if (typeof module !== 'undefined') module.exports = Deep;
     const D = App.DEEP, busy = D && D.busy;
     const res = D && !busy && D.res ? D.res.stats : null;
     return '<div class="an-card wide deep" id="deepBox"><div class="row" style="gap:8px;align-items:center">' +
-      (busy ? '<button type="button" class="small" data-deep="cancel">Cancel</button>' : '<button type="button" class="small primary" data-deep="run">Deep search</button>') +
-      '<progress id="deepBar" max="1" value="' + (busy ? D.frac || 0 : res ? 1 : 0) + '"' + (busy || res ? '' : ' hidden') + '></progress><span class="note" id="deepNote">' + esc(D && D.note || 'Measures ~700 candidate swaps and builds a package of swaps that work together (about 10–30 s).') + '</span></div>' +
-      (res ? '<p class="note">' + res.evals.toLocaleString() + ' measured lists: ' + res.cands + ' candidate swaps screened at ' + Deep.G1.toLocaleString() + ' games, ' + res.confirmed + ' confirmed at ' + Deep.G2.toLocaleString() + ', ' + res.cuts + ' cut candidates, ' + res.workers + ' worker' + (res.workers === 1 ? '' : 's') + ', ' + D.secs.toFixed(1) + ' s.' + (D.X !== X ? ' Measured before your last accepted change' + (D.repaired ? '; ' + D.repaired + ' swap' + (D.repaired === 1 ? '' : 's') + ' re-paired with the next cut because the measured cut is gone' : '') + '. Run again to re-measure.' : '') + '</p>' : '') + '</div>';
+      (busy ? '<button type="button" class="small" data-deep="cancel">Cancel</button>' : '<button type="button" class="small primary" data-deep="run">Deep search (~30 s)</button><button type="button" class="small" data-deep="wide">Thorough (~60 s)</button>') +
+      '<progress id="deepBar" max="1" value="' + (busy ? D.frac || 0 : res ? 1 : 0) + '"' + (busy || res ? '' : ' hidden') + '></progress><span class="note" id="deepNote">' + esc(D && D.note || 'Measures several hundred candidate swaps and builds a package of swaps that work together. Thorough screens twice as many cards and refines the package more widely.') + '</span></div>' +
+      (res ? '<p class="note">' + (D.wide ? 'Thorough: ' : '') + res.evals.toLocaleString() + ' measured lists: ' + res.cands + ' candidate swaps screened at ' + Deep.G1.toLocaleString() + ' games, ' + res.confirmed + ' confirmed at ' + Deep.G2.toLocaleString() + ', ' + res.cuts + ' cut candidates, ' + (res.refined ? res.refined + ' package change' + (res.refined === 1 ? '' : 's') + ' from refinement, ' : '') + res.workers + ' worker' + (res.workers === 1 ? '' : 's') + ', ' + D.secs.toFixed(1) + ' s.' + (D.X !== X ? ' Measured before your last accepted change' + (D.repaired ? '; ' + D.repaired + ' swap' + (D.repaired === 1 ? '' : 's') + ' re-paired with the next cut because the measured cut is gone' : '') + '. Run again to re-measure.' : '') + '</p>' : '') + '</div>';
   }
   const deepSay = (t, frac) => { const D = App.DEEP; if (D) { D.note = t; if (frac != null) D.frac = frac; } const n = $('deepNote'), b = $('deepBar'); if (n) n.textContent = t; if (b && frac != null) { b.hidden = false; b.value = frac; } };
-  async function deepRun() {
+  async function deepRun(wide) {
     const X = App.AN; if (!X || !X.planner || (App.DEEP && App.DEEP.busy)) return;
     const inp = X.inp, cp = comboProvider(), t0 = performance.now();
     const keep = new Set(inp.cmds.map(c => c.n).concat(App.anSource !== 'paste' && App.R ? App.R.deck.filter(e => e.inc).map(e => e.c.n) : []));
     const src = ['src-engine', 'src-mech', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
     const useW = typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && src.every(Boolean);
     let ex = null;
-    const D = App.DEEP = { busy: true, frac: 0, note: 'Preparing candidates…', X, cancel: () => { if (ex) ex.cancel(); } };
+    const D = App.DEEP = { busy: true, wide: !!wide, frac: 0, note: 'Preparing candidates…', X, cancel: () => { if (ex) ex.cancel(); } };
     renderView();
     try {
       const res = await Deep.search(X, { deck: inp.deck, cmds: inp.cmds, combos: X.combos || null, prov: cp, keep, settings: App.S },
         init => (ex = useW ? Deep.workerExec(init, src.join('\n'), deepWorkers()) : Deep.localExec(init)),
-        (d, t) => { const el = (performance.now() - t0) / 1000, eta = d > 20 ? el / d * (t - d) : null; deepSay('Measured ' + d + '/' + t + (eta != null ? ' · about ' + Math.max(1, Math.round(eta)) + ' s left' : '') + '…', d / t); return useW ? null : new Promise(r => setTimeout(r, 0)); });
+        (d, t) => { const el = (performance.now() - t0) / 1000, eta = d > 20 ? el / d * (t - d) : null; deepSay('Measured ' + d + '/' + t + (eta != null ? ' · about ' + Math.max(1, Math.round(eta)) + ' s left' : '') + '…', d / t); return useW ? null : new Promise(r => setTimeout(r, 0)); }, wide ? Deep.WIDE : null);
       D.res = res; D.secs = (performance.now() - t0) / 1000; D.rows = Deep.rows(X, res); D.note = res.pkg.length ? 'Package of ' + res.pkg.length + ' swap' + (res.pkg.length === 1 ? '' : 's') + ', ' + res.singles.length + ' best single swaps.' : res.singles.length ? res.singles.length + ' single swaps gain ' + Deep.MIN_GAIN + ' or more; none combine into a package.' : 'No swap measured a gain of ' + Deep.MIN_GAIN + ' or more.';
       if (App.AN && App.AN.impactDone) deepMerge(App.AN);
     } catch (e) {
@@ -5282,7 +5332,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
       const ic = e.target.closest('[data-impcmd]'); if (ic) { App.impPick = ic.dataset.impcmd; importDeck(); } const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
     $('view').addEventListener('click', async e => {
       const dp = e.target.closest('button[data-deep]');
-      if (dp) { if (dp.dataset.deep === 'run') deepRun(); else if (App.DEEP && App.DEEP.cancel) App.DEEP.cancel(); return; }
+      if (dp) { if (dp.dataset.deep === 'run' || dp.dataset.deep === 'wide') deepRun(dp.dataset.deep === 'wide'); else if (App.DEEP && App.DEEP.cancel) App.DEEP.cancel(); return; }
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
       const X = App.AN, a = b.dataset.sw;
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }

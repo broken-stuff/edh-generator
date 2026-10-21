@@ -16,8 +16,10 @@ const Deep = (function () {
   const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
   const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
   const A = c => E.analyze(c);
-  const G1 = 1500, G2 = 5000, MIN_GAIN = 0.5;
-  const DEF = { g1: G1, g2: G2, cuts: 24, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3 };
+  const G1 = 1500, G2 = 5000, MIN_GAIN = 0.5, REFINE_GAIN = 0.3;
+  const DEF = { g1: G1, g2: G2, cuts: 24, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1 };
+  // thorough (~60 s): twice the screen, half again the cuts, 100 confirmed, a longer package and a wider refinement
+  const WIDE = Object.assign({}, DEF, { cuts: 36, nonland: 800, popular: 80, perRole: 6, perVector: 6, lands: 36, single: 40, pairs: 24, confirm: 100, rounds: 12, lead: 16, altFor: 4, refineAdds: 6, refineCuts: 2 });
 
   /* ---------- evaluator: the part that runs in each worker ---------- */
   // init: { cards: [card], deck: [{ n, qty, locked }], cmds: [name], opts, combos: [variant] | null, comp: { addName: [variant] } }
@@ -188,11 +190,34 @@ const Deep = (function () {
         t.it.adds.forEach((a, i) => { pkg.push({ add: a, cut: t.cs[i], step: k + 1, m: (r.g - gPrev) / t.it.adds.length, total: r.g, r, kind: t.it.kind, v: t.it.v }); used.add(t.cs[i]); added.add(a); });
         gPrev = r.g;
       }
+      // 4. refine: with the rest of the package fixed, each single-card swap is measured against other adds, other cuts and
+      //    leaving it out; a replacement must beat the package by REFINE_GAIN, a swap that adds nothing is dropped
+      let refined = 0;
+      if (o.refine && pkg.length >= 2) {
+        total = done + pkg.length * (2 + o.refineAdds + o.refineCuts);
+        for (let i = 0; i < pkg.length; i++) {
+          const p = pkg[i]; if (p.kind === 'pair') continue;
+          const rest = pkg.filter((_, j) => j !== i), restSw = rest.map(q => sw(q.cut, q.add)), inPkg = new Set(pkg.map(q => q.add)), usedC = new Set(rest.map(q => q.cut));
+          const alts = A(p.add).isLand ? [] : ranked.filter(it => it.kind === 'add' && !inPkg.has(it.adds[0])).slice(0, o.refineAdds).map(it => [p.cut, it.adds[0]]);
+          const cutAlts = A(p.add).isLand ? [] : order.filter(y => !usedC.has(y.c) && y.c !== p.cut).slice(0, o.refineCuts).map(y => [y.c, p.add]);
+          const tries = [[null, null]].concat(alts, cutAlts);
+          const rR = await run(tries.map(([c, a]) => ({ games: o.g2, swaps: c ? restSw.concat([sw(c, a)]) : restSw })));
+          if (rR[0].g >= gPrev - 1e-9) { pkg.splice(i, 1); gPrev = rR[0].g; i--; refined++; continue; }
+          let bi = -1, best = gPrev + REFINE_GAIN;
+          rR.forEach((r, j) => { if (j && r.after.minB <= Math.max(bracket, X.power.minBracket) && r.g > best) { best = r.g; bi = j; } });
+          if (bi > 0) { const [c, a] = tries[bi]; pkg[i] = Object.assign({}, p, { cut: c, add: a, kind: 'add', v: null }); gPrev = rR[bi].g; refined++; }
+        }
+        // restate each step's marginal gain and the running total on the final package
+        if (refined && pkg.length) {
+          const rP = await run(pkg.map((_, j) => ({ games: o.g2, swaps: pkg.slice(0, j + 1).map(q => sw(q.cut, q.add)) })));
+          let prev = 0; pkg.forEach((q, j) => { q.step = j + 1; q.r = rP[j]; q.total = rP[j].g; q.m = rP[j].g - prev; prev = rP[j].g; });
+        }
+      }
       total = done; if (progress) await progress(done, total);
       // best single swaps: one row per added card, at most o.pairsShown pairs
       const shown = new Set(); let np = 0;
       const singles = ranked.filter(it => it.g2 >= MIN_GAIN && !it.adds.some(a => shown.has(a.n)) && (it.kind !== 'pair' || np++ < o.pairsShown) && (it.adds.forEach(a => shown.add(a.n)), true)).slice(0, o.shown);
-      return { singles, pkg, why: C.why, order: order.map(x => x.c), stats: { evals, cands: items.length, adds: allAdds.length, cuts: cuts.length, confirmed: conf.length, ref: ref.n, workers: exec.n } };
+      return { singles, pkg, why: C.why, order: order.map(x => x.c), stats: { evals, refined, cands: items.length, adds: allAdds.length, cuts: cuts.length, confirmed: conf.length, ref: ref.n, workers: exec.n } };
     } finally { exec.close(); }
   }
 
@@ -207,6 +232,6 @@ const Deep = (function () {
     return out;
   }
 
-  return { search, rows, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, DEF };
+  return { search, rows, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, DEF, WIDE };
 })();
 if (typeof module !== 'undefined') module.exports = Deep;
