@@ -802,22 +802,25 @@ const Engine = (function () {
   const ROLE_RULES = {
     ramp: [
       rx('ramp-mana', 'non-land with a mana ability: "add {X}" / "add N mana"', /\badd \{[wubrgcs]\}|\badd (?:one|two|three|x) mana|\badd [^.]{0,30}mana of any/),
-      rx('ramp-land', 'searches library for land card(s) onto the battlefield', /search your library for [^.]{0,80}\bland cards?[\s\S]{0,160}?onto the battlefield/),
+      rx('ramp-land', 'searches library for land or basic land type card(s) onto the battlefield', /search your library for [^.]{0,80}\b(?:land|plains|island|swamp|mountain|forest|wastes) cards?[\s\S]{0,160}?onto the battlefield/),
+      rx('ramp-aura', 'aura on a land that adds extra mana when it is tapped', /whenever enchanted (?:land|plains|island|swamp|mountain|forest) is tapped for mana, its controller adds an additional/),
       rx('ramp-drop', 'extra land drop / put land from hand onto battlefield', /play (?:an|two|x) additional lands?|put (?:a|up to \w+) land cards? from your hand onto the battlefield/),
       rx('ramp-treasure', 'creates Treasure tokens', /\bcreates?[^.]{0,30}treasure/)
     ],
     draw: [
       rx('draw-n', '"draw N card(s)"', /\bdraws? (?:a|an|one|two|three|four|five|six|seven|x|\d+|that many|cards equal)(?: additional)? cards?\b|\bdraws? cards equal/),
       rx('draw-impulse', 'exile top card(s), you may play/cast them', /exile the top [^.]*?cards? of your library[^.]*\.[^.]*you may (?:play|cast)/),
-      rx('draw-clue', 'investigate / creates Clues', /\binvestigates?\b|creates?[^.]{0,20}\bclue/)
+      rx('draw-clue', 'investigate / creates Clues', /\binvestigates?\b|creates?[^.]{0,20}\bclue/),
+      rx('draw-top', 'play lands or cast spells from the top of your library', /you may (?:play|cast) [^.]{0,40}from the top of your library/)
     ],
     removal: [
       rx('rm-destroy', '"destroy/exile target <permanent>" (not "you control", not cards in graveyards)', /\b(?:destroy|exile) (?:up to (?:one|two|three|x) )?(?:another )?target (?:(?:nonland|noncreature|nonartifact|tapped|attacking|blocking|nontoken|legendary|artifact or|creature or|enchantment or|artifact,) )*(?:creature|artifact|enchantment|planeswalker|permanent|land|battle)s?(?!s? (?:you control|card))/),
       rx('rm-burn', 'deals damage to target creature/planeswalker or any target', /\bdeals? [^.]{0,40}?damage to (?:any target|target creature|target planeswalker|up to one target creature|another target creature)/),
       rx('rm-bounce', 'returns target nonland permanent to owner\'s hand', /\breturn (?:up to one )?target (?:nonland |creature |artifact |enchantment )*(?:permanent|creature|artifact|enchantment|planeswalker)(?! you control)[^.]* to (?:its|their) owner'?s'? hands?/),
-      rx('rm-counter', 'counter target spell/ability', /\bcounter target (?:spell|creature spell|noncreature spell|artifact|instant|activated|activated or triggered|instant or sorcery)/),
+      rx('rm-counter', 'counter target spell/ability', /\bcounter target (?:(?:white|blue|black|red|green|multicolored|colorless) )?(?:spell|creature spell|noncreature spell|artifact|instant|activated|activated or triggered|instant or sorcery|enchantment)/),
       rx('rm-shrink', 'target creature gets -N/-N', /\btarget creature(?: an opponent controls)? gets -(?:\d+|x)\/-(?:\d+|x)/),
-      rx('rm-edict', 'target player/each opponent sacrifices a creature/permanent', /\b(?:target player|target opponent|each opponent) sacrifices (?:a|an|one|two|x|that many)? ?(?:creature|attacking creature|nonland permanent|permanent|artifact|enchantment|planeswalker)/),
+      rx('rm-edict', 'target player/each opponent sacrifices a creature/permanent', /\b(?:target player|target opponent|each opponent) sacrifices (?:a|an|one|two|x|that many)? ?(?:creature|nontoken creature|attacking creature|nonland permanent|permanent|artifact|enchantment|planeswalker)/),
+      rx('rm-tuck', 'shuffles or puts target permanent into its owner\'s library', /\bthe owner of target (?:nonland )?permanent shuffles it into their library|\bput target (?:nonland )?(?:permanent|creature)[^.]{0,30} (?:on (?:the )?(?:top|bottom) of|into) its owner'?s library/),
       rx('rm-fight', 'fight / bite a target creature', /\bfights? (?:another |up to one )?target creature|target creature you control (?:fights|deals damage equal)/)
     ],
     wipes: [
@@ -825,25 +828,31 @@ const Engine = (function () {
       rx('wipe-shrink', 'all/each creature(s) get -N/-N', /\ball (?:other )?creatures get -(?:\d+|x)\/-(?:\d+|x)|\beach creature gets -/),
       rx('wipe-dmg', 'deals N damage to each creature', /\bdeals? (?:\d+|x) damage to each (?:other )?creature/),
       rx('wipe-bounce', 'returns all permanents/creatures to hand', /\breturn all (?:other )?(?:nonland )?(?:permanents|creatures)[^.]* to (?:their|its) owners'? hands?/),
-      rx('wipe-sac', 'each player sacrifices all creatures', /\beach (?:player|opponent) sacrifices all (?:creatures|nonland permanents)/)
+      rx('wipe-sac', 'each player sacrifices all creatures', /\beach (?:player|opponent) sacrifices (?:all|x|\w+teen|ten|eleven|twelve|twenty) (?:creatures|nonland permanents)/)
     ],
     protection: [
-      rx('prot-team', 'permanents/creatures you control gain hexproof/indestructible/shroud/protection', /(?:creatures|permanents|commanders?|nonland permanents|artifacts) you control (?:gain|have|get [^.]{0,30}and gain) (?:hexproof|indestructible|shroud|protection)/),
-      rx('prot-target', 'target permanent you control gains protection / phases out', /target (?:creature|permanent|artifact|nonland permanent)(?: or [a-z]+)? you control (?:gains|has|phases out)/),
+      rx('prot-team', 'permanents/creatures you control gain hexproof/indestructible/shroud/protection', /(?:creatures|permanents|commanders?|nonland permanents|artifacts) you control (?:gain|have|get [^.]{0,30}and gain) (?:[^.]{0,40}?\b)?(?:hexproof|indestructible|shroud|protection)/),
+      rx('prot-target', 'target permanent you control gains protection / phases out', /target (?:creature|permanent|artifact|nonland permanent)(?: or [a-z]+)? you control (?:gains|has|phases out)|target (?:creature|permanent) you control\. (?:it|that creature) gains (?:hexproof|indestructible|shroud|protection)/),
+      rx('prot-blink', 'exile target permanent you control, then return it (dodges removal)', /\bexile (?:up to one )?(?:another )?target (?:creature|permanent|nonland permanent|artifact or creature)s? you control,? then return (?:it|that card|them|those cards) to the battlefield/),
+      rx('prot-redirect', 'changes the target of a spell or ability', /\b(?:change the target of|choose new targets for) target spell/),
       rx('prot-self', 'you have hexproof/shroud; phase out', /\byou have (?:hexproof|shroud)|\bphases? out\b/),
       rx('prot-counter', 'counter target spell that targets', /counter target [^.]{0,40}that targets/),
-      rx('prot-equip', 'equipped/enchanted creature has hexproof/indestructible/shroud/protection/ward', /(?:equipped|enchanted) creature (?:has|gains|gets [^.]{0,20}and has) (?:hexproof|indestructible|shroud|protection|ward)/)
+      rx('prot-equip', 'equipped/enchanted creature has hexproof/indestructible/shroud/protection/ward', /(?:equipped|enchanted) creature (?:[^.]{0,30}\band )?(?:has|gains|gets [^.]{0,20}and has) (?:[^.]{0,30}?\b)?(?:hexproof|indestructible|shroud|protection|ward)/)
     ],
     recursion: [
-      rx('rec-return', 'return card(s) from graveyard to hand/battlefield', /\breturn (?:target|up to (?:one|two|three|x) target|a|an|all|each|another target|any number of target|x target)[^.]*?cards? from (?:your|a|any) graveyard (?:to (?:your hand|the battlefield)|onto the battlefield)/),
-      rx('rec-reanimate', 'put card(s) from a graveyard onto the battlefield', /put [^.]*cards? from (?:your|a|all|an opponent's) graveyards? onto the battlefield/),
+      rx('rec-return', 'return card(s) from graveyard to hand/battlefield', /\breturn (?:target|up to (?:one|two|three|x) target|a|an|all|each|another target|any number of target|x target)[^.]*?cards?\b[^.]{0,40}? from (?:your|a|any) graveyard (?:to (?:your hand|the battlefield)|onto the battlefield)/),
+      rx('rec-reanimate', 'put card(s) from a graveyard onto the battlefield', /put [^.]*cards? from (?:your|a|all|their|an opponent's) graveyards? onto the battlefield/),
+      rx('rec-aura', 'aura that returns a creature card from a graveyard', /\benchant creature card in a graveyard/),
+      rx('rec-chosen', 'chooses creature cards in your graveyard and returns them to the battlefield', /target [^.]{0,30}cards? in (?:your|a) graveyard[\s\S]{0,140}?return [^.]{0,30}to (?:the battlefield|your hand)/),
       rx('rec-cast', 'cast/play cards from your graveyard (reminder text excluded)', /\b(?:cast|play) [^.]{0,60}from your graveyard/)
     ],
     wincon: [
       rx('win-alt', '"you win the game" / "loses the game"', /you win the game|(?:target player|that player|each opponent|all opponents|each other player) loses the game/),
       rx('win-drain', 'each opponent loses N life', /each opponent loses (?:\d+|x|that much|life equal)/),
       rx('win-ping', 'deals damage to each opponent', /\bdeals? [^.]{0,30}damage to each opponent/),
-      rx('win-overrun', 'creatures you control get +N/+N until end of turn', /creatures you control get \+(?:\d+|x)\/\+(?:\d+|x)[^.]*until end of turn/),
+      rx('win-overrun', 'creatures you control get +N/+N until end of turn', /creatures you control (?:gain [^.]{0,40}and )?get \+(?:\d+|x)\/\+(?:\d+|x)[^.]*until end of turn/),
+      rx('win-burst', 'deals 10 or more (or X) damage to a player or any target', /\bdeals? [1-9]\d+ damage to (?:any target|target player|target opponent|each opponent)|\bdeals? x damage to (?:target player|target opponent|each opponent)/),
+      rx('win-threaten', 'gains control of all creatures until end of turn', /gain control of all creatures|untap all creatures and gain control of them/),
       rx('win-combat', 'additional combat phase', /additional combat phase|extra combat/),
       rx('win-double', 'doubles damage', /deals double|double (?:the )?damage/),
       rx('win-infect', 'infect / toxic / poison', c => c.kw.includes('infect') || /\bpoison counters?\b/.test(c.low)),
@@ -1988,10 +1997,11 @@ const Analysis = (function () {
         if (mm) m.rampPerm = (mm[1].match(/\{/g) || []).length;
         else if (/\{t\}[^:]*: add (?:one|x) mana|\{t\}[^:]*: add [^.]{0,30}mana of any/.test(low)) m.rampPerm = 1;
         else if (/\{t\}[^:]*: add two mana/.test(low)) m.rampPerm = 2;
+        if (!m.rampPerm && a.rules.ramp.includes('ramp-aura')) m.rampPerm = 1;
         m.dork = m.rampPerm > 0 && a.creature;
       }
       if (a.rules.ramp && a.rules.ramp.includes('ramp-land')) {
-        const k = low.match(/search your library for (?:up to )?(a|an|one|two|three)\b[^.]*land/);
+        const k = low.match(/search your library for (?:up to )?(a|an|one|two|three)\b[^.]*(?:land|plains|island|swamp|mountain|forest|wastes)/);
         m.rampLand = k ? (WORDNUM[k[1]] || 1) : 1;
         if (/put (?:the other|one of them|one) into your hand/.test(low)) m.rampLand = Math.max(1, m.rampLand - 1);
       }

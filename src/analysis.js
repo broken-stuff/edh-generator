@@ -32,10 +32,11 @@ const Analysis = (function () {
         if (mm) m.rampPerm = (mm[1].match(/\{/g) || []).length;
         else if (/\{t\}[^:]*: add (?:one|x) mana|\{t\}[^:]*: add [^.]{0,30}mana of any/.test(low)) m.rampPerm = 1;
         else if (/\{t\}[^:]*: add two mana/.test(low)) m.rampPerm = 2;
+        if (!m.rampPerm && a.rules.ramp.includes('ramp-aura')) m.rampPerm = 1;
         m.dork = m.rampPerm > 0 && a.creature;
       }
       if (a.rules.ramp && a.rules.ramp.includes('ramp-land')) {
-        const k = low.match(/search your library for (?:up to )?(a|an|one|two|three)\b[^.]*land/);
+        const k = low.match(/search your library for (?:up to )?(a|an|one|two|three)\b[^.]*(?:land|plains|island|swamp|mountain|forest|wastes)/);
         m.rampLand = k ? (WORDNUM[k[1]] || 1) : 1;
         if (/put (?:the other|one of them|one) into your hand/.test(low)) m.rampLand = Math.max(1, m.rampLand - 1);
       }
