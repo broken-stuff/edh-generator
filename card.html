@@ -101,7 +101,7 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 .rail .datacard b{color:var(--ink);font-weight:600}
 .results{min-width:0;display:flex;flex-direction:column;gap:14px}
 /* KPI cards */
-.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
 .kpi{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:var(--r);padding:14px 14px 13px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .kpi .kh{display:flex;align-items:center;gap:9px;margin-bottom:10px;min-width:0}
 .kpi .ki{width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;color:#fff;flex:none;box-shadow:inset 0 -2px 0 rgba(0,0,0,.12)}
@@ -114,9 +114,10 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 .kpi .kbar{height:4px;border-radius:999px;background:var(--card-2);overflow:hidden;margin:7px 0 3px}
 .kpi .kbar i{display:block;height:100%;border-radius:999px;background:var(--i-green)}
 .kpi.bad .kbar i{background:var(--bad)}
+.kpi .kbal{display:flex;align-items:center;gap:10px;min-width:0;margin-top:-4px}.kpi .kbal .ks{white-space:normal;line-height:1.3}.kpi .kbal .ks b{color:var(--ink);font-weight:600}.kradar{flex:none}
 .mini{position:sticky;top:62px;z-index:30;display:flex;flex-wrap:wrap;gap:4px 18px;align-items:center;padding:8px 14px;border-radius:999px;background:var(--card);border:1px solid var(--line);box-shadow:var(--pop-shadow);font-size:calc(12.5px*var(--fz))}
 .mini span{color:var(--muted)}.mini b{font-variant-numeric:tabular-nums;margin-left:4px}.mini .bad b{color:var(--bad)}.mini .warn b{color:var(--warn)}
-@media (max-width:1280px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:1500px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.kpi.bal{grid-column:span 2}}
 /* forms */
 .settings{display:flex;flex-direction:column;gap:14px;min-width:0}
 .page-h{display:flex;flex-direction:column;gap:4px;padding:4px 2px 0}
@@ -308,12 +309,14 @@ table.swaps td{vertical-align:top}
   .rail button svg{display:none}
   .mini{top:116px;border-radius:14px}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .kpi.bal{grid-column:1/-1}
 }
 @media (max-width:640px){
   .brand h1 small,.bar .sources{display:none}
   .kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .kpi{padding:10px 10px 9px;border-radius:12px}.kpi .ki,.kpi .ks,.kpi .kbar{display:none}.kpi .kh{margin-bottom:2px}.kpi .kl{font-size:calc(11px*var(--fz));color:var(--muted);font-weight:500}
   .kpi .kv2 small{display:none}
+  .kpi.bal .ks{display:block}.kpi .kbal{margin-top:0}
   .bar{gap:8px}
   .kpi .kv2{font-size:calc(19px*var(--fz))}
   .panel{padding:14px}

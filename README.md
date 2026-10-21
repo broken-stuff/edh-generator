@@ -47,7 +47,7 @@ The pages are in the left menu (a tab strip on phones), in three groups.
 ### Build
 
 - **Setup:** commander (and partner), bracket, budget, game plan, themes and creature types. **Save, load, share** saves settings as a JSON file, loads one back, or gives a share token: add it to the page address as `#token` and anyone who opens that link gets the same settings.
-- **Import deck:** paste your current list (Moxfield, Archidekt, MTGO or plain `1 Name`; set codes, collector numbers and `*F*` are ignored). The commander is read from a `Commander` or `// COMMANDER` header, or a `[Commander]` tag. The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; press **Suggest changes** there for scored cuts and adds. Rule problems, such as a deck that isn't 100 cards, show on Validation. Deck, Swap, Combos, Primer and Export work on the imported list too.
+- **Import deck:** paste your current list (Moxfield, Archidekt, MTGO or plain `1 Name`; set codes, collector numbers and `*F*` are ignored). The commander is read from a `Commander` or `// COMMANDER` header, or a `[Commander]` tag. The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; scored cuts and adds are on the **Changes** page. Rule problems, such as a deck that isn't 100 cards, show on Validation. Deck, Swap, Combos, Primer and Export work on the imported list too.
 - **Commanders:** every legal commander. Filter by name, text, colour or theme, then send one to Setup with **Build**.
 - **Inspire me:** a seven-question quiz (colours, play style, creature type, themes, power, popularity, commander price). Every legal commander gets a match score and its reasons:
   - **Play style** (Aggressive, Control, Combo, Value engine, Go big) reads the commander's rules text, such as attack triggers, counterspells, board wipes, untap effects or cost reduction. Combo also counts the commander's Commander Spellbook combos.
@@ -61,7 +61,8 @@ The pages are in the left menu (a tab strip on phones), in three groups.
 
 ### Evaluate
 
-- **Analysis:** scores any deck, generated or pasted, or compares the two. You get a power level from 1 to 10 with eight fundamentals, likely win turns, the bracket the cards imply, a goldfish simulation (1,500 to 100,000 games), turn-by-turn odds of drawing ramp, draw, removal and win conditions, and swap suggestions you can accept or deny.
+- **Analysis:** scores any deck, generated, imported or pasted, or compares two. You get a power level from 1 to 10 with eight fundamentals, likely win turns, the bracket the cards imply, a goldfish simulation (1,500 to 100,000 games), and turn-by-turn odds of drawing ramp, draw, removal and win conditions.
+- **Changes:** recommended cuts and adds for the analyzed list, each scored with simulated games, to accept or deny, plus candidate cards for every gap the analysis found.
 - **Sample hand:** draw 7, take London mulligans, draw more.
 - **Combos:** combos already in the deck, and combos one card away with that card's price. **+ Add** shows what to cut and checks the swap first: it won't add a card that breaks your bracket or budget, and says which rule. Two-card infinites your bracket doesn't allow are marked "not allowed" and listed last.
 - **Stats:** mana curve, colour pips against sources, roles against targets, price, Game Changers, and the odds of casting your most colour-hungry card on curve.
