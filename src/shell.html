@@ -506,6 +506,11 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
   <div class="ac"><label class="f">Second commander (Partner, Partner with, Friends forever, Background, Doctor's companion)<input type="search" id="cmd2" data-k="commanders.1" autocomplete="off" placeholder="Optional" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd2L"></ul></div>
   <div class="note" id="cmdNote"></div>
 </div></details>
+<details class="sec" id="secImport"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></svg></span>Import a deck<span class="hint"></span></summary><div class="body">
+  <label class="f">Your current list (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header, tagged [Commander], or in the Commander field above)<textarea id="impText" rows="8" spellcheck="false" placeholder="Commander&#10;1 Yennett, Cryptic Sovereign&#10;&#10;Deck&#10;1 Sol Ring (C21) 263&#10;..."></textarea></label>
+  <div class="row"><button type="button" class="small" id="impBtn">Import deck</button><span class="note" id="impNote"></span></div>
+  <p class="note">Every imported card is locked. If the list is short of 100, the generator fills only the missing slots and leaves those unlocked. Settings such as budget and bracket don't remove your cards; the Validation tab shows what fails.</p>
+</div></details>
 <details class="sec" open id="secBudget"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/></svg></span>Budget <span class="hint" id="budHint"></span></summary><div class="body">
   <div class="chips" id="qBudget" role="group" aria-label="Budget presets"><button type="button" data-b="25">$25</button><button type="button" data-b="50">$50</button><button type="button" data-b="100">$100</button><button type="button" data-b="250">$250</button><button type="button" data-b="500">$500</button><button type="button" data-b="">No limit</button></div>
   <div class="grid2">

@@ -150,4 +150,19 @@ function legalCheck(R, label) {
     assert(r.why.some(w => /Elves/.test(w.t)) && r.why.some(w => /attack trigger/.test(w.t)) && r.pct > 0 && r.pct <= 1, 'inspire: reasons name the matched signals, match between 0 and 1');
     assert(E.styleProfile(cs[1]).some(s => s.key === 'control'), 'styleProfile: counterspell commander leans control');
   }
+  // Import: a full list passed as locks comes back unchanged, even when settings would build something else
+  {
+    const base = await E.generate(db, { commanders: ['Synth Rainbow'], seed: 'imp', bracket: 4, bl: E.bracketDefaults(4) });
+    const locks = base.deck.map(e => ({ name: e.c.n, qty: e.qty }));
+    const key = d => d.map(e => e.qty + ' ' + e.c.n).sort().join('|');
+    const S2 = { commanders: ['Synth Rainbow'], seed: 'other', bracket: 4, bl: E.bracketDefaults(4), targets: { lands: 30 }, budget: { total: 1 } };
+    const R2 = await E.generate(db, S2, { locks, imported: true });
+    assert(!R2.errors.length && key(R2.deck) === key(base.deck) && R2.deck.every(e => e.locked), 'import: full list kept as-is, all locked');
+    assert(R2.warnings.some(w => /imported list costs/.test(w)) && R2.validation.rules.some(r => r.pass === false), 'import: over-budget list is kept, budget rule fails');
+    assert((await E.generate(db, S2, { locks })).errors.some(e => /Budget infeasible/.test(e)), 'rebuild around locks still refuses an infeasible budget');
+    const R3 = await E.generate(db, { commanders: ['Synth Rainbow'], seed: 'imp', bracket: 4, bl: E.bracketDefaults(4) }, { locks: locks.slice(0, 60), imported: true });
+    assert(R3.deck.reduce((s, e) => s + e.qty, 0) === 99 && R3.deck.filter(e => e.locked).length === 60, 'import: short list is filled to 100, filled cards unlocked');
+    const R4 = await E.generate(db, { commanders: ['Synth Rainbow'], seed: 'imp' }, { locks: locks.concat([{ name: 'Synth C 1-0' }, { name: 'Synth C 1-1' }]).filter((l, i, a) => a.findIndex(x => x.name === l.name) === i), imported: true });
+    assert(R4.errors.some(e => /^Imported list has/.test(e)), 'import: more than 99 cards is an error');
+  }
 })();

@@ -586,17 +586,17 @@ const Engine = (function () {
     const excludeSet = new Set();
     for (const it of parseList(S.exclude)) { const c = lookup(db, it.name); if (c) excludeSet.add(c.n); else R.warnings.push('Exclude list: unknown card "' + it.name + '".'); }
     const bans = new Set(env.bans || []);
-    const incs = [];
+    const incs = [], incW = env.imported ? 'Import' : 'Include';
     const locks = (env.locks || []).map(x => typeof x === 'string' ? { name: x } : x);
     for (const it of parseList(S.include).map(x => ({ name: x.name, qty: x.qty, slot: 'include' })).concat(locks.map(l => ({ name: l.name, qty: l.qty || 1, slot: 'locked', prev: l.slot })))) {
       const c = lookup(db, it.name);
-      if (!c) { R.warnings.push('Include list: unknown card "' + it.name + '".'); continue; }
+      if (!c) { R.warnings.push(incW + ' list: unknown card "' + it.name + '".'); continue; }
       if (cmds.includes(c)) continue;
       if (incs.some(x => x.c === c)) continue;
       const a = analyze(c);
-      if (c.leg !== 'legal') { R.warnings.push('Include rejected: ' + c.n + ' is ' + c.leg + ' in Commander.'); continue; }
-      if (!subsetCI(c.ci, CI)) { R.warnings.push('Include rejected: ' + c.n + ' (identity ' + (c.ci || 'C') + ') is outside commander identity ' + (CI || 'C') + '.'); continue; }
-      if (excludeSet.has(c.n)) { R.warnings.push('Include rejected: ' + c.n + ' is also on the exclude list.'); continue; }
+      if (c.leg !== 'legal') { R.warnings.push(incW + ' rejected: ' + c.n + ' is ' + c.leg + ' in Commander.'); continue; }
+      if (!subsetCI(c.ci, CI)) { R.warnings.push(incW + ' rejected: ' + c.n + ' (identity ' + (c.ci || 'C') + ') is outside commander identity ' + (CI || 'C') + '.'); continue; }
+      if (excludeSet.has(c.n)) { R.warnings.push(incW + ' rejected: ' + c.n + ' is also on the exclude list.'); continue; }
       let qty = it.qty;
       if (qty > a.exempt) { R.warnings.push(c.n + ': quantity ' + qty + ' reduced to ' + (a.exempt === Infinity ? qty : a.exempt) + ' (singleton rule).'); qty = Math.min(qty, a.exempt); }
       incs.push({ c, qty, slot: it.slot, prev: it.prev });
@@ -620,7 +620,8 @@ const Engine = (function () {
       const incQty = incs.reduce((s, e) => s + e.qty, 0);
       const minTotal = cmdCost + incCost + Math.max(0, mainSize - incQty) * floor;
       R.minTotal = minTotal;
-      if (minTotal > cap + 1e-9) {
+      if (minTotal > cap + 1e-9 && env.imported) R.warnings.push('Budget: the imported list costs at least ' + fmt(minTotal, cur) + ', over the ' + fmt(cap, cur) + ' cap. The cards are kept and the budget rule will fail.');
+      else if (minTotal > cap + 1e-9) {
         R.errors.push('Budget infeasible: minimum achievable total is ' + fmt(minTotal, cur) + ' (commanders ' + fmt(cmdCost, cur) + ' + includes ' + fmt(incCost, cur) + ' + ' + Math.max(0, mainSize - incQty) + ' cheapest slots at ' + fmt(floor, cur) + (S.budget.inclBasics ? ' each, basic lands counted' : '') + '). Cap ' + fmt(cap, cur) + ' is short by ' + fmt(minTotal - cap, cur) + '. Binding constraint: ' + (cmdCost > cap ? 'commander price alone' : incCost + cmdCost > cap ? 'commanders + include list' : 'basic-land cost of the remaining slots') + '.');
         return R;
       }
@@ -755,7 +756,7 @@ const Engine = (function () {
     function add(c, slot, qty, score, extra, flags) {
       qty = qty || 1;
       const a = analyze(c);
-      const e = { c, qty, slot, score: score != null ? score : base(c), why: reason(c, slot, extra), locked: !!(flags && flags.locked), inc: !!(flags && flags.inc) };
+      const e = { c, qty, slot, score: score != null ? score : base(c), why: reason(c, slot, extra), locked: !!(flags && flags.locked), inc: !!(flags && flags.inc), imp: !!(flags && flags.imp) };
       deck.push(e); st.names.add(c.n);
       st.total += (isBasic(c) && !S.budget.inclBasics ? 0 : (price(c) || 0)) * qty;
       for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k] += qty;
@@ -774,9 +775,9 @@ const Engine = (function () {
     const dyn = c => { const a = analyze(c); let need = 0; for (const r of ROLES) if (a.roles[r] && roleCount(r) < (+S.targets[r] || 0)) need++; return base(c) + (need ? W.role * (1 + 0.25 * (need - 1)) : 0); }; // extra roles add a little, so multi-role filler cannot outrank staples
 
     /* 1. includes / locks */
-    for (const e of incs) add(e.c, e.slot === 'locked' ? (e.prev || 'locked') : 'include', e.qty, null, e.slot === 'locked' ? 'locked by user' : 'include list', { locked: true, inc: e.slot === 'include' });
+    for (const e of incs) add(e.c, e.slot === 'locked' ? (e.prev || 'locked') : 'include', e.qty, null, e.slot === 'locked' ? 'locked by user' : 'include list', { locked: true, inc: e.slot === 'include', imp: !!env.imported && e.slot === 'locked' });
     if (incs.length) L('Includes/locks: ' + incs.map(e => (e.qty > 1 ? e.qty + 'x ' : '') + e.c.n).join(', ') + '.');
-    if (size() > mainSize) { R.errors.push('Include list has ' + size() + ' cards; maximum is ' + mainSize + ' with ' + cmds.length + ' commander(s).'); return R; }
+    if (size() > mainSize) { R.errors.push((env.imported ? 'Imported list' : 'Include list') + ' has ' + size() + ' cards; maximum is ' + mainSize + ' with ' + cmds.length + ' commander(s).'); return R; }
 
     /* 2. lands (nonbasic now, basics after nonland fill) */
     const landTarget = Math.max(0, Math.min(mainSize, +S.targets.lands || 0));
