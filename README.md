@@ -146,12 +146,13 @@ sh build-card.sh                                                                
 
 `card.html` takes its styles from `shell.html` and its engine from `engine.js`, so rebuild it after changing either of those too. The **Check** workflow (`.github/workflows/check.yml`) runs the tests below on every pull request and fails if either page doesn't match a fresh build.
 
-**Test** (synthetic cards named "Synth …", so no real data is needed):
+**Test** (`test.js` and `stest.js` use synthetic cards named "Synth …"; `ttest.js` reads the card data in `data/`):
 
 ```sh
 cd src
 node test.js     # generator engine; exits non-zero on a failure
 node stest.js    # card explorer similarity; exits non-zero on a failure
+node ttest.js    # role tagging on the real card data in data/: staples get their roles, top-500 coverage
 node atest.js    # prints analysis output for a generated deck
 node sens.js     # prints a table of how decks respond to bracket, budget and game plan
 ```

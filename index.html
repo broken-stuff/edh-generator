@@ -802,22 +802,25 @@ const Engine = (function () {
   const ROLE_RULES = {
     ramp: [
       rx('ramp-mana', 'non-land with a mana ability: "add {X}" / "add N mana"', /\badd \{[wubrgcs]\}|\badd (?:one|two|three|x) mana|\badd [^.]{0,30}mana of any/),
-      rx('ramp-land', 'searches library for land card(s) onto the battlefield', /search your library for [^.]{0,80}\bland cards?[\s\S]{0,160}?onto the battlefield/),
+      rx('ramp-land', 'searches library for land or basic land type card(s) onto the battlefield', /search your library for [^.]{0,80}\b(?:land|plains|island|swamp|mountain|forest|wastes) cards?[\s\S]{0,160}?onto the battlefield/),
+      rx('ramp-aura', 'aura on a land that adds extra mana when it is tapped', /whenever enchanted (?:land|plains|island|swamp|mountain|forest) is tapped for mana, its controller adds an additional/),
       rx('ramp-drop', 'extra land drop / put land from hand onto battlefield', /play (?:an|two|x) additional lands?|put (?:a|up to \w+) land cards? from your hand onto the battlefield/),
       rx('ramp-treasure', 'creates Treasure tokens', /\bcreates?[^.]{0,30}treasure/)
     ],
     draw: [
       rx('draw-n', '"draw N card(s)"', /\bdraws? (?:a|an|one|two|three|four|five|six|seven|x|\d+|that many|cards equal)(?: additional)? cards?\b|\bdraws? cards equal/),
       rx('draw-impulse', 'exile top card(s), you may play/cast them', /exile the top [^.]*?cards? of your library[^.]*\.[^.]*you may (?:play|cast)/),
-      rx('draw-clue', 'investigate / creates Clues', /\binvestigates?\b|creates?[^.]{0,20}\bclue/)
+      rx('draw-clue', 'investigate / creates Clues', /\binvestigates?\b|creates?[^.]{0,20}\bclue/),
+      rx('draw-top', 'play lands or cast spells from the top of your library', /you may (?:play|cast) [^.]{0,40}from the top of your library/)
     ],
     removal: [
       rx('rm-destroy', '"destroy/exile target <permanent>" (not "you control", not cards in graveyards)', /\b(?:destroy|exile) (?:up to (?:one|two|three|x) )?(?:another )?target (?:(?:nonland|noncreature|nonartifact|tapped|attacking|blocking|nontoken|legendary|artifact or|creature or|enchantment or|artifact,) )*(?:creature|artifact|enchantment|planeswalker|permanent|land|battle)s?(?!s? (?:you control|card))/),
       rx('rm-burn', 'deals damage to target creature/planeswalker or any target', /\bdeals? [^.]{0,40}?damage to (?:any target|target creature|target planeswalker|up to one target creature|another target creature)/),
       rx('rm-bounce', 'returns target nonland permanent to owner\'s hand', /\breturn (?:up to one )?target (?:nonland |creature |artifact |enchantment )*(?:permanent|creature|artifact|enchantment|planeswalker)(?! you control)[^.]* to (?:its|their) owner'?s'? hands?/),
-      rx('rm-counter', 'counter target spell/ability', /\bcounter target (?:spell|creature spell|noncreature spell|artifact|instant|activated|activated or triggered|instant or sorcery)/),
+      rx('rm-counter', 'counter target spell/ability', /\bcounter target (?:(?:white|blue|black|red|green|multicolored|colorless) )?(?:spell|creature spell|noncreature spell|artifact|instant|activated|activated or triggered|instant or sorcery|enchantment)/),
       rx('rm-shrink', 'target creature gets -N/-N', /\btarget creature(?: an opponent controls)? gets -(?:\d+|x)\/-(?:\d+|x)/),
-      rx('rm-edict', 'target player/each opponent sacrifices a creature/permanent', /\b(?:target player|target opponent|each opponent) sacrifices (?:a|an|one|two|x|that many)? ?(?:creature|attacking creature|nonland permanent|permanent|artifact|enchantment|planeswalker)/),
+      rx('rm-edict', 'target player/each opponent sacrifices a creature/permanent', /\b(?:target player|target opponent|each opponent) sacrifices (?:a|an|one|two|x|that many)? ?(?:creature|nontoken creature|attacking creature|nonland permanent|permanent|artifact|enchantment|planeswalker)/),
+      rx('rm-tuck', 'shuffles or puts target permanent into its owner\'s library', /\bthe owner of target (?:nonland )?permanent shuffles it into their library|\bput target (?:nonland )?(?:permanent|creature)[^.]{0,30} (?:on (?:the )?(?:top|bottom) of|into) its owner'?s library/),
       rx('rm-fight', 'fight / bite a target creature', /\bfights? (?:another |up to one )?target creature|target creature you control (?:fights|deals damage equal)/)
     ],
     wipes: [
@@ -825,25 +828,31 @@ const Engine = (function () {
       rx('wipe-shrink', 'all/each creature(s) get -N/-N', /\ball (?:other )?creatures get -(?:\d+|x)\/-(?:\d+|x)|\beach creature gets -/),
       rx('wipe-dmg', 'deals N damage to each creature', /\bdeals? (?:\d+|x) damage to each (?:other )?creature/),
       rx('wipe-bounce', 'returns all permanents/creatures to hand', /\breturn all (?:other )?(?:nonland )?(?:permanents|creatures)[^.]* to (?:their|its) owners'? hands?/),
-      rx('wipe-sac', 'each player sacrifices all creatures', /\beach (?:player|opponent) sacrifices all (?:creatures|nonland permanents)/)
+      rx('wipe-sac', 'each player sacrifices all creatures', /\beach (?:player|opponent) sacrifices (?:all|x|\w+teen|ten|eleven|twelve|twenty) (?:creatures|nonland permanents)/)
     ],
     protection: [
-      rx('prot-team', 'permanents/creatures you control gain hexproof/indestructible/shroud/protection', /(?:creatures|permanents|commanders?|nonland permanents|artifacts) you control (?:gain|have|get [^.]{0,30}and gain) (?:hexproof|indestructible|shroud|protection)/),
-      rx('prot-target', 'target permanent you control gains protection / phases out', /target (?:creature|permanent|artifact|nonland permanent)(?: or [a-z]+)? you control (?:gains|has|phases out)/),
+      rx('prot-team', 'permanents/creatures you control gain hexproof/indestructible/shroud/protection', /(?:creatures|permanents|commanders?|nonland permanents|artifacts) you control (?:gain|have|get [^.]{0,30}and gain) (?:[^.]{0,40}?\b)?(?:hexproof|indestructible|shroud|protection)/),
+      rx('prot-target', 'target permanent you control gains protection / phases out', /target (?:creature|permanent|artifact|nonland permanent)(?: or [a-z]+)? you control (?:gains|has|phases out)|target (?:creature|permanent) you control\. (?:it|that creature) gains (?:hexproof|indestructible|shroud|protection)/),
+      rx('prot-blink', 'exile target permanent you control, then return it (dodges removal)', /\bexile (?:up to one )?(?:another )?target (?:creature|permanent|nonland permanent|artifact or creature)s? you control,? then return (?:it|that card|them|those cards) to the battlefield/),
+      rx('prot-redirect', 'changes the target of a spell or ability', /\b(?:change the target of|choose new targets for) target spell/),
       rx('prot-self', 'you have hexproof/shroud; phase out', /\byou have (?:hexproof|shroud)|\bphases? out\b/),
       rx('prot-counter', 'counter target spell that targets', /counter target [^.]{0,40}that targets/),
-      rx('prot-equip', 'equipped/enchanted creature has hexproof/indestructible/shroud/protection/ward', /(?:equipped|enchanted) creature (?:has|gains|gets [^.]{0,20}and has) (?:hexproof|indestructible|shroud|protection|ward)/)
+      rx('prot-equip', 'equipped/enchanted creature has hexproof/indestructible/shroud/protection/ward', /(?:equipped|enchanted) creature (?:[^.]{0,30}\band )?(?:has|gains|gets [^.]{0,20}and has) (?:[^.]{0,30}?\b)?(?:hexproof|indestructible|shroud|protection|ward)/)
     ],
     recursion: [
-      rx('rec-return', 'return card(s) from graveyard to hand/battlefield', /\breturn (?:target|up to (?:one|two|three|x) target|a|an|all|each|another target|any number of target|x target)[^.]*?cards? from (?:your|a|any) graveyard (?:to (?:your hand|the battlefield)|onto the battlefield)/),
-      rx('rec-reanimate', 'put card(s) from a graveyard onto the battlefield', /put [^.]*cards? from (?:your|a|all|an opponent's) graveyards? onto the battlefield/),
+      rx('rec-return', 'return card(s) from graveyard to hand/battlefield', /\breturn (?:target|up to (?:one|two|three|x) target|a|an|all|each|another target|any number of target|x target)[^.]*?cards?\b[^.]{0,40}? from (?:your|a|any) graveyard (?:to (?:your hand|the battlefield)|onto the battlefield)/),
+      rx('rec-reanimate', 'put card(s) from a graveyard onto the battlefield', /put [^.]*cards? from (?:your|a|all|their|an opponent's) graveyards? onto the battlefield/),
+      rx('rec-aura', 'aura that returns a creature card from a graveyard', /\benchant creature card in a graveyard/),
+      rx('rec-chosen', 'chooses creature cards in your graveyard and returns them to the battlefield', /target [^.]{0,30}cards? in (?:your|a) graveyard[\s\S]{0,140}?return [^.]{0,30}to (?:the battlefield|your hand)/),
       rx('rec-cast', 'cast/play cards from your graveyard (reminder text excluded)', /\b(?:cast|play) [^.]{0,60}from your graveyard/)
     ],
     wincon: [
       rx('win-alt', '"you win the game" / "loses the game"', /you win the game|(?:target player|that player|each opponent|all opponents|each other player) loses the game/),
       rx('win-drain', 'each opponent loses N life', /each opponent loses (?:\d+|x|that much|life equal)/),
       rx('win-ping', 'deals damage to each opponent', /\bdeals? [^.]{0,30}damage to each opponent/),
-      rx('win-overrun', 'creatures you control get +N/+N until end of turn', /creatures you control get \+(?:\d+|x)\/\+(?:\d+|x)[^.]*until end of turn/),
+      rx('win-overrun', 'creatures you control get +N/+N until end of turn', /creatures you control (?:gain [^.]{0,40}and )?get \+(?:\d+|x)\/\+(?:\d+|x)[^.]*until end of turn/),
+      rx('win-burst', 'deals 10 or more (or X) damage to a player or any target', /\bdeals? [1-9]\d+ damage to (?:any target|target player|target opponent|each opponent)|\bdeals? x damage to (?:target player|target opponent|each opponent)/),
+      rx('win-threaten', 'gains control of all creatures until end of turn', /gain control of all creatures|untap all creatures and gain control of them/),
       rx('win-combat', 'additional combat phase', /additional combat phase|extra combat/),
       rx('win-double', 'doubles damage', /deals double|double (?:the )?damage/),
       rx('win-infect', 'infect / toxic / poison', c => c.kw.includes('infect') || /\bpoison counters?\b/.test(c.low)),
@@ -1988,10 +1997,11 @@ const Analysis = (function () {
         if (mm) m.rampPerm = (mm[1].match(/\{/g) || []).length;
         else if (/\{t\}[^:]*: add (?:one|x) mana|\{t\}[^:]*: add [^.]{0,30}mana of any/.test(low)) m.rampPerm = 1;
         else if (/\{t\}[^:]*: add two mana/.test(low)) m.rampPerm = 2;
+        if (!m.rampPerm && a.rules.ramp.includes('ramp-aura')) m.rampPerm = 1;
         m.dork = m.rampPerm > 0 && a.creature;
       }
       if (a.rules.ramp && a.rules.ramp.includes('ramp-land')) {
-        const k = low.match(/search your library for (?:up to )?(a|an|one|two|three)\b[^.]*land/);
+        const k = low.match(/search your library for (?:up to )?(a|an|one|two|three)\b[^.]*(?:land|plains|island|swamp|mountain|forest|wastes)/);
         m.rampLand = k ? (WORDNUM[k[1]] || 1) : 1;
         if (/put (?:the other|one of them|one) into your hand/.test(low)) m.rampLand = Math.max(1, m.rampLand - 1);
       }
@@ -2005,72 +2015,243 @@ const Analysis = (function () {
   const lC = (n, k) => k < 0 || k > n ? -Infinity : lf[n] - lf[k] - lf[n - k];
   const hyp = (N, K, n, k) => Math.exp(lC(K, k) + lC(N - K, n - k) - lC(N, n));
   const atLeast = (N, K, n, k) => { let p = 0; for (let i = k; i <= Math.min(n, K); i++) p += hyp(N, K, n, i); return p; };
+  // P(at least k of the K colour sources among n cards | at least t of the L lands among them), K ⊆ L: Karsten's definition of
+  // castable on curve (the chance of the colour, given you hit your land drops). Exact over the three groups.
+  function castOdds(N, L, K, n, k, t) {
+    let num = 0, den = 0;
+    for (let a = 0; a <= Math.min(K, n); a++) for (let b = 0; b <= Math.min(L - K, n - a); b++) {
+      if (a + b < t) continue;
+      const p = Math.exp(lC(K, a) + lC(L - K, b) + lC(N - L, n - a - b) - lC(N, n)); den += p; if (a >= k) num += p;
+    }
+    return den > 0 ? Math.min(1, num / den) : 0;
+  }
+  // Karsten's published 99-card figures (19 sources for C on turn 1, 30 for CC on turn 2) give 81% and 87% under castOdds on
+  // the play; his figures also count mulligans, which this leaves out. Cards below CAST_OK are flagged, below CAST_BAD are serious.
+  const CAST_OK = 0.85, CAST_BAD = 0.75;
+  // colours a land or ramp card can produce for a deck of colour identity CI (fetches count what they find)
+  function colourSources(c, CI) {
+    const a = A(c);
+    if (a.land === 'fetch') { if (/basic land/.test(c.low)) return CI.split(''); const map = { plains: 'W', island: 'U', swamp: 'B', mountain: 'R', forest: 'G' }; return [...new Set((c.low.match(/plains|island|swamp|mountain|forest/g) || []).map(x => map[x]))]; }
+    if (a.land === 'command' || /mana of any (?:one )?colou?r/.test(c.low)) return CI.split('');
+    return c.pm.filter(x => 'WUBRG'.includes(x));
+  }
+  // deck: [{ c, qty }] → { N, L, landSrc, cast } for the colour check (commanders included as cards)
+  function colourCheck(deck, cmds, CI) {
+    const landSrc = { W: 0, U: 0, B: 0, R: 0, G: 0 }; let N = 0, L = 0;
+    for (const e of deck) { const q = e.qty || 1; N += q; if (!A(e.c).isLand) continue; L += q; for (const x of colourSources(e.c, CI)) if (CI.includes(x)) landSrc[x] += q; }
+    const cards = cmds.map(c => ({ c, cmd: true })).concat(deck.filter(e => !A(e.c).isLand).map(e => ({ c: e.c })));
+    return { N, L, landSrc, cast: castCheck(cards, N, L, landSrc) };
+  }
+  // cards: [{ c, cmd? }]; landSrc: colour → lands producing it; returns one row per card and colour, worst first
+  function castCheck(cards, N, L, landSrc) {
+    const rows = [];
+    for (const { c, cmd } of cards) {
+      // X spells are judged as cast with X = 2
+      const mc = (c.mc || '').split(' // ')[0], t = Math.max(1, Math.round(c.cmc || 0) + (/\{X\}/.test(mc) ? 2 : 0)), n = Math.min(N, 7 + t - 1);
+      for (const X of 'WUBRG') {
+        const k = (mc.match(new RegExp('\\{' + X + '\\}', 'g')) || []).length; if (!k) continue;
+        const K = Math.min(L, landSrc[X] || 0);
+        rows.push({ n: c.n, mc: c.mc, color: X, k, t, sources: K, p: castOdds(N, L, K, n, k, t), cmd: !!cmd });
+      }
+    }
+    return rows.sort((a, b) => a.p - b.p || a.t - b.t || (a.n < b.n ? -1 : 1));
+  }
+  // Land count from the curve: 31.42 + 3.13 × average MV − 0.28 × cheap ramp/draw (MV ≤ 2), attributed to Frank Karsten,
+  // minus about 1.35 lands for Commander's free mulligan (scrollvault.net/guides/how-many-lands.html; a secondary source).
+  const karstenLands = (avgMV, cheap) => 31.42 + 3.13 * avgMV - 0.28 * cheap - 1.35;
 
   /* ---------- goldfish simulation ---------- */
-  function simulate(cards, cmds, games, seed) {
-    const lib0 = []; for (const e of cards) for (let i = 0; i < e.qty; i++) lib0.push(e.c);
-    const N = lib0.length, rng = mulberry32(seed >>> 0);
-    const T = 10, mana = new Array(T + 1).fill(0), landsT = new Array(T + 1).fill(0);
-    const dropT = new Array(T + 1).fill(0), spentT = new Array(T + 1).fill(0), spellsT = new Array(T + 1).fill(0), handT = new Array(T + 1).fill(0), cmdByT = new Array(T + 1).fill(0);
-    const cmdCmc = cmds.length ? Math.min(...cmds.map(c => c.cmc)) : 0;
-    let mulls = 0, keep7 = 0, missT4 = 0, spent6 = 0, avail6 = 0, spells6 = 0, cmdOnCurve = 0; const cmdTurns = [];
+  // Seeded, no opponents, on the play (no draw turn 1). London mulligan: the first is free (Commander), keep 7 with 2–5 lands and a
+  // spell of MV ≤ 3; after that keep 6 (one card to the bottom). Lands and mana sources pay coloured pips (colour sets as bitmasks;
+  // pips {X} only, hybrid pips count as generic). Each turn: land (untapped first), ramp, tutors, the commander, then the largest
+  // spells that fit. Draw spells draw their number, draw engines one card a turn, tutors fetch a missing combo piece. Creatures
+  // attack the turn after they arrive (haste: at once): evasive power counts in full, other power at half (blocks). The table
+  // kill is 120 damage (3 opponents × 40). A combo line is assembled when every piece has been drawn (or is the cast commander)
+  // and this turn's plus last turn's mana covers its cost.
+  const BIT = { W: 1, U: 2, B: 4, R: 8, G: 16 };
+  const NUMW = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, x: 2 };
+  const popc = m => { let n = 0; while (m) { n += m & 1; m >>= 1; } return n; };
+  const SMC = new WeakMap();
+  function simModel(c, CI) {
+    let byCI = SMC.get(c); if (!byCI) SMC.set(c, byCI = {}); if (byCI[CI]) return byCI[CI];
+    const a = A(c), m = manaModel(c), mc = (c.mc || '').split(' // ')[0], ciMask = [...CI].reduce((s, x) => s | (BIT[x] || 0), 0);
+    const maskOf = cols => cols.reduce((s, x) => s | (BIT[x] || 0), 0) & ciMask;
+    const pips = []; for (const x of 'WUBRG') { const k = (mc.match(new RegExp('\\{' + x + '\\}', 'g')) || []).length; for (let i = 0; i < k; i++) pips.push(BIT[x]); }
+    const s = { land: m.land, tapped: m.tapped, cmc: Math.round(c.cmc || 0) + (/\{X\}/.test(mc) ? 2 : 0), pips, rampPerm: m.rampPerm, dork: m.dork, rampLand: m.rampLand, extraDrop: m.extraDrop };
+    s.ramp = !m.land && (m.rampPerm || m.rampLand || m.extraDrop) ? 1 : 0;
+    // colours this card produces as a land or a mana permanent; "any colour" and wildcards (fetched basics) → the whole identity
+    if (m.land) { const cols = colourSources(c, CI); s.mask = maskOf(cols) || 0; }
+    else if (m.rampPerm) s.mask = /mana of any (?:one )?colou?r|any colou?r/.test(c.low) ? ciMask : (maskOf(c.pm) || 0);
+    let draw = 0;
+    if (a.roles.draw) { const k = c.low.match(/\bdraws? (a|an|one|two|three|four|five|six|seven|x|\d+) cards?/); draw = k ? (NUMW[k[1]] || parseInt(k[1], 10) || 1) : 1; }
+    s.engine = a.roles.draw && isPerm(c) && /whenever|at the beginning of/.test(c.low) ? 1 : 0;
+    s.draw = s.engine ? 0 : Math.min(draw, 7);
+    s.tutor = !!a.flags.tutor;
+    s.creature = a.creature && !m.dork; s.pow = a.creature && c.pow != null ? Math.max(0, c.pow) : 0;
+    s.haste = c.kw.includes('haste');
+    // damage sources: token makers (on entry, each turn, or a tap ability), static anthems, one-turn overruns, drains to each opponent
+    const num = w => w == null ? 1 : (NUMW[w] || parseInt(w, 10) || 1);
+    const tk = c.low.match(/create (a|an|one|two|three|four|five|x|\d+) (\d+|x)\/(?:\d+|x) [^.]*?creature tokens?/);
+    if (tk) {
+      const n = /for each/.test(c.low) ? 3 : num(tk[1]), pw = tk[2] === 'x' ? 2 : +tk[2], ev = /tokens? with (?:flying|menace|trample)/.test(c.low);
+      const per = /at the beginning of|\{t\}[^.:]*: create|whenever you cast/.test(c.low);
+      s.tokens = { n, pow: pw, ev, per };
+    }
+    const an = c.low.match(/(?:^|\.\s|\n)(?:other )?(?:creatures|creature tokens) you control get \+(\d+)\/\+\d+(?![^.]*until end of turn)/);
+    s.anthem = an && !/as long as/.test(c.low) ? +an[1] : 0;
+    const ov = c.low.match(/creatures you control (?:gain [^.]{0,40}and )?get \+(\d+|x)\/\+(?:\d+|x)[^.]*until end of turn/);
+    s.overrun = ov ? (ov[1] === 'x' ? -1 : +ov[1]) : 0; s.overrunTrample = !!ov && /trample/.test(c.low);
+    const dr = c.low.match(/each opponent loses (\d+|x) life|deals? (\d+|x) damage to each opponent/);
+    if (dr) { const v = dr[1] || dr[2]; s.drain = { n: v === 'x' ? 3 : +v, per: /whenever (?:a|another|one or more)[^.]*(?:enters|attacks|dies)/.test(c.low) ? 'enter' : /at the beginning of/.test(c.low) ? 'turn' : 'once' }; }
+    s.evasive = ['flying', 'trample', 'menace', 'shadow', 'horsemanship', 'fear', 'intimidate', 'skulk'].some(k => c.kw.includes(k)) || /can't be blocked/.test(c.low);
+    byCI[CI] = s; return s;
+  }
+  // pay cost from sources (array of masks, mutated on success): pips first, scarcest colour first, from the least flexible source
+  const USED = new Uint8Array(256);
+  function pay(src, cmc, pips) {
+    const n = src.length; if (n < cmc || n < pips.length) return false;
+    USED.fill(0, 0, n);
+    const order = pips.length > 1 ? pips.slice().sort((a, b) => src.filter(m => m & a).length - src.filter(m => m & b).length) : pips;
+    for (const p of order) {
+      let best = -1, bc = 99; for (let i = 0; i < n; i++) if (!USED[i] && (src[i] & p)) { const k = popc(src[i]); if (k < bc) { bc = k; best = i; } }
+      if (best < 0) return false; USED[best] = 1;
+    }
+    // generic from the least flexible sources left
+    let generic = cmc - pips.length;
+    for (let lvl = 0; lvl <= 5 && generic > 0; lvl++) for (let i = 0; i < n && generic > 0; i++) if (!USED[i] && popc(src[i]) === lvl) { USED[i] = 1; generic--; }
+    if (generic > 0) return false;
+    let w = 0; for (let i = 0; i < n; i++) if (!USED[i]) src[w++] = src[i]; src.length = w;
+    return true;
+  }
+  const quant = (arr, q) => arr.length ? arr[Math.min(arr.length - 1, Math.floor(q * arr.length))] : null;
+  function simulate(cards, cmds, games, seed, sopt) {
+    sopt = sopt || {};
+    const CI = sopt.CI != null ? sopt.CI : 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
+    // the library holds indices into cards0; models and name keys are looked up once
+    const cards0 = []; for (const e of cards) for (let i = 0; i < e.qty; i++) cards0.push(e.c);
+    const mods = cards0.map(c => simModel(c, CI)), keys = cards0.map(c => E.nameKey(c.n)), lib0 = cards0.map((_, i) => i);
+    const N = lib0.length, rng = mulberry32(seed >>> 0), M = k => mods[k], ciMask = [...CI].reduce((s, x) => s | (BIT[x] || 0), 0);
+    const T = 12, TR = 10, KILL = 120;
+    const mana = new Array(T + 1).fill(0), landsT = new Array(T + 1).fill(0);
+    const dropT = new Array(T + 1).fill(0), spentT = new Array(T + 1).fill(0), spellsT = new Array(T + 1).fill(0), handT = new Array(T + 1).fill(0), cmdByT = new Array(T + 1).fill(0), drawnT = new Array(T + 1).fill(0), dmgT = new Array(T + 1).fill(0);
+    const cmd = cmds.length ? cmds.slice().sort((a, b) => a.cmc - b.cmc)[0] : null, cmdCmc = cmd ? cmd.cmc : 0, cmdM = cmd ? simModel(cmd, CI) : null;
+    // combo lines (pieces by name; the commander counts once cast)
+    const cmdNames = new Set(cmds.map(c => E.nameKey(c.n)));
+    const lines = (sopt.lines || []).map(l => ({ keys: l.cards.map(n => E.nameKey(n)), cost: l.cost || 0, byT: new Array(T + 2).fill(0), turns: [] }));
+    const pieceKeys = new Set(lines.flatMap(l => l.keys));
+    let mulls = 0, mulls2 = 0, keep7 = 0, missT4 = 0, spent6 = 0, avail6 = 0, spells6 = 0, cmdOnCurve = 0; const cmdTurns = [], killTurns = [], winTurns = [], comboTurns = [];
     let flood = 0, screw = 0;
-    const isL = c => manaModel(c).land;
+    const isL = c => M(c).land;
+    const keepable = h => { const l = h.filter(isL).length; return l >= 2 && l <= 5 && h.some(c => !isL(c) && M(c).cmc <= 3); };
     for (let g = 0; g < games; g++) {
       let lib = lib0.slice();
       const shuffle = () => { for (let i = lib.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const t = lib[i]; lib[i] = lib[j]; lib[j] = t; } };
       shuffle();
       let hand = lib.slice(0, 7), pos = 7;
-      let hl = hand.filter(isL).length;
-      if (hl >= 2 && hl <= 5) keep7++;
-      else { mulls++; shuffle(); hand = lib.slice(0, 7); pos = 7; } // free first mulligan (Commander)
-      let landsUntapped = 0, landsTappedNext = 0, rocks = 0, dorksReady = 0, dorksNext = 0, landsPlayed = 0, cmdCast = false, extraDrops = 0;
+      if (keepable(hand)) keep7++;
+      else {
+        mulls++; shuffle(); hand = lib.slice(0, 7); pos = 7; // free first mulligan
+        if (!keepable(hand)) {
+          mulls2++; shuffle(); hand = lib.slice(0, 7); pos = 7;
+          // London: bottom one card (a land when flooded, else the most expensive spell)
+          const nl = hand.filter(isL).length; let bi = -1;
+          if (nl > 4) bi = hand.findIndex(isL); else { let mx = -1; hand.forEach((c, i) => { if (!isL(c) && M(c).cmc > mx) { mx = M(c).cmc; bi = i; } }); if (bi < 0) bi = 0; }
+          lib.push(hand.splice(bi, 1)[0]);
+        }
+      }
+      const seen = new Set(); if (pieceKeys.size) for (const c of hand) if (pieceKeys.has(keys[c])) seen.add(keys[c]);
+      const draw = n => { for (let i = 0; i < n && pos < lib.length; i++) { const c = lib[pos++]; hand.push(c); if (pieceKeys.size && pieceKeys.has(keys[c])) seen.add(keys[c]); } };
+      const tutor = () => {
+        // a missing piece of the line closest to done, else the best card left: a land if short of lands, else a draw card
+        let want = null, bestMiss = 99;
+        for (const l of lines) { const miss = l.keys.filter(k => !seen.has(k) && !cmdNames.has(k)); if (miss.length && miss.length < bestMiss) { bestMiss = miss.length; want = miss[0]; } }
+        let i = want ? lib.findIndex((c, j) => j >= pos && keys[c] === want) : -1;
+        if (i < 0) i = lib.findIndex((c, j) => j >= pos && !isL(c) && (M(c).engine || M(c).draw >= 2));
+        if (i < 0) return draw(1);
+        const c = lib.splice(i, 1)[0]; hand.push(c); if (pieceKeys.has(keys[c])) seen.add(keys[c]);
+      };
+      const lands = [], landsNext = [], rocks = [], dorksReady = [], dorksNext = [];
+      let landsPlayed = 0, cmdCast = false, extraDrops = 0, engines = 0, gDrawn = 0;
       let gSpent = 0, gAvail = 0, gSpells = 0, rampLandsNext = 0;
+      const board = [], tokenEngines = []; let dmg = 0, killT = 0, prevAvail = 0, anthem = 0, pump = 0, trample = false, drainTurn = 0, drainEnter = 0; const lineT = lines.map(() => 0);
+      const enter = b => { board.push(b); dmg += drainEnter; };
       for (let t = 1; t <= T; t++) {
-        if (t > 1 && pos < lib.length) hand.push(lib[pos++]);
-        landsUntapped += landsTappedNext + rampLandsNext; landsTappedNext = 0; rampLandsNext = 0;
-        dorksReady += dorksNext; dorksNext = 0;
+        const h0 = pos;
+        if (t > 1) draw(1 + engines);
+        for (const m of landsNext) lands.push(m); landsNext.length = 0;
+        for (let k = 0; k < rampLandsNext; k++) lands.push(ciMask); rampLandsNext = 0; // fetched basics: any colour of the identity
+        for (const m of dorksNext) dorksReady.push(m); dorksNext.length = 0;
         let drops = 1 + extraDrops; const before = landsPlayed;
         while (drops > 0) {
-          let i = hand.findIndex(c => isL(c) && !manaModel(c).tapped); if (i < 0) i = hand.findIndex(isL);
+          let i = hand.findIndex(c => isL(c) && !M(c).tapped); if (i < 0) i = hand.findIndex(isL);
           if (i < 0) break;
           const c = hand.splice(i, 1)[0]; landsPlayed++; drops--;
-          if (manaModel(c).tapped) landsTappedNext++; else landsUntapped++;
+          if (M(c).tapped) landsNext.push(M(c).mask); else lands.push(M(c).mask);
         }
         if (landsPlayed > before) dropT[t]++;
-        let avail = landsUntapped + rocks + dorksReady;
-        mana[t] += avail; landsT[t] += landsUntapped + landsTappedNext;
-        let spent = 0;
-        // 1) ramp first, cheapest first
-        const ramp = hand.filter(c => !isL(c) && (manaModel(c).rampPerm || manaModel(c).rampLand || manaModel(c).extraDrop)).sort((a, b) => a.cmc - b.cmc);
-        for (const c of ramp) {
-          if (c.cmc > avail - spent) continue;
-          spent += c.cmc; hand.splice(hand.indexOf(c), 1); gSpells += t <= 6 ? 1 : 0; spellsT[t]++;
-          const m = manaModel(c);
-          if (m.rampPerm) { if (m.dork) dorksNext += m.rampPerm; else { rocks += m.rampPerm; avail += m.rampPerm; } }
+        const src = lands.concat(rocks, dorksReady); const avail = src.length;
+        mana[t] += avail; landsT[t] += lands.length + landsNext.length;
+        let spentN = avail;
+        const cast = c => {
+          const m = M(c); if (!pay(src, m.cmc, m.pips)) return false;
+          hand.splice(hand.indexOf(c), 1); spellsT[t]++; if (t <= 6) gSpells++;
+          if (m.rampPerm) { const mk = m.mask || 0; for (let k = 0; k < m.rampPerm; k++) { if (m.dork) dorksNext.push(mk); else { rocks.push(mk); src.push(mk); } } }
           if (m.rampLand) rampLandsNext += m.rampLand;
           if (m.extraDrop) extraDrops = Math.max(extraDrops, m.extraDrop);
+          if (m.engine) engines++;
+          if (m.draw) draw(m.draw);
+          if (m.tutor) tutor();
+          if (m.creature) enter({ pow: m.pow, ev: m.evasive, t: m.haste ? t : t + 1 });
+          if (m.tokens) { if (m.tokens.per) tokenEngines.push(m.tokens); else for (let k = 0; k < m.tokens.n; k++) enter({ pow: m.tokens.pow, ev: m.tokens.ev, t: t + 1 }); }
+          if (m.anthem) anthem += m.anthem;
+          if (m.overrun) { pump += m.overrun < 0 ? board.length : m.overrun; if (m.overrunTrample) trample = true; }
+          if (m.drain) { if (m.drain.per === 'once') dmg += 3 * m.drain.n; else if (m.drain.per === 'turn') drainTurn += 3 * m.drain.n; else drainEnter += 3 * m.drain.n; }
+          return true;
+        };
+        // 1) ramp, cheapest first; 2) tutors; 3) commander; 4) other spells, largest that fits first (repeat while something is cast)
+        for (const c of hand.filter(c => !isL(c) && M(c).ramp).sort((a, b) => M(a).cmc - M(b).cmc)) cast(c);
+        for (const c of hand.filter(c => !isL(c) && M(c).tutor).sort((a, b) => M(a).cmc - M(b).cmc)) cast(c);
+        if (cmd && !cmdCast && pay(src, cmdM.cmc, cmdM.pips)) {
+          cmdCast = true; cmdTurns.push(t); if (t <= Math.max(1, cmdCmc)) cmdOnCurve++;
+          if (cmdM.creature) enter({ pow: cmdM.pow, ev: cmdM.evasive, t: cmdM.haste ? t : t + 1 });
+          if (cmdM.tokens) tokenEngines.push(cmdM.tokens);
+          if (cmdM.anthem) anthem += cmdM.anthem;
         }
-        // 2) commander
-        if (cmds.length && !cmdCast && cmdCmc <= avail - spent) { cmdCast = true; spent += cmdCmc; cmdTurns.push(t); if (t <= Math.max(1, cmdCmc)) cmdOnCurve++; }
-        // 3) other spells, largest that fits first
-        const rest = hand.filter(c => !isL(c)).sort((a, b) => b.cmc - a.cmc);
-        for (const c of rest) { if (c.cmc <= avail - spent) { spent += c.cmc; hand.splice(hand.indexOf(c), 1); if (t <= 6) gSpells++; spellsT[t]++; } }
-        spentT[t] += spent; handT[t] += hand.length; if (cmdCast) cmdByT[t]++;
-        if (t <= 6) { gSpent += spent; gAvail += avail; }
+        // re-sort only when a cast drew or tutored cards
+        for (let again = true; again && src.length;) { again = false; const h1 = hand.length, list = hand.filter(c => !isL(c)).sort((a, b) => M(b).cmc - M(a).cmc); for (const c of list) { if (!src.length) break; if (M(c).cmc <= src.length && cast(c) && hand.length >= h1) { again = true; break; } } }
+        spentN -= src.length;
+        // token engines make their tokens; then combat (anthems, this turn's overrun) and drains
+        for (const e of tokenEngines) for (let k = 0; k < e.n; k++) enter({ pow: e.pow, ev: e.ev, t: t + 1 });
+        for (const b of board) if (b.t <= t) { const p = b.pow + anthem + pump; if (p > 0) dmg += b.ev || trample ? p : p / 2; }
+        dmg += drainTurn; pump = 0; trample = false;
+        if (!killT && dmg >= KILL) killT = t;
+        if (t <= TR) dmgT[t] += dmg;
+        // combo lines
+        const two = prevAvail + avail; prevAvail = avail;
+        lines.forEach((l, i) => { if (!lineT[i] && l.keys.every(k => seen.has(k) || (cmdNames.has(k) && cmdCast)) && two >= l.cost) lineT[i] = t; });
+        spentT[t] += spentN; handT[t] += hand.length; drawnT[t] += pos - h0; if (cmdCast) cmdByT[t]++;
+        if (t <= 6) { gSpent += spentN; gAvail += avail; }
         if (t === 4 && landsPlayed < 4) missT4++;
         if (t === 6) { const inHandLands = hand.filter(isL).length; if (inHandLands >= 3 && hand.length - inHandLands <= 1) flood++; if (landsPlayed <= 3) screw++; }
       }
       if (!cmdCast) cmdTurns.push(T + 1);
+      killTurns.push(killT || T + 1);
+      lines.forEach((l, i) => { const x = lineT[i] || T + 1; l.turns.push(x); for (let t = x; t <= T; t++) l.byT[t]++; });
+      const ct = lineT.reduce((m, x) => x ? Math.min(m, x) : m, T + 1); comboTurns.push(ct);
+      winTurns.push(Math.min(killT || T + 1, ct));
       spent6 += gSpent; avail6 += gAvail; spells6 += gSpells;
     }
-    cmdTurns.sort((a, b) => a - b);
+    const srt = a => a.sort((x, y) => x - y);
+    srt(cmdTurns); srt(killTurns); srt(winTurns); srt(comboTurns);
+    const dist = a => ({ q10: quant(a, 0.1), q25: quant(a, 0.25), median: quant(a, 0.5), q75: quant(a, 0.75), byT: Array.from({ length: T + 1 }, (_, t) => a.filter(x => x <= t).length / games) });
     return {
-      games, deckSize: N, manaByTurn: mana.map(x => x / games), landsByTurn: landsT.map(x => x / games),
-      perTurn: Array.from({ length: T }, (_, i) => { const t = i + 1; return { t, lands: landsT[t] / games, mana: mana[t] / games, spent: spentT[t] / games, spells: spellsT[t] / games, hand: handT[t] / games, pDrop: dropT[t] / games, pCmd: cmdByT[t] / games }; }),
-      keep7: keep7 / games, mulligan: mulls / games, missLandDropT4: missT4 / games, flood6: flood / games, screw6: screw / games,
+      games, deckSize: N, T, manaByTurn: mana.map(x => x / games), landsByTurn: landsT.map(x => x / games),
+      perTurn: Array.from({ length: TR }, (_, i) => { const t = i + 1; return { t, lands: landsT[t] / games, mana: mana[t] / games, spent: spentT[t] / games, spells: spellsT[t] / games, hand: handT[t] / games, drawn: drawnT[t] / games, dmg: dmgT[t] / games, pDrop: dropT[t] / games, pCmd: cmdByT[t] / games }; }),
+      keep7: keep7 / games, mulligan: mulls / games, mulligan2: mulls2 / games, missLandDropT4: missT4 / games, flood6: flood / games, screw6: screw / games,
       efficiency6: avail6 ? spent6 / avail6 : 0, spellsBy6: spells6 / games,
-      cmdCmc, cmdMedianTurn: cmdTurns.length ? cmdTurns[Math.floor(cmdTurns.length / 2)] : null, cmdOnCurve: cmds.length ? cmdOnCurve / games : null
+      cmdCmc, cmdMedianTurn: cmdTurns.length ? quant(cmdTurns, 0.5) : null, cmdOnCurve: cmds.length ? cmdOnCurve / games : null,
+      kill: Object.assign(dist(killTurns), { life: KILL }), combo: lines.length ? dist(comboTurns) : null, win: dist(winTurns),
+      lines: lines.map(l => ({ median: quant(srt(l.turns), 0.5), byT: l.byT.map(x => x / games) }))
     };
   }
 
@@ -2120,29 +2301,35 @@ const Analysis = (function () {
     for (const c of cmds) { const p = E.pips(c.mc); for (const k in pp) pp[k] += p[k]; }
     for (const e of nonland) { const p = E.pips(e.c.mc); for (const k in pp) pp[k] += p[k] * e.qty; }
     const pipTotal = Object.values(pp).reduce((a, b) => a + b, 0);
-    const srcOf = c => {
-      const a = A(c);
-      if (a.land === 'fetch') { if (/basic land/.test(c.low)) return CI.split(''); const map = { plains: 'W', island: 'U', swamp: 'B', mountain: 'R', forest: 'G' }; return [...new Set((c.low.match(/plains|island|swamp|mountain|forest/g) || []).map(x => map[x]))]; }
-      if (a.land === 'command' || /mana of any (?:one )?colou?r/.test(c.low)) return CI.split('');
-      return c.pm.filter(x => 'WUBRG'.includes(x));
-    };
+    const srcOf = c => colourSources(c, CI);
     const landSrc = { W: 0, U: 0, B: 0, R: 0, G: 0 }, allSrc = { W: 0, U: 0, B: 0, R: 0, G: 0 };
     for (const e of all) { const a = A(e.c); if (!(a.isLand || a.roles.ramp)) continue; for (const x of srcOf(e.c)) if (CI.includes(x)) { allSrc[x] += e.qty; if (a.isLand) landSrc[x] += e.qty; } }
     const tapped = lands.filter(e => manaModel(e.c).tapped).map(e => e.c.n);
+    const deckSize = qty(all);
+    const cast = castCheck(cmds.map(c => ({ c, cmd: true })).concat(nonland.map(e => ({ c: e.c }))), deckSize, nLands, landSrc);
     const colors = CI.split('').map(x => {
       const pipShare = pipTotal ? pp[x] / pipTotal : 0, srcTotal = Object.values(landSrc).reduce((a, b) => a + b, 0) || 1;
       const srcShare = landSrc[x] / srcTotal;
-      const warn = (pipShare >= 0.15 && landSrc[x] < 10) ? 'fewer than 10 land sources' : (srcShare < pipShare - 0.10 ? Math.round(srcShare * 100) + '% of sources for ' + Math.round(pipShare * 100) + '% of pips' : '');
-      return { color: x, pips: pp[x], pipShare, landSources: landSrc[x], allSources: allSrc[x], srcShare, warn };
+      const mine = cast.filter(r => r.color === x), low = mine.filter(r => r.p < CAST_OK), worst = mine[0] || null;
+      const warn = low.length ? low.length + ' card' + (low.length > 1 ? 's' : '') + ' below ' + Math.round(CAST_OK * 100) + '% castable on curve; worst ' + worst.n + ' (' + worst.k + ' ' + x + ' by turn ' + worst.t + '): ' + Math.round(worst.p * 100) + '% with ' + landSrc[x] + ' land sources' : '';
+      return { color: x, pips: pp[x], pipShare, landSources: landSrc[x], allSources: allSrc[x], srcShare, warn, worst, low: low.length, severe: low.some(r => r.p < CAST_BAD) };
     });
-    const deckSize = qty(all);
     const openingLands = { p2to5: (() => { let p = 0; for (let k = 2; k <= 5; k++) p += hyp(deckSize, nLands, 7, k); return p; })(), p3plus: atLeast(deckSize, nLands, 7, 3) };
     const nRamp2 = count(c => A(c).roles.ramp && c.cmc <= 2 && !A(c).isLand);
     const pRampEarly = atLeast(deckSize, nRamp2, 8, 1); // 7 cards + turn-2 draw
+    const cheapRD = count(c => !A(c).isLand && c.cmc <= 2 && (A(c).roles.ramp || A(c).roles.draw));
+    const landEst = { lands: Math.round(karstenLands(avgMV, cheapRD) * 10) / 10, avgMV, cheap: cheapRD };
 
-    /* simulation */
+    /* simulation, with the deck's win and infinite combo lines (up to 8, fewest pieces first) */
+    const outcomeOf = v => { const t = (v.p || []).join(' | ').toLowerCase(); return /win the game|loses? the game|infinite (?:damage|life ?loss|lifeloss|drain|combat|turns?|poison|mill)|each opponent loses/.test(t) ? ['win', 1] : /infinite/.test(t) ? ['infinite resource', 0.75] : /lock|can't|skip|prevent/.test(t) ? ['lock', 0.45] : ['value', 0.3]; };
+    const combos = opts.combos || null;
+    const byName = new Map(all.map(e => [E.nameKey(e.c.n), e.c]).concat(cmds.map(c => [E.nameKey(c.n), c])));
+    const cardOf = n => byName.get(E.nameKey(n)) || byName.get(E.nameKey(String(n).split(' // ')[0])) || null;
+    const simLines = (combos || []).filter(v => ['win', 'infinite resource'].includes(outcomeOf(v)[0]) && v.c.every(cardOf)).map(v => ({ id: v.id, cards: v.c.map(n => cardOf(n).n), cost: Math.max(v.mv || 0, v.c.reduce((s, n) => s + cardOf(n).cmc, 0)) }))
+      .sort((a, b) => a.cards.length - b.cards.length || a.cost - b.cost).slice(0, 8);
     const seed = E.hashStr(all.map(e => e.c.n).sort().join('|') + '#' + cmds.map(c => c.n).join('|'));
-    const sim = simulate(all, cmds, opts.games || 1500, opts.seed != null ? opts.seed : seed);
+    const sim = simulate(all, cmds, opts.games || 1500, opts.seed != null ? opts.seed : seed, { CI, lines: simLines });
+    sim.lineDefs = simLines;
     /* exact odds of having drawn at least one card of a role by turn t (7-card hand + one draw per turn after the first) */
     const roleN = { ramp: count(c => A(c).roles.ramp && !A(c).isLand), draw: role('draw'), removal: role('removal'), wipes: role('wipes'), protection: role('protection'), wincon: role('wincon') };
     for (const row of sim.perTurn) { const seen = Math.min(deckSize, 7 + row.t - 1); row.seen = seen; row.pRole = {}; for (const k in roleN) row.pRole[k] = atLeast(deckSize, roleN[k], seen, 1); row.expLandsSeen = seen * nLands / deckSize; }
@@ -2184,8 +2371,6 @@ const Analysis = (function () {
     const medianLinks = perCard.length ? perCard.map(x => x.links).sort((a, b) => a - b)[Math.floor(perCard.length / 2)] : 0;
     const cutCandidates = perCard.filter(x => x.links === 0 && !x.roles.length && !x.locked).sort((a, b) => (b.c.rank || 1e9) - (a.c.rank || 1e9)).slice(0, 10);
 
-    /* combos */
-    const combos = opts.combos || null;
 
     /* bracket estimate */
     const cnt = { gc: flag('gc') + cmds.filter(c => c.gc).length, tutor: flag('tutor'), xturn: flag('xturn'), mld: flag('mld'), fast: flag('fast') };
@@ -2213,7 +2398,7 @@ const Analysis = (function () {
     axes.push({ key: 'speed', label: 'Speed', factors: speed });
     const tappedShare = nLands ? tapped.length / nLands : 0;
     const colorOk = colors.length ? colors.filter(c => !c.warn).length / colors.length : 1;
-    axes.push({ key: 'mana', label: 'Mana & ramp', factors: [F('Lands', nLands, P(targets.lands, 'lands'), 1 - Math.abs(nLands - targets.lands) / 6), F('Ramp pieces', role('ramp'), P(targets.ramp, 'ramp'), ratio(role('ramp'), targets.ramp)), F('Ramp at MV ≤ 2 (P ≥1 by turn 2)', nRamp2 + ' (' + Math.round(pRampEarly * 100) + '%)', '≥ 70%', pRampEarly / 0.7), F('Colors with adequate sources', colors.length - colors.filter(c => c.warn).length + '/' + colors.length, 'all', colorOk), F('Lands entering tapped', tapped.length, '≤ 4', 1 - Math.max(0, tapped.length - 4) / 8), F('Missed natural land drop by turn 4 (sim)', Math.round(sim.missLandDropT4 * 100) + '%', '≤ 40%', 1 - Math.max(0, sim.missLandDropT4 - 0.4) / 0.3)] });
+    axes.push({ key: 'mana', label: 'Mana & ramp', factors: [F('Lands', nLands, P(targets.lands, 'lands'), 1 - Math.abs(nLands - targets.lands) / 6), F('Ramp pieces', role('ramp'), P(targets.ramp, 'ramp'), ratio(role('ramp'), targets.ramp)), F('Ramp at MV ≤ 2 (P ≥1 by turn 2)', nRamp2 + ' (' + Math.round(pRampEarly * 100) + '%)', '≥ 70%', pRampEarly / 0.7), F('Colors with adequate sources', colors.length - colors.filter(c => c.warn).length + '/' + colors.length, 'all', colorOk), F('Lands vs curve estimate (Karsten)', nLands + ' / ' + landEst.lands.toFixed(1), '± 2', 1 - Math.max(0, Math.abs(nLands - landEst.lands) - 2) / 4), F('Lands entering tapped', tapped.length, '≤ 4', 1 - Math.max(0, tapped.length - 4) / 8), F('Missed natural land drop by turn 4 (sim)', Math.round(sim.missLandDropT4 * 100) + '%', '≤ 40%', 1 - Math.max(0, sim.missLandDropT4 - 0.4) / 0.3)] });
     axes.push({ key: 'cards', label: 'Card advantage', factors: [F('Card draw sources', role('draw'), P(targets.draw, 'draw'), ratio(role('draw'), targets.draw)), F('Repeatable draw engines (permanents)', engines.length, '≥ ' + targets.engines, ratio(engines.length, targets.engines)), F('Tutors', tutors.length, 'context · avg ' + POP.tutors, 0.6 + Math.min(0.4, tutors.length * 0.1))] });
     const covKeys = ['creature', 'artifact', 'enchantment', 'planeswalker'];
     axes.push({ key: 'interaction', label: 'Interaction', factors: [F('Targeted removal / counters', role('removal'), P(targets.removal, 'removal'), ratio(role('removal'), targets.removal)), F('Board wipes', role('wipes'), P(targets.wipes, 'wipes'), ratio(role('wipes'), targets.wipes)), F('Instant-speed interaction', instantInteraction.length, '≥ 50% of interaction', removalCards.length ? instantInteraction.length / removalCards.length / 0.5 : 0), F('Permanent types answerable', covKeys.filter(k => coverage[k].length).length + '/4', '4/4', covKeys.filter(k => coverage[k].length).length / 4), F('Graveyard hate', gyHate.length, '≥ 1', gyHate.length ? 1 : 0.4)] });
@@ -2225,8 +2410,6 @@ const Analysis = (function () {
     const overall = Math.round(axes.reduce((s, a) => s + a.score, 0) / axes.length);
 
     /* ---------- power model (structure after scrycheck.com/docs; weights are this tool's own, uncalibrated) ---------- */
-    const byName = new Map(all.map(e => [E.nameKey(e.c.n), e.c]).concat(cmds.map(c => [E.nameKey(c.n), c])));
-    const cardOf = n => byName.get(E.nameKey(n)) || byName.get(E.nameKey(String(n).split(' // ')[0])) || null;
     const cmdKeys = new Set(cmds.map(c => E.nameKey(c.n)));
     const sat = (x, k) => 100 * (1 - Math.exp(-Math.max(0, x) / k));
     // each card counts w × (0.6 + card power), so a stronger card in the same slot scores higher
@@ -2265,26 +2448,27 @@ const Analysis = (function () {
     const iProt = take(c => A(c).roles.protection);
     const vInt = vec('interaction', 'Interaction', 22, [comp('Free counterspells', iCounterF.length, 3.5, iCounterF), comp('Counterspells', iCounter.length, 2.5, iCounter), comp('Instant-speed spot removal', iInst.length, 2, iInst), comp('Sorcery-speed removal', iSorc.length, 1.2, iSorc), comp('Board wipes', iWipe.length, 1.2, iWipe), comp('Stax / hate pieces', iStax.length, 1, iStax), comp('Protection', iProt.length, 0.8, iProt)]);
     // Mana base: quality and fixing only; lowers headroom, never adds power
-    const colorWarn = colors.filter(c => c.warn).length;
+    const colorWarn = colors.filter(c => c.warn).length + colors.filter(c => c.severe).length * 0.5;
     const multiLands = lands.filter(e => srcOf(e.c).filter(x => CI.includes(x)).length >= 2).reduce((s, e) => s + e.qty, 0);
     const fixShare = nLands ? multiLands / nLands : 0;
     const mbParts = [
       { label: 'Unconditional taplands beyond 2', n: Math.max(0, tapped.length - 2), w: -6 },
-      { label: 'Colors below source check', n: colorWarn, w: -15 },
+      { label: 'Colors with cards below ' + Math.round(CAST_OK * 100) + '% castable on curve (severe below ' + Math.round(CAST_BAD * 100) + '% counts 1.5)', n: colorWarn, w: -10 },
       { label: 'Lands off target by more than 2', n: Math.max(0, Math.abs(nLands - targets.lands) - 2), w: -5 },
       { label: CI.length >= 3 ? 'Multicolor lands < 30% in 3+ colors' : 'Fixing (n/a below 3 colors)', n: CI.length >= 3 && fixShare < 0.3 ? 1 : 0, w: -10 }
     ].map(p => Object.assign(p, { pts: p.n * p.w, cards: [] }));
     const vMana = { key: 'manabase', label: 'Mana base', k: null, pts: null, score: Math.round(clamp(100 + mbParts.reduce((s, p) => s + p.pts, 0), 0, 100)), parts: mbParts, fixShare };
     // Combos: compactness × outcome, grouped into families (shared pieces) with a cap
-    const outcomeOf = v => { const t = (v.p || []).join(' | ').toLowerCase(); return /win the game|loses? the game|infinite (?:damage|life ?loss|lifeloss|drain|combat|turns?|poison|mill)|each opponent loses/.test(t) ? ['win', 1] : /infinite/.test(t) ? ['infinite resource', 0.75] : /lock|can't|skip|prevent/.test(t) ? ['lock', 0.45] : ['value', 0.3]; };
     const twoTurnMana = t => (t > 1 ? sim.manaByTurn[t - 1] || 0 : 0) + (sim.manaByTurn[t] || 0);
     const comboList = (combos || []).map(v => {
       const pieces = v.c.map(cardOf); const known = pieces.every(Boolean);
-      const cost = v.mv != null ? v.mv : (known ? pieces.reduce((s, c) => s + c.cmc, 0) : null);
+      const cost = known ? Math.max(v.mv || 0, pieces.reduce((s, c) => s + c.cmc, 0)) : (v.mv != null ? v.mv : null);
+      const si = sim.lineDefs.findIndex(l => l.id === v.id), sl = si >= 0 ? sim.lines[si] : null;
       const [outcome, ow] = outcomeOf(v); const n = v.c.length;
       const compact = n <= 2 ? 1 : n === 3 ? 0.7 : n === 4 ? 0.45 : 0.3;
-      let turn = null; if (cost != null) for (let t = 1; t <= 8; t++) if (twoTurnMana(t) >= cost) { turn = t; break; }
-      return { cards: v.c, produces: v.p || [], n, outcome, score: compact * ow, cost, costSrc: v.mv != null ? 'Spellbook' : 'card MV sum', turn, early: turn != null && turn <= 5, usesCmd: v.c.some(x => cmdKeys.has(E.nameKey(x))), inf: v.inf };
+      // simulated lines: median assembly turn (pieces drawn or tutored, mana for them); others: first turn the mana covers the cost
+      let turn = null; if (sl) turn = sl.median <= sim.T ? sl.median : null; else if (cost != null) for (let t = 1; t <= 8; t++) if (twoTurnMana(t) >= cost) { turn = t; break; }
+      return { cards: v.c, produces: v.p || [], n, outcome, score: compact * ow, cost, costSrc: 'piece MV sum or Spellbook mana, the larger', turn, turnSrc: sl ? 'simulated median' : 'mana only', pBy: sl ? { 4: sl.byT[4], 6: sl.byT[6], 8: sl.byT[8] } : null, early: turn != null && turn <= 5, usesCmd: v.c.some(x => cmdKeys.has(E.nameKey(x))), inf: v.inf };
     });
     const parent = comboList.map((_, i) => i); const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
     const pieceIdx = new Map();
@@ -2346,9 +2530,14 @@ const Analysis = (function () {
     // Win speed
     const PT = [[1, 11], [3, 10], [4, 9], [5, 8], [6, 7], [7, 6], [8, 5], [9, 4], [10, 3]];
     const interp = x => { for (let i = 1; i < PT.length; i++) if (x <= PT[i][0]) { const [x0, y0] = PT[i - 1], [x1, y1] = PT[i]; return y0 + (y1 - y0) * (x - x0) / (x1 - x0); } return 3; };
-    const typical = Math.round(interp(pl));
+    // Typical turn: the simulated combo turn (median over games of the first win/infinite line assembled) when the deck has one
+    // and it is faster than the power-level estimate; otherwise the power-level estimate. The goldfish damage clock is shown
+    // alongside but not used: it reaches 120 damage later than real games end, because it leaves out most value engines.
+    const plTypical = Math.round(interp(pl)), sc = sim.combo;
+    const comboSim = sc && sc.median <= sim.T ? sc : null;
+    const typical = comboSim && comboSim.median < plTypical ? comboSim.median : plTypical;
     const comboTurn = comboList.filter(cb => cb.turn != null && (cb.outcome === 'win' || cb.outcome === 'infinite resource')).reduce((m, cb) => Math.min(m, cb.turn), 99);
-    const best = Math.max(2, Math.min(typical - 2, comboTurn));
+    const best = Math.max(2, Math.min(typical - 2, comboSim ? comboSim.q10 : comboTurn));
     const contested = Math.round(typical + 1 + (protection.length < 3 ? 1 : 0) + (recursion.length < 2 ? 0.5 : 0));
     // Recommended minimum bracket: card markers, raised by expected win turn (WotC: B2 8+, B3 6+, B4 4+)
     const earlyTwo = comboList.filter(cb => cb.n <= 2 && cb.inf && cb.early).length;
@@ -2363,7 +2552,9 @@ const Analysis = (function () {
     // Card popularity distribution (EDHREC rank; popularity, not power)
     const RB = [['Top 500', 1, 500], ['501–2,000', 501, 2000], ['2,001–8,000', 2001, 8000], ['8,001+', 8001, 1e12]];
     const quality = RB.map(([label, lo, hi]) => ({ label, n: nonland.filter(e => e.c.rank && e.c.rank >= lo && e.c.rank <= hi).reduce((s, e) => s + e.qty, 0) })).concat([{ label: 'Unranked', n: nonland.filter(e => !e.c.rank).reduce((s, e) => s + e.qty, 0) }]);
-    const power = { cardQ: Math.round(cardQ * 100) / 100, qScore: Math.round(qScore), pl, plRaw: Math.round(plRaw * 10) / 10, manaMult: Math.round(manaMult * 100) / 100, ceiling, ceilingBinding: plPre > ceiling, label: PL_LABEL[Math.max(1, Math.min(10, Math.floor(pl)))], ci, ciParts: ciParts.map(x => x[0]), confidence: ci <= 0.5 ? 'high' : ci <= 0.8 ? 'medium' : 'low', vectors, weights: { speed: wv[0], consistency: wv[1], interaction: wv[2], threats: wv[3] }, archetypes: ARCH.slice(0, 5), primary, signals, win: { best, typical, contested, comboTurn: comboTurn < 99 ? comboTurn : null }, minBracket: minB, minBracketWhy: why, combos: comboList, families: families.map(f => ({ score: Math.round(f.score * 100) / 100, n: f.combos.length, best: f.best })), earlyTwo, quality };
+    const power = { cardQ: Math.round(cardQ * 100) / 100, qScore: Math.round(qScore), pl, plRaw: Math.round(plRaw * 10) / 10, manaMult: Math.round(manaMult * 100) / 100, ceiling, ceilingBinding: plPre > ceiling, label: PL_LABEL[Math.max(1, Math.min(10, Math.floor(pl)))], ci, ciParts: ciParts.map(x => x[0]), confidence: ci <= 0.5 ? 'high' : ci <= 0.8 ? 'medium' : 'low', vectors, weights: { speed: wv[0], consistency: wv[1], interaction: wv[2], threats: wv[3] }, archetypes: ARCH.slice(0, 5), primary, signals, win: { best, typical, contested, comboTurn: comboTurn < 99 ? comboTurn : null, source: typical === plTypical ? 'power level' : 'simulated combo', plTypical,
+      combo: comboSim ? { q25: comboSim.q25, median: comboSim.median, q75: comboSim.q75, by6: comboSim.byT[6], by8: comboSim.byT[8] } : null,
+      range: typical !== plTypical ? [comboSim.q25, comboSim.q75] : null, goldfish: { q25: sim.kill.q25, median: sim.kill.median, q75: sim.kill.q75, life: sim.kill.life, horizon: sim.T } }, minBracket: minB, minBracketWhy: why, combos: comboList, families: families.map(f => ({ score: Math.round(f.score * 100) / 100, n: f.combos.length, best: f.best })), earlyTwo, quality };
     // Anti-synergy checks
     const symWipes = names(c => A(c).roles.wipes && !/creatures? (?:your opponents|an opponent|you don't) control|nontoken creatures? (?:your opponents|you don't)/.test(c.low));
     const allGyExile = names(c => /exile (?:each|all) graveyards?|exile all cards from all graveyards|if a card would be put into an opponent's graveyard[^.]*exile|graveyards? from anywhere, exile it/.test(c.low) || /if a card or token would be put into a graveyard from anywhere/.test(c.low));
@@ -2387,10 +2578,11 @@ const Analysis = (function () {
       const have = role(r), t = +targets[r] || 0;
       if (have < t) addRec(t - have >= 3 ? 'high' : 'med', E.SLOT_LABEL[r] + ': ' + have + ' of ' + t + '. Candidates ranked by theme fit and EDHREC rank:', pick(c => !A(c).isLand && A(c).roles[r], 5));
     }
+    if (Math.abs(nLands - landEst.lands) > 2) addRec(nLands < landEst.lands - 3 ? 'high' : 'med', 'Lands: ' + nLands + '; the curve estimate is ' + landEst.lands.toFixed(1) + ' (31.42 + 3.13 × avg MV ' + avgMV.toFixed(2) + ' − 0.28 × ' + cheapRD + ' cheap ramp/draw − 1.35 for the free mulligan; Frank Karsten\'s formula).', []);
     if (nLands < targets.lands - 2) addRec('high', 'Lands: ' + nLands + ' (target ' + targets.lands + '). Simulated missed land drop by turn 4: ' + Math.round(sim.missLandDropT4 * 100) + '%.', []);
     if (nLands > targets.lands + 3) addRec('med', 'Lands: ' + nLands + ' (target ' + targets.lands + '). Simulated flood at turn 6: ' + Math.round(sim.flood6 * 100) + '%.', []);
     if (avgMV > targets.avgMV + 0.4) addRec('med', 'Average MV ' + avgMV.toFixed(2) + ' exceeds target ' + targets.avgMV.toFixed(1) + '. Highest-MV nonland cards without a role: ' + perCard.filter(x => !x.roles.length).sort((a, b) => b.c.cmc - a.c.cmc).slice(0, 5).map(x => x.c.n + ' (' + x.c.cmc + ')').join(', ') + '.', []);
-    for (const c of colors) if (c.warn) addRec('med', c.color + ' mana: ' + c.warn + '. Lands producing ' + c.color + ' in your identity:', pick(x => A(x).isLand && srcOf(x).includes(c.color) && srcOf(x).length >= 2, 5));
+    for (const c of colors) if (c.warn) addRec(c.severe ? 'high' : 'med', c.color + ' mana: ' + c.warn + '. Lands producing ' + c.color + ' in your identity:', pick(x => A(x).isLand && srcOf(x).includes(c.color) && srcOf(x).length >= 2, 5));
     if (tapped.length > 6) addRec('low', tapped.length + ' lands enter tapped unconditionally: ' + tapped.join(', ') + '.', []);
     for (const p of pairStats.filter(p => p.active && p.status !== 'balanced')) {
       const needEn = p.status.startsWith('payoff') || p.status === 'payoffs without enablers';
@@ -2445,7 +2637,7 @@ const Analysis = (function () {
     return {
       at: new Date().toISOString(), CI, deckSize, nLands, nNon, avgMV, overall, axes, sim,
       prob: { openingLands, pRampEarly, nRamp2 },
-      mana: { colors, tapped, pipTotal },
+      mana: { colors, tapped, pipTotal, cast, castOk: CAST_OK, landEst },
       interaction: { coverage, gyHate, instantInteraction, cheapInteraction, removal: role('removal'), wipes: role('wipes') },
       cards: { draw: drawCards.map(c => c.n), engines, tutors },
       resilience: { protection, recursion, cmdProtect, indestructibleSelf },
@@ -2464,7 +2656,7 @@ const Analysis = (function () {
     }
     return out;
   }
-  const snap = X => ({ src: Object.fromEntries(X.mana.colors.map(c => [c.color, c.landSources])), warn: X.mana.colors.filter(c => c.warn).length, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, typical: X.power.win.typical, keep: X.sim.keep7, t4: X.sim.manaByTurn[4], v: Object.fromEntries(X.power.vectors.map(v => [v.key, v.score])), axes: Object.fromEntries(X.axes.map(a => [a.key, a.score])) });
+  const snap = X => ({ src: Object.fromEntries(X.mana.colors.map(c => [c.color, c.landSources])), warn: X.mana.colors.filter(c => c.warn).length, castLow: X.mana.cast.filter(r => r.p < CAST_OK).length, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, typical: X.power.win.typical, keep: X.sim.keep7, t4: X.sim.manaByTurn[4], v: Object.fromEntries(X.power.vectors.map(v => [v.key, v.score])), axes: Object.fromEntries(X.axes.map(a => [a.key, a.score])) });
   function impactPrep(db, deck, cmds, opts) {
     const games = opts.impactGames || 5000;
     const seed = E.hashStr('impact#' + cmds.map(c => c.n).join('|'));
@@ -2478,7 +2670,7 @@ const Analysis = (function () {
     const dv = Object.keys(a.v).map(k => [k, a.v[k] - b.v[k]]).filter(x => x[1] !== 0);
     const da = Object.keys(a.axes).map(k => [k, a.axes[k] - b.axes[k]]).filter(x => x[1] !== 0);
     const dsrc = Object.keys(a.src).map(k => [k, a.src[k] - (b.src[k] || 0)]).filter(x => x[1] !== 0);
-    return Object.assign({}, p, { d: { src: dsrc, warn: a.warn - b.warn, pl: Math.round((a.pl - b.pl) * 10) / 10, fund: a.fund - b.fund, minB: a.minB - b.minB, typical: a.typical - b.typical, keep: a.keep - b.keep, t4: a.t4 - b.t4, vectors: dv, axes: da }, after: a });
+    return Object.assign({}, p, { d: { src: dsrc, warn: a.warn - b.warn, castLow: a.castLow - b.castLow, pl: Math.round((a.pl - b.pl) * 10) / 10, fund: a.fund - b.fund, minB: a.minB - b.minB, typical: a.typical - b.typical, keep: a.keep - b.keep, t4: a.t4 - b.t4, vectors: dv, axes: da }, after: a });
   }
   function impact(db, deck, cmds, opts, plans) { const prep = impactPrep(db, deck, cmds, opts); return plans.map(p => impactOne(prep, p)); }
 
@@ -2503,7 +2695,7 @@ const Analysis = (function () {
     return { cmd, main };
   }
 
-  return { run, impact, impactPrep, impactOne, applySwap, simulate, manaModel, parseDecklist, PAIRS, BENCH, POP, hyp };
+  return { run, impact, impactPrep, impactOne, applySwap, simulate, manaModel, parseDecklist, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;
 </script>
@@ -2953,6 +3145,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       const d = p.d, eff = [];
       for (const [k, v] of d.src || []) eff.push('<span class="' + cls(v) + '">' + k + ' land sources ' + sign(v) + '</span>');
       if (d.warn) eff.push('<span class="' + cls(-d.warn) + '">Colors flagged ' + sign(d.warn) + '</span>');
+      if (d.castLow) eff.push('<span class="' + cls(-d.castLow) + '">Cards below ' + Math.round(Analysis.CAST_OK * 100) + '% castable ' + sign(d.castLow) + '</span>');
       if (d.pl) eff.push('<span class="' + cls(d.pl) + '">Power ' + sign(d.pl, 1) + '</span>');
       if (d.fund) eff.push('<span class="' + cls(d.fund) + '">Fundamentals ' + sign(d.fund) + '</span>');
       for (const [k, v] of d.vectors) eff.push('<span class="' + cls(v) + '">' + VL[k] + ' ' + sign(v) + '</span>');
@@ -3124,7 +3317,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       '<tr><td>Card quality</td><td class="n">' + P.qScore + '</td><td class="why">mean card power of top 60 nonland cards ' + P.cardQ + ' (scaled to 100 at 0.6); 30% of raw power</td></tr>' +
       '<tr><td>Mana base multiplier</td><td class="n">×' + P.manaMult.toFixed(2) + '</td><td></td></tr>' +
       '<tr><td>Strategy ceiling</td><td class="n">' + P.ceiling.toFixed(1) + '</td><td class="why">' + (P.ceilingBinding ? 'binding. ' : '') + P.signals.map(sg => (sg.on ? '✓ ' : '✗ ') + esc(sg.label)).join('<br>') + '</td></tr>' +
-      '<tr><td>Win turn</td><td class="n">T' + P.win.best + ' / T' + P.win.typical + ' / T' + P.win.contested + '</td><td class="why">best / typical / contested' + (P.win.comboTurn ? '; fastest combo castable T' + P.win.comboTurn : '') + '</td></tr>' +
+      '<tr><td>Win turn</td><td class="n">T' + P.win.best + ' / T' + P.win.typical + ' / T' + P.win.contested + '</td><td class="why">best / typical / contested; typical from ' + (P.win.source === 'simulated combo' ? 'the simulated combo turn (middle half of games T' + P.win.range[0] + '–T' + P.win.range[1] + ')' : 'the power level') + (P.win.combo ? '; a win combo is assembled by T6 in ' + pct(P.win.combo.by6) + ' of games, by T8 in ' + pct(P.win.combo.by8) : '') + '; goldfish damage reaches ' + P.win.goldfish.life + ' by ' + (P.win.goldfish.median > P.win.goldfish.horizon ? 'no turn up to T' + P.win.goldfish.horizon : 'T' + P.win.goldfish.median) + ' (median)</td></tr>' +
       '<tr><td>Recommended minimum bracket</td><td class="n">' + P.minBracket + '</td><td class="why">' + esc(P.minBracketWhy.join('; ')) + '</td></tr>' +
       '<tr><td>Uncertainty from</td><td></td><td class="why">' + esc(P.ciParts.join(', ')) + '</td></tr>' +
       '<tr><td>EDHREC rank of nonland cards</td><td></td><td class="why">' + P.quality.map(q => esc(q.label) + ': ' + q.n).join(' · ') + ' (popularity, not power)</td></tr>' +
@@ -3132,11 +3325,12 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       '<div class="an-grid">' + vecRows + '</div>' +
       '<div class="an-card wide"><h3>Combos (' + P.combos.length + ' lines, ' + P.families.length + ' families)</h3>' + comboRows + '<p class="note">Family = combos sharing a card; family value = best line + 25% of the rest, capped at 1.5× best. Line value = compactness (2 cards 1.0, 3 cards 0.7, 4 cards 0.45) × outcome (win 1.0, infinite resource 0.75, lock 0.45, value 0.3). Early = all pieces castable by turn 5 using simulated mana from two consecutive turns.</p></div>';
     const goldfish = '<div class="an-card"><h3>Goldfish simulation</h3>' + manaLineSVG(s) + '<p class="note">Average mana available at the start of each turn (line) against one land per turn (dashed). ' + s.games.toLocaleString() + ' seeded games; simulated percentages carry a 95% margin of at most ±' + (196 * Math.sqrt(0.25 / s.games)).toFixed(2) + ' points.</p><table class="t compact"><tbody>' +
-      [['Keepable 7 (2–5 lands)', pct(s.keep7) + ' sim · ' + pct(X.prob.openingLands.p2to5) + ' exact'], ['Opening 7 with ≥3 lands (exact)', pct(X.prob.openingLands.p3plus)], ['≥1 ramp at MV ≤2 by turn 2 (exact)', pct(X.prob.pRampEarly) + ' (' + X.prob.nRamp2 + ' cards)'], ['Missed natural land drop by T4', pct(s.missLandDropT4)], ['Flooded at T6 (≥3 lands, ≤1 spell in hand)', pct(s.flood6)], ['Stuck on ≤3 lands at T6', pct(s.screw6)], ['Commander cast by its MV turn (MV ' + s.cmdCmc + ')', s.cmdOnCurve == null ? '—' : pct(s.cmdOnCurve)], ['Mana spent / available, T1–6', pct(s.efficiency6)], ['Spells cast by T6 (avg)', s.spellsBy6.toFixed(1)]]
+      [['Keepable 7 (2–5 lands, a spell of MV ≤ 3)', pct(s.keep7) + ' sim · 2–5 lands ' + pct(X.prob.openingLands.p2to5) + ' exact'], ['Opening 7 with ≥3 lands (exact)', pct(X.prob.openingLands.p3plus)], ['≥1 ramp at MV ≤2 by turn 2 (exact)', pct(X.prob.pRampEarly) + ' (' + X.prob.nRamp2 + ' cards)'], ['Missed natural land drop by T4', pct(s.missLandDropT4)], ['Flooded at T6 (≥3 lands, ≤1 spell in hand)', pct(s.flood6)], ['Stuck on ≤3 lands at T6', pct(s.screw6)], ['Commander cast by its MV turn (MV ' + s.cmdCmc + ')', s.cmdOnCurve == null ? '—' : pct(s.cmdOnCurve)], ['Mana spent / available, T1–6', pct(s.efficiency6)], ['Spells cast by T6 (avg)', s.spellsBy6.toFixed(1)]]
         .map(r => '<tr><td>' + r[0] + '</td><td class="n">' + r[1] + '</td></tr>').join('') + '</tbody></table></div>';
     const mana = '<div class="an-card"><h3>Mana base</h3><table class="t compact"><thead><tr><th>Color</th><th class="n">Pips</th><th class="n">Pip %</th><th class="n">Land src</th><th class="n">All src</th><th>Check</th></tr></thead><tbody>' +
       X.mana.colors.map(c => '<tr><td>' + pipsHTML(c.color) + '</td><td class="n">' + c.pips.toFixed(1).replace(/\.0$/, '') + '</td><td class="n">' + pct(c.pipShare) + '</td><td class="n">' + c.landSources + '</td><td class="n">' + c.allSources + '</td><td>' + (c.warn ? '<span class="chip flag">' + esc(c.warn) + '</span>' : '<span class="chip">ok</span>') + '</td></tr>').join('') +
-      '</tbody></table><p class="note">Lands entering tapped (' + X.mana.tapped.length + '): ' + cardList(X.mana.tapped) + '</p></div>';
+      '</tbody></table>' + (() => { const low = X.mana.cast.filter(r => r.p < X.mana.castOk); return low.length ? '<p class="note">Below ' + Math.round(X.mana.castOk * 100) + '% castable on curve (' + low.length + '): ' + low.slice(0, 8).map(r => esc(r.n) + ' ' + r.k + r.color + ' T' + r.t + ' ' + pct(r.p)).join(' · ') + (low.length > 8 ? ' …' : '') + '</p>' : ''; })() +
+      '<p class="note">Lands: ' + X.nLands + ' · curve estimate ' + X.mana.landEst.lands.toFixed(1) + ' (Karsten).</p><p class="note">Lands entering tapped (' + X.mana.tapped.length + '): ' + cardList(X.mana.tapped) + '</p></div>';
     const cov = X.interaction.coverage;
     const inter = '<div class="an-card"><h3>Interaction coverage</h3><table class="t compact"><tbody>' +
       [['Creatures', cov.creature], ['Artifacts', cov.artifact], ['Enchantments', cov.enchantment], ['Planeswalkers', cov.planeswalker], ['Lands', cov.land], ['Spells (counters)', cov.spell], ['Graveyards', X.interaction.gyHate]]
@@ -3158,8 +3352,9 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const method = '<details class="an-method"><summary class="note" style="cursor:pointer">Method and assumptions</summary><ul class="note">' +
       '<li>Role, flag and theme detection use the oracle-text rules listed under Advanced → Tag and flag rules. Themes are enabler/payoff pairs; a link is one card on the opposite side of the same theme (commander counts 3).</li>' +
       '<li>Targets come from your Category targets and target average MV. "avg" next to a target is the mean per deck across EDHREC decklists (<a href="https://edhrec.com/articles/the-deck-of-many-things-card-frequencies-by-type-and-function-across-edh" target="_blank" rel="noopener">EDHREC, Jul 2022</a>: 35.9 lands, 12.7 ramp, 7.6 draw, 8.5 spot removal, 2.7 wipes, 3.0 tutors); it describes what players build, not an optimum. Other targets are heuristics shown next to each factor.</li>' +
-      '<li>Color sources: Frank Karsten\'s 99-card figures call for about 19 sources to cast a single-pip card on turn 1 and 30 for a double-pip card on turn 2 at ~90% (<a href="https://scrollvault.net/guides/mana-bases.html" target="_blank" rel="noopener">summary</a>). The color warning here is a looser share-of-pips check.</li>' +
-      '<li>Goldfish: seeded, ' + s.games + ' games, no opponents. One free mulligan when the opening 7 has fewer than 2 or more than 5 lands. Draws from turn 2. Each turn it plays an untapped land if possible, casts ramp first, then the commander, then the largest spells that fit. Mana rocks add mana immediately, creatures next turn, land-search ramp adds tapped lands. Colors, rituals and card draw are not modeled.</li>' +
+      '<li>Color sources: for every card, the exact chance of having its colored pips from lands by the turn equal to its mana value, given you hit your land drops (Frank Karsten\'s definition; mana rocks and dorks not counted). A color is flagged when any card is below ' + Math.round(Analysis.CAST_OK * 100) + '%. Karsten\'s 99-card figures (19 sources for one pip on turn 1, 30 for two on turn 2; <a href="https://scrollvault.net/guides/mana-bases.html" target="_blank" rel="noopener">summary</a>) give 81% and 87% under this model, because his also count mulligans.</li>' +
+      '<li>Land estimate: 31.42 + 3.13 × average MV − 0.28 × cheap ramp and draw (MV ≤ 2) − 1.35 for the free mulligan, attributed to Frank Karsten (<a href="https://scrollvault.net/guides/how-many-lands.html" target="_blank" rel="noopener">summary</a>). This deck: ' + X.mana.landEst.lands.toFixed(1) + ' (avg MV ' + X.mana.landEst.avgMV.toFixed(2) + ', ' + X.mana.landEst.cheap + ' cheap ramp/draw).</li>' +
+      '<li>Goldfish: seeded, ' + s.games + ' games, no opponents. One free mulligan when the opening 7 has fewer than 2 or more than 5 lands. Draws from turn 2. Each turn it plays an untapped land if possible, casts ramp first, then the commander, then the largest spells that fit. Mana rocks add mana immediately, creatures next turn, land-search ramp adds lands of any of your colors next turn. Lands and mana sources pay colored pips ({X} pips only; hybrid pips count as generic). London mulligan: the first is free, keep 7 with 2–5 lands and a spell of MV ≤ 3, otherwise keep 6 with one card on the bottom. Draw spells draw their number, draw engines one card a turn, tutors fetch a missing piece of the deck\'s closest win combo. A combo line counts as assembled when every piece has been drawn or tutored (the commander once cast) and this turn\'s plus last turn\'s mana covers its pieces. The damage clock counts creature power (evasive in full, others at half for blocks), tokens, anthems, overruns and drains to 120 (3 opponents × 40); it leaves out most value engines, so it is shown but not used for the win turn. Rituals and interaction are not modeled.</li>' +
       '<li>Exact probabilities use the hypergeometric distribution over the ' + X.deckSize + '-card library.</li>' +
       '<li>Power model follows the structure documented by <a href="https://scrycheck.com/docs" target="_blank" rel="noopener">ScryCheck</a>: five vectors (speed, consistency, interaction, mana base, threats), combo families from Spellbook, archetype-dependent weights, a strategy ceiling from four signals, a 1–10 scale with ± uncertainty, best/typical/contested win turns and a recommended minimum bracket. ScryCheck does not publish its weights, so every weight and curve here is this tool\'s own, shown on each card, and uncalibrated against labeled decks. Typical win turn maps power to WotC turn expectations (PL 5 → T8, 7 → T6, 8 → T5, 9 → T4). Raw power = 1 + 9·(0.7·vector mix + 0.3·card quality)/100. Card power (0–1) is an oracle-text heuristic: fast mana +0.45, Game Changer +0.35, tutor +0.2–0.35, cheap instant removal +0.3, MV≤1 ramp +0.3, free spells +0.25, cheap repeatable draw +0.2, plus 0.25×EDHREC popularity. Vector components weight each card by 0.6 + card power, so a like-for-like upgrade moves the score. ScryCheck\'s Playgroup.gg anchor, edhtop16 metagame test and per-card power ratings need online data and are not reproduced.</li>' +
       '<li>Bracket estimate: lowest bracket whose card limits (Bracket panel defaults) the list satisfies, per the <a href="https://mtg.wiki/page/Commander_Brackets" target="_blank" rel="noopener">Commander Brackets</a> as updated <a href="https://draftsim.com/mtg-october-2025-commander-bracket-changes/" target="_blank" rel="noopener">Oct 21 2025</a> and <a href="https://magic.wizards.com/en/news/announcements/commander-brackets-beta-update-february-9-2026" target="_blank" rel="noopener">Feb 9 2026</a>. Tutors are counted but no longer limit any bracket. Expected game length (B1 9+, B2 8+, B3 6+, B4 4+ turns) and intent are not measurable from card data.</li></ul></details>';
@@ -3394,7 +3589,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       'Archetype: <b>' + tied.map(a => esc(a.name)).join(' / ') + '</b>' + (tied.length > 1 ? ' (tied at ' + tied[0].score.toFixed(2) + ')' : '') + (arch.length > tied.length ? '; next: ' + arch.slice(tied.length, tied.length + 2).map(a => esc(a.name) + ' ' + a.score.toFixed(2)).join(', ') : '') + '. Power level ' + P.pl.toFixed(1) + ' (' + esc(P.label) + ').',
       cmds.length ? 'Commander' + (cmds.length > 1 ? 's' : '') + ': ' + cmds.map(c => '<b>' + esc(c.n) + '</b> (MV ' + c.cmc + ')').join(' and ') + '. Median cast turn in simulation: ' + (cmdT != null && cmdT <= pt.length ? 'T' + cmdT : 'after T' + pt.length) + '; cast by T4 in ' + pct(pCmdBy(4)) + ' of games, by T6 in ' + pct(pCmdBy(6)) + '.' : '',
       active.length ? 'Strongest synergy themes (enabler × payoff balance' + (active.length > 4 ? ', top 4 of ' + active.length : '') + '): ' + active.slice(0, 4).map(p => esc(p.label) + ' (' + p.en.length + ' enablers, ' + p.pay.length + ' payoffs' + (p.cmdEn || p.cmdPay ? ', commander is ' + (p.cmdEn && p.cmdPay ? 'both' : p.cmdEn ? 'an enabler' : 'a payoff') : '') + ')').join('; ') + '.' : 'No enabler/payoff theme reaches the active threshold; the deck wins on card quality rather than a synergy engine.',
-      'Expected win turn without opposition: best T' + P.win.best + ', typical T' + P.win.typical + ', contested T' + P.win.contested + (P.win.comboTurn ? '; earliest combo T' + P.win.comboTurn : '') + '.',
+      'Expected win turn without opposition: best T' + P.win.best + ', typical T' + P.win.typical + ', contested T' + P.win.contested + (P.win.combo ? '; a win combo is assembled by T6 in ' + pct(P.win.combo.by6) + ' of simulated games' : '') + '.',
       'Win conditions (' + X.threat.wincons.length + '): ' + list(X.threat.wincons, 10) + '.' + (X.threat.evasive.length ? ' Evasive creatures: ' + X.threat.evasive.length + '.' : '')
     ]);
     if (cmds.length) {
@@ -3403,7 +3598,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     }
     const mull = li([
       'Lands: ' + X.nLands + ' of ' + X.deckSize + '. Opening 7 has 2–5 lands in ' + pct(X.prob.openingLands.p2to5) + ' of hands and 3+ lands in ' + pct(X.prob.openingLands.p3plus) + '.',
-      'Simulated keep rule: keep 7 with 2–5 lands, otherwise take the free mulligan. Kept on 7: ' + pct(sim.keep7) + '.',
+      'Simulated keep rule: keep 7 with 2–5 lands and a spell of MV 3 or less, otherwise take the free mulligan; a second mulligan keeps 6. Kept on 7: ' + pct(sim.keep7) + ', mulliganed to 6: ' + pct(sim.mulligan2 || 0) + '.',
       'At least one ramp spell of MV ≤ 2 by your turn-2 draw: ' + pct(X.prob.pRampEarly) + ' (' + X.prob.nRamp2 + ' in the deck). A 2-land hand is a keep when it holds one of these.',
       'Missed land drop by T4: ' + pct(sim.missLandDropT4) + '. Flooded at T6: ' + pct(sim.flood6) + '. Screwed at T6 (3 or fewer lands): ' + pct(sim.screw6) + '.'
     ]);
@@ -4065,24 +4260,16 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     histPush('edit', 'Undid ' + opLabel(last)); setStatus('Undid ' + opLabel(last) + '.');
   }
 
-  /* ---------- colour check: exact odds of having enough sources of each colour for its hardest card on curve ---------- */
+  /* ---------- colour check: chance of each colour for its hardest card on curve, given the land drops (Karsten's definition) ---------- */
   function colourCheckHTML(R) {
     const cols = (R.CI || '').split('').filter(x => 'WUBRG'.includes(x)); if (!cols.length) return '';
-    const N = R.deck.reduce((s, e) => s + e.qty, 0), atLeast = (K, n, k) => { let p = 0; for (let i = k; i <= Math.min(n, K); i++) p += Analysis.hyp(N, K, n, i); return Math.min(1, p); };
-    const cards = R.commanders.map(c => ({ c, cmd: true })).concat(R.deck.filter(e => !Engine.analyze(e.c).isLand).map(e => ({ c: e.c })));
-    const rows = cols.map(X => {
-      const K = R.stats.sources[X] || 0; let worst = null;
-      for (const { c, cmd } of cards) {
-        const mc = (c.mc || '').split(' // ')[0], k = (mc.match(new RegExp('\\{' + X + '\\}', 'g')) || []).length; if (!k) continue;
-        const t = Math.max(1, Math.round(c.cmc)), p = atLeast(K, Math.min(N, 7 + t - 1), k);
-        if (!worst || p < worst.p - 1e-9 || (Math.abs(p - worst.p) < 1e-9 && t < worst.t)) worst = { c, k, t, p, cmd };
-      }
-      return { X, K, worst };
-    }).filter(r => r.worst);
+    const K = Analysis.colourCheck(R.deck, R.commanders, R.CI), ok = Analysis.CAST_OK;
+    const rows = cols.map(X => ({ X, K: K.landSrc[X], worst: K.cast.find(r => r.color === X), low: K.cast.filter(r => r.color === X && r.p < ok).length })).filter(r => r.worst);
     if (!rows.length) return '';
-    return '<div class="wide"><h3>Colour check</h3><div class="scroll"><table class="t"><thead><tr><th>Colour</th><th class="n">Sources</th><th>Hardest on curve</th><th class="n">Needs</th><th class="n">P</th></tr></thead><tbody>' +
-      rows.map(r => '<tr><td>' + pipsHTML(r.X) + '</td><td class="n">' + r.K + '</td><td>' + cardLink(r.worst.c) + (r.worst.cmd ? ' <span class="chip">commander</span>' : '') + '</td><td class="n nw">' + r.worst.k + ' by T' + r.worst.t + '</td><td class="n' + (r.worst.p < 0.9 ? ' badc' : '') + '">' + Math.round(r.worst.p * 100) + '%</td></tr>').join('') +
-      '</tbody></table></div><p class="note">P is the exact hypergeometric chance of having drawn at least that many sources of the colour by that turn on the play (7 + turn − 1 cards from ' + N + '), ignoring mulligans and fetching. Frank Karsten\'s guideline is 90%; red is below it.</p></div>';
+    const byName = new Map(R.commanders.concat(R.deck.map(e => e.c)).map(c => [c.n, c]));
+    return '<div class="wide"><h3>Colour check</h3><div class="scroll"><table class="t"><thead><tr><th>Colour</th><th class="n">Land sources</th><th>Hardest on curve</th><th class="n">Needs</th><th class="n">P</th><th class="n">Cards below ' + Math.round(ok * 100) + '%</th></tr></thead><tbody>' +
+      rows.map(r => '<tr><td>' + pipsHTML(r.X) + '</td><td class="n">' + r.K + '</td><td>' + cardLink(byName.get(r.worst.n)) + (r.worst.cmd ? ' <span class="chip">commander</span>' : '') + '</td><td class="n nw">' + r.worst.k + ' by T' + r.worst.t + '</td><td class="n' + (r.worst.p < ok ? ' badc' : '') + '">' + Math.round(r.worst.p * 100) + '%</td><td class="n">' + r.low + '</td></tr>').join('') +
+      '</tbody></table></div><p class="note">P is the exact chance of having at least that many lands of the colour by that turn on the play (7 + turn − 1 cards from ' + K.N + '), given you have hit your land drops (' + K.L + ' lands). This is Frank Karsten\'s definition. His published 99-card figures (19 sources for one pip on turn 1, 30 for two on turn 2) come out at 81% and 87% here, because he also counts mulligans; red is below ' + Math.round(ok * 100) + '%. Mana rocks and dorks are not counted.</p></div>';
   }
 
   /* ---------- keyboard shortcuts ---------- */
