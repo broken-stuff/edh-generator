@@ -527,15 +527,18 @@ const Analysis = (function () {
   function impact(db, deck, cmds, opts, plans) { const prep = impactPrep(db, deck, cmds, opts); return plans.map(p => impactOne(prep, p)); }
 
   /* ---------- decklist parsing with sections ---------- */
+  // sections: "Commander", "Deck", "Sideboard" (also "// COMMANDER" and "Commander:"); a blank line ends a commander section
   function parseDecklist(text) {
     const cmd = [], main = []; let section = 'main', sawBlankAfterMain = false;
     const lines = String(text || '').split(/\r?\n/);
     for (const raw of lines) {
       const line = raw.trim();
-      if (!line) { if (main.length) sawBlankAfterMain = true; continue; }
-      if (/^(commanders?)\s*:?$/i.test(line)) { section = 'cmd'; continue; }
-      if (/^(deck|mainboard|main)\s*:?$/i.test(line)) { section = 'main'; continue; }
-      if (/^(sideboard|maybeboard|considering)\s*:?$/i.test(line)) { section = 'skip'; continue; }
+      if (!line) { if (section === 'cmd' && cmd.length) section = 'main'; else if (main.length) sawBlankAfterMain = true; continue; }
+      const head = line.replace(/^(?:\/\/|#)\s*/, '').replace(/\s*(?:\(\d+\))?\s*:?$/, '');
+      if (/^commanders?$/i.test(head)) { section = 'cmd'; continue; }
+      if (/^(deck|mainboard|main|maindeck)$/i.test(head)) { section = 'main'; continue; }
+      if (/^(sideboard|maybeboard|considering|companion|tokens?)$/i.test(head)) { section = 'skip'; continue; }
+      if (/^(?:\/\/|#)/.test(line)) { if (section === 'cmd' && cmd.length) section = 'main'; continue; } // other comment or category header
       if (section === 'skip') continue;
       const isCmdTag = /\[commander/i.test(line) || /\*CMDR\*/i.test(line);
       const it = E.parseList(line)[0]; if (!it) continue;

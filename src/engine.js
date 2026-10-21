@@ -1058,10 +1058,13 @@ const Engine = (function () {
       return b + Wl * g - W.role * 2 * sf - W.curve * 8 * Math.max(0, Math.abs((n ? mv / n : T) - T) - 0.15);
     };
 
+    /* imported as-is: drop whatever steps 2–7b added, so the deck is exactly the pasted list */
+    if (env.asIs) { for (const e of deck.filter(x => !x.locked)) removeEntry(e); R.shortfalls = []; R.optimize = null; R.asIs = true; L('Imported as-is: ' + size() + ' card(s), no slots filled.'); }
+
     /* 8. validate + auto-repair */
     R._runBan = new Set();
     const ctx = { db, S, CI, lim, cap, pcap, cur, price, combos, comboForbidden, mainSize, cmin, cmax, excludeSet, cmds };
-    for (let iter = 0; iter < 120; iter++) {
+    for (let iter = 0; iter < (env.asIs ? 0 : 120); iter++) {
       const v = await validate(R, ctx);
       R.validation = v;
       const fail = v.rules.find(r => r.pass === false && !r.stuck);

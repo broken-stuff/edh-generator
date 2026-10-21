@@ -346,7 +346,7 @@
     if (!App.R || !App.R.stats) return { error: 'Generate a deck first, or switch to "Pasted list".' };
     // imported cards are locked so rebuilds keep them, but analysis may still suggest cutting them
     const deck = App.R.deck.map(e => e.imp ? Object.assign({}, e, { locked: false }) : e);
-    return { deck, cmds: App.R.commanders, unknown: [], label: App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck', combos: App.R.combos };
+    return { deck, asIs: !!App.R.asIs, cmds: App.R.commanders, unknown: [], label: App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck', combos: App.R.combos };
   }
   const anGames = () => { const g = +App.anGames || 100000; return [1500, 10000, 25000, 50000, 100000].includes(g) ? g : 100000; };
   async function runAnalysis() {
@@ -375,8 +375,9 @@
     App.AN = X;
     setStatus('Analysis done in ' + ((performance.now() - t0) / 1000).toFixed(2) + ' s (' + X.sim.games.toLocaleString() + ' simulated games).');
     X.impact = []; X.impactDone = !X.plans.length;
+    X.held = !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: analysis first, changes on request
     renderAnalysis();
-    if (!X.plans.length) return;
+    if (!X.plans.length || X.held) return;
     // swap impact: one plan per tick so the page stays responsive
     const names = inp.cmds.map(c => c.n).concat(inp.deck.map(e => e.c.n));
     const combosFor = (cut, add) => {
@@ -422,6 +423,7 @@
     const log = (App.accepted || []).filter(a => a.src === App.anSource);
     const logHTML = log.length ? '<div class="accepted"><span class="note">Accepted:</span> ' + log.map((a, j) => '<span class="chip">− ' + esc(a.cut.n) + ' + ' + esc(a.add.n) + ' <button type="button" class="link" data-sw="undo" data-i="' + (App.accepted.indexOf(a)) + '" aria-label="Undo">undo</button></span>').join(' ') + '</div>' : '';
     const denN = App.denied && App.denied.size ? '<span class="note"> · ' + App.denied.size + ' denied <button type="button" class="link" data-sw="clear-deny">reset</button></span>' : '';
+    if (X.held) return '<div class="an-top"><h3>Recommended changes</h3></div><p class="note">This is your list as imported. When you have read the analysis, the builder can suggest cuts and adds and score each one.</p><button type="button" class="small primary" data-sw="show">Suggest changes</button>';
     if (!X.plans.length) return head + logHTML + denN + '<p class="note">No changes suggested: targets are met and no costly card has a cheaper same-role replacement in the loaded data.</p>';
     const rows = g => X.impact.filter(p => p.group === g).map(p => {
       const d = p.d, eff = [];
@@ -600,9 +602,9 @@
       (b.reasons.length ? '<p class="note">' + esc(b.reasons.join('; ')) + '.</p>' : '') + (b.note ? '<p class="note">' + esc(b.note) + '</p>' : '') +
       (X.combos && X.combos.length ? '<p class="note">Combos: ' + esc(X.combos.slice(0, 6).map(v => v.c.join(' + ')).join('; ')) + '</p>' : '') + '</div>';
     const sevLabel = { high: 'High', med: 'Medium', low: 'Low', info: 'Info' };
-    const recs = '<div class="an-card wide"><h3>Findings</h3>' + (X.recs.length ? '<ol class="recs">' + X.recs.map(r => '<li><span class="chip sev-' + r.sev + '">' + sevLabel[r.sev] + '</span> ' + esc(r.text) +
-      (r.cards.length ? '<div class="recc">' + r.cards.map(c => '<span class="chip">' + (c.uri ? '<a href="' + esc(c.uri) + '" target="_blank" rel="noopener">' + esc(c.n) + '</a>' : esc(c.n)) + (c.price != null ? ' · ' + fmtP(c.price) : '') + (c.rank ? ' · #' + c.rank : '') + '</span>').join('') + '</div>' : '') +
-      (r.combos ? '<div class="recc">' + r.combos.map(v => '<span class="chip">+ ' + esc(v.missing.join(', ')) + ' → ' + esc(v.cards.join(' + ')) + (v.produces.length ? ' (' + esc(v.produces[0]) + ')' : '') + '</span>').join('') + '</div>' : '') + '</li>').join('') + '</ol>' : '<p class="note">No gaps against the benchmarks.</p>') + '</div>';
+    const recs = '<div class="an-card wide"><h3>Findings</h3>' + (X.recs.length ? '<ol class="recs">' + X.recs.map(r => '<li><span class="chip sev-' + r.sev + '">' + sevLabel[r.sev] + '</span> ' + esc(X.held ? (r.text.replace(/\s*[^.]*:$/, '') || r.text) : r.text) +
+      (X.held ? '' : r.cards.length ? '<div class="recc">' + r.cards.map(c => '<span class="chip">' + (c.uri ? '<a href="' + esc(c.uri) + '" target="_blank" rel="noopener">' + esc(c.n) + '</a>' : esc(c.n)) + (c.price != null ? ' · ' + fmtP(c.price) : '') + (c.rank ? ' · #' + c.rank : '') + '</span>').join('') + '</div>' : '') +
+      (r.combos && !X.held ? '<div class="recc">' + r.combos.map(v => '<span class="chip">+ ' + esc(v.missing.join(', ')) + ' → ' + esc(v.cards.join(' + ')) + (v.produces.length ? ' (' + esc(v.produces[0]) + ')' : '') + '</span>').join('') + '</div>' : '') + '</li>').join('') + '</ol>' : '<p class="note">No gaps against the benchmarks.</p>') + '</div>';
     const method = '<details class="an-method"><summary class="note" style="cursor:pointer">Method and assumptions</summary><ul class="note">' +
       '<li>Role, flag and theme detection use the oracle-text rules listed under Advanced → Tag and flag rules. Themes are enabler/payoff pairs; a link is one card on the opposite side of the same theme (commander counts 3).</li>' +
       '<li>Targets come from your Category targets and target average MV. "avg" next to a target is the mean per deck across EDHREC decklists (<a href="https://edhrec.com/articles/the-deck-of-many-things-card-frequencies-by-type-and-function-across-edh" target="_blank" rel="noopener">EDHREC, Jul 2022</a>: 35.9 lands, 12.7 ramp, 7.6 draw, 8.5 spot removal, 2.7 wipes, 3.0 tutors); it describes what players build, not an optimum. Other targets are heuristics shown next to each factor.</li>' +
@@ -745,6 +747,7 @@
       combos: ['Combos', 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.'],
       log: ['Build log', 'Each step the generator and optimiser took.'], export: ['Export', 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.'],
       history: ['History', 'The last 25 decks and revisions in this browser. Tick two to compare them.'],
+      import: ['Import deck', 'Paste your current list to analyze it as it is. Recommended changes come after, when you ask for them.'],
       hand: ['Sample hand', 'Draw opening hands from this list, mulligan and draw on.'], commanders: ['Commanders', 'Every legal commander in the card data, by colour, theme and popularity.'], inspire: ['Inspire me', 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.'], surprise: ['Surprise me', 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.'], tests: ['Acceptance tests', 'Checks the generator against the loaded card data.'] }[App.tab];
     $('pageHead').classList.toggle('hidden', setup || !PH);
     if (PH) $('pageHead').innerHTML = '<h2>' + PH[0] + '</h2><p class="note">' + PH[1] + '</p>';
@@ -757,6 +760,7 @@
     if (App.tab === 'commanders') return renderCommanders();
     if (App.tab === 'inspire') return renderInspire();
     if (App.tab === 'surprise') return renderSurprise();
+    if (App.tab === 'import') return renderImport();
     if (App.tab === 'hand') return renderHand();
     if (!App.R || !App.R.stats) { $('view').innerHTML = emptyView(); return; }
     switch (App.tab) {
@@ -1067,7 +1071,7 @@
       setProg(0.6); setStatus('Scoring and filling slots…');
       await new Promise(r => setTimeout(r, 0));
       if (opts.imported) { S.include = ''; S.exclude = ''; } // the imported list is the deck, so include/exclude lists don't apply
-      const env = { combos: comboProvider(), locks: opts.locks || [], bans: opts.bans || [], imported: !!opts.imported };
+      const env = { combos: comboProvider(), locks: opts.locks || [], bans: opts.bans || [], imported: !!opts.imported, asIs: !!opts.asIs };
       const R = await Engine.generate(db, S, env);
       R.dbMeta = db.meta;
       if (db.meta.warnings && db.meta.warnings.length) R.warnings = db.meta.warnings.concat(R.warnings);
@@ -1076,7 +1080,7 @@
       else {
         App.R = R; built = true; App.openSwap = null; App.QS = null; if (App.anSource !== 'paste') App.AN = null;
         if (App.tab === 'setup' && !App.restoring) { App.tab = 'deck'; window.scrollTo({ top: 0 }); }
-        if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans, imported: env.imported }, ops: [] };
+        if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans, imported: env.imported, asIs: env.asIs }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
         const O = R.optimize;
         setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '. Optimised: deck score ' + O.baseline.toFixed(1) + ' → ' + O.final.toFixed(1) + ' (' + O.swaps.length + ' swaps; ' + O.pairs.toLocaleString() + ' card pairs scored' + (O.timedOut ? '; time cap reached' : '; no better single swap left') + ').' : '.'));
@@ -1084,20 +1088,24 @@
     } catch (e) { App.R = null; showMsgs([e.message || String(e)], []); setStatus('Error.'); console.error(e); }
     App.busy = false; setProg(null); renderSources(); renderAll();
     if (built && opts.onBuilt) opts.onBuilt(App.R);
-    if (built && !App.restoring) histPush('generate', opts.imported && !prev ? 'Imported deck' : opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
+    if (built && !App.restoring) histPush('generate', opts.asIs ? 'Imported deck' : opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
     if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R) runAnalysis();
   }
 
-  /* ---------- import: a pasted list becomes the working deck, every card locked ---------- */
+  /* ---------- import: a pasted list becomes the working deck exactly as pasted, every card locked ---------- */
+  function renderImport() {
+    $('view').innerHTML = '<label class="f">Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; the commander goes under a "Commander" or "// COMMANDER" header, or tagged [Commander])<textarea id="impText" rows="16" spellcheck="false" placeholder="// COMMANDER&#10;1 Galadriel, Light of Valinor (LTC) 498&#10;&#10;1 Arcane Signet (LTC) 273&#10;26 Forest (SOS) 280&#10;...">' + esc(App.impText || '') + '</textarea></label>' +
+      '<div class="row" style="margin-top:8px"><button type="button" class="primary" id="impBtn">Import and analyze</button><span class="note" id="impNote">' + esc(App.impNote || '') + '</span></div>' +
+      '<p class="note">The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; ask for recommended changes there when you want them. Rule problems (card count, colour identity, budget) show on Validation.</p>';
+  }
   async function importDeck() {
-    const note = $('impNote'), say = t => { note.textContent = t; };
-    if (!App.bulk) { say('Load the card data first (Card data section).'); return; }
-    const P = Analysis.parseDecklist($('impText').value);
-    readForm();
-    const cmdNames = P.cmd.length ? P.cmd.map(x => x.name) : App.S.commanders.map(s => (s || '').trim()).filter(Boolean);
+    const say = t => { App.impNote = t; if ($('impNote')) $('impNote').textContent = t; };
+    if (!App.bulk) { say('Load the card data first (Setup, Card data).'); return; }
+    const P = Analysis.parseDecklist(App.impText || '');
     const unknown = [], cmds = [];
-    for (const n of cmdNames) { const c = Engine.lookup(App.bulk, n); if (c) cmds.push(c); else unknown.push(n); }
-    if (!cmds.length) { say('No commander found. Put it under a "Commander" header, tag it [Commander], or fill the Commander field.' + (unknown.length ? ' Not in the card data: ' + unknown.join('; ') + '.' : '')); return; }
+    for (const it of P.cmd) { const c = Engine.lookup(App.bulk, it.name); if (c) { if (!cmds.includes(c)) cmds.push(c); } else unknown.push(it.name); }
+    if (!cmds.length) { say('No commander found. Put it under a "Commander" or "// COMMANDER" header, or tag it [Commander].' + (unknown.length ? ' Not in the card data: ' + unknown.join('; ') + '.' : '')); return; }
+    if (cmds.length > 2) { say('More than two commanders found: ' + cmds.map(c => c.n).join('; ') + '.'); return; }
     const locks = [];
     for (const it of P.main) {
       const c = Engine.lookup(App.bulk, it.name); if (!c) { unknown.push(it.name); continue; }
@@ -1105,16 +1113,20 @@
       const ex = locks.find(l => l.name === c.n); if (ex) ex.qty += it.qty; else locks.push({ name: c.n, qty: it.qty });
     }
     if (!locks.length) { say('No cards found in the list.'); return; }
-    App.S.commanders = [cmds[0].n, cmds[1] ? cmds[1].n : '']; App.S.reroll = 0;
+    readForm(); App.S.commanders = [cmds[0].n, cmds[1] ? cmds[1].n : '']; App.S.reroll = 0;
     writeForm(App.S); persistSettings();
     const n = locks.reduce((s, l) => s + l.qty, 0);
     say('Importing ' + n + ' cards…');
-    await runGenerate({ locks, bans: [], imported: true, onBuilt: R => {
-      const filled = R.deck.filter(e => !e.locked).reduce((s, e) => s + e.qty, 0), kept = R.deck.filter(e => e.locked).reduce((s, e) => s + e.qty, 0);
-      const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' for ' + cmds.map(c => c.n).join(' + ') + '.' + (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') + (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (filled ? ' ' + filled + ' slot' + (filled === 1 ? '' : 's') + ' filled by the generator (unlocked).' : '');
-      say(msg); setStatus(msg);
-    } });
-    if (!App.R || !App.R.deck.length) say('Not imported; see the messages above.');
+    let built = null;
+    await runGenerate({ locks, bans: [], imported: true, asIs: true, onBuilt: R => { built = R; } });
+    if (!built) { say('Not imported; see the messages above.'); return; }
+    const kept = built.deck.reduce((s, e) => s + e.qty, 0), total = kept + built.commanders.length;
+    const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' with ' + cmds.map(c => c.n).join(' + ') + ' (' + total + ' total).' +
+      (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
+      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total !== 100 ? ' Not 100 cards; Validation lists it.' : '');
+    say(msg); setStatus(msg);
+    App.recsShown = false; App.accepted = []; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
+    runAnalysis();
   }
 
   /* ---------- acceptance tests (run against loaded data) ---------- */
@@ -1535,7 +1547,6 @@
     $('forgetBtn').addEventListener('click', async () => { await IDB.del('bulk'); await IDB.del('combos'); $('idbNote').textContent = 'Stored data removed.'; });
     $('seedBtn').addEventListener('click', () => { const s = Math.random().toString(36).slice(2, 10); $('seed').value = s; App.S.seed = s; App.S.reroll = 0; persistSettings(); });
     $('genBtn').addEventListener('click', () => { App.S.reroll = 0; runGenerate(); });
-    $('impBtn').addEventListener('click', importDeck);
     $('regenBtn').addEventListener('click', () => {
       if (!App.R) return;
       App.S.reroll = 0; // same settings + same locks = same deck
@@ -1544,12 +1555,14 @@
     });
     $('testBtn').addEventListener('click', runTests);
     document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; hidePop(); App.tab = b.dataset.tab; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 }); if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis(); });
-    $('view').addEventListener('input', e => { if (e.target.id === 'anText') App.anText = e.target.value; });
+    $('view').addEventListener('input', e => { if (e.target.id === 'anText') App.anText = e.target.value; if (e.target.id === 'impText') App.impText = e.target.value; });
+    $('view').addEventListener('click', e => { if (e.target.closest('#impBtn')) importDeck(); });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
       const X = App.AN, a = b.dataset.sw;
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }
       if (a === 'clear-deny') { App.denied.clear(); App.AN = null; runAnalysis(); return; }
+      if (a === 'show') { App.recsShown = true; App.AN = null; runAnalysis(); return; }
       if (a === 'accept') { const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); App.AN = null; if (App.anSource !== 'paste') renderAll(); App.tab = 'analysis'; renderView(); runAnalysis(); return; }
       if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); App.AN = null; if (App.anSource !== 'paste') renderAll(); App.tab = 'analysis'; renderView(); runAnalysis(); }
     });
