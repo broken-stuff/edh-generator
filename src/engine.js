@@ -23,7 +23,7 @@ const Engine = (function () {
   function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   function stable(o) { if (o === null || typeof o !== 'object') return JSON.stringify(o); if (Array.isArray(o)) return '[' + o.map(stable).join(',') + ']'; return '{' + Object.keys(o).sort().map(k => JSON.stringify(k) + ':' + stable(o[k])).join(',') + '}'; }
   function pnum(v) { const n = v == null ? NaN : parseFloat(v); return isFinite(n) ? n : null; }
-  function nameKey(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim(); }
+  function nameKey(s) { return String(s || '').replace(/Æ/g, 'Ae').replace(/æ/g, 'ae').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[‘’`´]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, ' ').trim(); }
   function stripReminder(s) { return s.replace(/\([^)]*\)/g, ''); }
   function subsetCI(ci, CI) { for (const x of ci) if (!CI.includes(x)) return false; return true; }
   function deepMerge(base, over) {
@@ -83,7 +83,7 @@ const Engine = (function () {
       rl: !!c.reserved, bc: c.border_color || '', stamp: c.security_stamp || '', stype: c.set_type || '',
       sets: c.set ? [c.set] : [], first: c.released_at || '', last: c.released_at || '',
       kw: (c.keywords || []).map(k => String(k).toLowerCase()), pm: Array.isArray(c.produced_mana) ? c.produced_mana : [],
-      pow: pnum(pw), uri: c.scryfall_uri || '', otags: [],
+      pow: pnum(pw), uri: c.scryfall_uri || '', otags: [], al: [c.flavor_name].concat(faces ? faces.map(f => f.flavor_name) : []).filter(x => x && x !== name && x !== fn),
       pt: ptOf(c.power != null || c.loyalty != null || c.defense != null ? c : (faces && faces[0]) || {}), img: imgOf(c.image_uris || (faces && faces[0] && faces[0].image_uris))
     };
   }
@@ -95,6 +95,7 @@ const Engine = (function () {
     if (b.rank != null && (a.rank == null || b.rank < a.rank)) a.rank = b.rank;
     a.gc = a.gc || b.gc; a.rl = a.rl || b.rl;
     for (const t of b.otags) if (!a.otags.includes(t)) a.otags.push(t);
+    if (b.al && b.al.length) { a.al = a.al || []; for (const x of b.al) if (!a.al.includes(x)) a.al.push(x); }
     a.merged = (a.merged || 1) + 1;
   }
   function buildDB(cards, meta) {
@@ -103,9 +104,22 @@ const Engine = (function () {
     const all = [...byOid.values()].sort((a, b) => a.n < b.n ? -1 : a.n > b.n ? 1 : 0);
     const byName = new Map();
     for (const c of all) for (const k of [c.n, c.fn]) { const key = nameKey(k); if (!byName.has(key)) byName.set(key, c); }
+    for (const c of all) for (const k of c.n.split(' // ').slice(1).concat(c.al || [])) { const key = nameKey(k); if (!byName.has(key)) byName.set(key, c); } // back faces and printed alternate names, only where no card has that name
     return { all, byName, meta: meta || {}, _ctypes: null };
   }
-  function lookup(db, name) { return db.byName.get(nameKey(name)) || null; }
+  // pairs: [[alternate name, Oracle name], ...] (data/aliases.json: Universes Beyond flavour names such as "Rick, Steadfast Leader")
+  function addAliases(db, pairs) {
+    let n = 0;
+    for (const [al, on] of pairs || []) { const key = nameKey(al), c = db.byName.get(nameKey(on)); if (c && !db.byName.has(key)) { db.byName.set(key, c); n++; } }
+    return n;
+  }
+  // exact name first; then the same name with "/", "///" or unspaced "//" between faces, then the front face alone
+  function lookup(db, name) {
+    const k = nameKey(name), hit = db.byName.get(k); if (hit) return hit;
+    if (!/\//.test(k)) return null;
+    const faces = k.split(/\s*\/{1,3}\s*/).filter(Boolean);
+    return db.byName.get(faces.join(' // ')) || db.byName.get(faces[0]) || null;
+  }
 
   /* ---------- list parsing (decklists, collections) ---------- */
   function parseList(text) {
@@ -122,13 +136,21 @@ const Engine = (function () {
       line = line.trim();
       if (!line || /^(#|\/\/)/.test(line)) continue;
       if (/^(commander|deck|sideboard|maybeboard|companion|mainboard)\s*:?$/i.test(line)) continue;
-      let qty = 1, name = line;
-      const m = line.match(/^(\d+)\s*x?\s+(.+)$/i);
-      if (m) { qty = parseInt(m[1], 10); name = m[2]; }
-      name = name.replace(/\s+\*[A-Z]+\*/g, '').replace(/\s+\[[^\]]*\]\s*$/, '').replace(/\s+\([A-Za-z0-9]{2,6}\)(\s+[\w★-]+)?\s*$/, '').trim();
-      if (name) out.push({ qty: Math.max(1, qty), name });
+      const it = parseLine(line);
+      if (it) out.push(it);
     }
     return out;
+  }
+  // one decklist line: "1 Name", "1x Name", "Name x1", plus what Moxfield, Archidekt, MTGA and others append
+  // (set code and collector number, *F* / *E* foil marks, [Category{flags}], ^Tag,#colour^, #tags)
+  function parseLine(line) {
+    line = String(line || '').replace(/\t/g, ' ').trim();
+    let qty = 1, name = line, m;
+    if ((m = line.match(/^(\d+)\s*x?\s+(.+)$/i)) || (m = line.match(/^x(\d+)\s+(.+)$/i))) { qty = parseInt(m[1], 10); name = m[2]; }
+    else if ((m = line.match(/^(.+?)\s+\(?x(\d+)\)?$/i))) { qty = parseInt(m[2], 10); name = m[1]; }
+    name = name.replace(/\s+\^[^^]*\^/g, '').replace(/\s+#\S.*$/, '').replace(/\s+\*[A-Za-z]+\*/g, '').replace(/(?:\s+\[[^\]]*\])+\s*$/, '')
+      .replace(/\s+[([][A-Za-z0-9]{2,6}(?:-[A-Za-z0-9]{1,4})?[)\]](\s+[\w★†-]+)?\s*$/, '').replace(/\s+\*[A-Za-z]+\*\s*$/, '').trim();
+    return name ? { qty: Math.max(1, qty), name } : null;
   }
   function splitCSV(line) { const out = []; let cur = '', q = false; for (let i = 0; i < line.length; i++) { const ch = line[i]; if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; } else if (ch === '"') q = true; else if (ch === ',') { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out; }
 
@@ -1142,6 +1164,30 @@ const Engine = (function () {
       R.validation = await validate(R, ctx); R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
       return v.rules.filter(r => r.pass === false && !failed.has(r.id));
     };
+    // several one-copy swaps at once (combo pieces, budget upgrades): pairs [{ entry, card }]. With dry, returns the
+    // validation rules that would newly fail and puts the deck back exactly as it was; otherwise applies them, locked.
+    R.replaceMany = async function (pairs, dry) {
+      const failed = new Set((R.validation ? R.validation.rules : []).filter(r => r.pass === false).map(r => r.id));
+      const snap = { deck: deck.map(e => Object.assign({}, e)), names: new Set(st.names), total: st.total, cnt: Object.assign({}, st.cnt), creatures: st.creatures };
+      const objs = deck.slice();
+      for (const { entry, card } of pairs) {
+        if (deck.indexOf(entry) < 0) continue;
+        const a = analyze(card);
+        if ((entry.qty || 1) > 1) { entry.qty--; st.total -= (isBasic(entry.c) && !S.budget.inclBasics ? 0 : (price(entry.c) || 0)); for (const k of Object.keys(st.cnt)) if (analyze(entry.c).flags[k]) st.cnt[k]--; if (analyze(entry.c).creature) st.creatures--; }
+        else removeEntry(entry);
+        const slot = a.isLand ? 'land' : (ROLES.includes(entry.slot) && a.roles[entry.slot] ? entry.slot : entry.slot === 'combo' || entry.slot === 'land' ? 'flex' : entry.slot);
+        add(card, slot, 1, a.isLand ? landScore(card) : dyn(card), dry ? 'check' : 'swap for ' + entry.c.n, { locked: true });
+        if (!dry) L('Swap: ' + entry.c.n + ' → ' + card.n + '.');
+      }
+      const v = await validate(R, ctx);
+      if (dry) {
+        deck.splice(0, deck.length, ...objs); objs.forEach((e, i) => Object.assign(e, snap.deck[i]));
+        st.names = snap.names; st.total = snap.total; st.cnt = snap.cnt; st.creatures = snap.creatures;
+        return v.rules.filter(r => r.pass === false && !failed.has(r.id));
+      }
+      R.validation = v; R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
+      return [];
+    };
     // one-copy swap (used by accepted recommendations): splits multi-copy entries such as basics
     R.swapOne = async function (entry, card) {
       if ((entry.qty || 1) > 1) {
@@ -1292,7 +1338,7 @@ const Engine = (function () {
   ];
 
   return { cardPower, POWER_PREF, PAIRS, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
-    norm, buildDB, lookup, nameKey, parseList, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
+    norm, buildDB, addAliases, lookup, nameKey, parseList, parseLine, splitCSV, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
     spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes, STYLES, inspire, styleProfile };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;
