@@ -218,6 +218,15 @@ function legalCheck(R, label) {
     assert(DS.stats.evals > 10 && ticks === DS.stats.evals + 1 && DS.pkg.every(x => !inDeckN.has(x.add.n) && x.add.leg === 'legal' && inDeckN.has(x.cut.n) && !keepN.has(x.cut.n) && x.m >= Dp.MIN_GAIN) && new Set(pc2).size === pc2.length && DS.pkg.every((x, i) => !i || x.total >= DS.pkg[i - 1].total), 'deep search: ' + DS.stats.evals + ' measured lists; package of ' + DS.pkg.length + ' with new legal adds, distinct cuts, each step gaining ' + Dp.MIN_GAIN + '+');
     const DR = Dp.rows(PX, DS);
     assert(DR.length === DS.pkg.length + DS.singles.reduce((s, it) => s + it.adds.length, 0) && DR.every(r => r.d && r.after && r.cut && r.add && /^(Package|Deep search)$/.test(r.group)), 'deep rows: one accept/deny row per swap, with the measured effect');
+    // mechanics graph: Oracle text → needs/makes; linked pairs
+    const Mh = require('./mech.js'), mk = (n, low, ft, cmc, kw) => ({ n, low, ft: ft || 'Creature — Test', cmc: cmc == null ? 2 : cmc, kw: kw || [] });
+    const outlet = mk('Synth Altar', 'sacrifice a creature: add {c}{c}.', 'Artifact', 3), drain = mk('Synth Artist', 'whenever this creature or another creature dies, target player loses 1 life and you gain 1 life.');
+    const maker = mk('Synth Mob', '{t}: create a 1/1 red goblin creature token.'), landfall = mk('Synth Cobra', 'landfall — whenever a land you control enters, add one mana of any color.', 'Creature — Snake', 2, ['landfall']);
+    const ramp = mk('Synth Growth', 'search your library for a basic land card, put it onto the battlefield tapped, then shuffle.', 'Sorcery'), flier = mk('Synth Bird', 'flying'), counter = mk('Synth Denial', 'counter target spell.', 'Instant');
+    assert(Mh.parse(outlet).needs.has('fodder.creature') && Mh.parse(drain).needs.has('creature.dies') && Mh.parse(maker).makes.has('token.creature') && Mh.parse(landfall).needs.has('land.enters') && Mh.parse(ramp).makes.has('land.drop'), 'mech parse: sacrifice cost, dies trigger, token maker, landfall, land ramp');
+    assert(Mh.pairW(outlet, drain) >= Mh.LINK && Mh.pairW(maker, outlet) >= Mh.LINK && Mh.pairW(landfall, ramp) >= Mh.LINK, 'mech links: sac outlet ↔ death trigger, token maker ↔ sac outlet, landfall ↔ land ramp');
+    assert(Mh.pairW(flier, counter) < Mh.LINK && Mh.pairW(drain, ramp) < Mh.LINK && Mh.pairW(outlet, outlet) === 0, 'mech links: unrelated cards stay unlinked; a card is not linked to itself');
+    assert(Mh.norm(mk('Synth Krenko, Mob Boss', 'synth krenko deals 2 damage. when synth krenko, mob boss enters, draw a card.')).split('~').length === 3, 'mech norm: full and short card name become ~');
     // colour check: Karsten's definition (colour given land drops); his 99-card figures 19 (C, T1) and 30 (CC, T2) at 37 lands
     assert(Math.abs(An.castOdds(99, 37, 19, 7, 1, 1) - 0.813) < 0.002 && Math.abs(An.castOdds(99, 37, 30, 8, 2, 2) - 0.872) < 0.002, 'castOdds: 19 sources C on T1 = 81.3%, 30 sources CC on T2 = 87.2%');
     assert(An.castOdds(99, 37, 37, 9, 3, 3) === 1 && An.castOdds(99, 37, 0, 9, 1, 3) === 0, 'castOdds: all lands of the colour → 1, none → 0');

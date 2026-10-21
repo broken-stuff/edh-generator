@@ -442,7 +442,7 @@
     const X = App.AN; if (!X || !X.planner || (App.DEEP && App.DEEP.busy)) return;
     const inp = X.inp, cp = comboProvider(), t0 = performance.now();
     const keep = new Set(inp.cmds.map(c => c.n).concat(App.anSource !== 'paste' && App.R ? App.R.deck.filter(e => e.inc).map(e => e.c.n) : []));
-    const src = ['src-engine', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
+    const src = ['src-engine', 'src-mech', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
     const useW = typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && src.every(Boolean);
     let ex = null;
     const D = App.DEEP = { busy: true, frac: 0, note: 'Preparing candidates…', X, cancel: () => { if (ex) ex.cancel(); } };

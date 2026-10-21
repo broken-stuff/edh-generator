@@ -2,6 +2,8 @@
 const Analysis = (function () {
   'use strict';
   const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
+  const M = (typeof Mech !== 'undefined') ? Mech : (typeof require === 'function' ? require('./mech.js') : null);
+  const mechWhy = t => t.replace(/^needs /, 'uses ').replace(/\./g, ' ');
   const A = c => E.analyze(c);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const ratio = (have, target) => target > 0 ? clamp(have / target, 0, 1) : 1;
@@ -389,17 +391,22 @@ const Analysis = (function () {
 
     const cardSides = new Map(all.map(e => [e.c, sides(e.c).filter(([k]) => activeKeys.has(k))]));
     const cmdSides = cmds.flatMap(sides);
+    // Links: a card is linked to each other card it shares a theme with (enabler ↔ payoff) or whose mechanics meet its needs or
+    // use what it makes (Mech: pair weight ≥ Mech.LINK); +3 if linked to a commander, +1 for the tribal type.
+    const themeLink = (sa, sb) => sa.some(([k, sd]) => sb.some(([k2, s2]) => k2 === k && s2 !== sd));
+    const mechLink = (a, b) => !!M && M.pairW(a, b) >= M.LINK;
+    const mprof = M ? M.profile(all.filter(e => !A(e.c).isLand).map(e => e.c)) : null;
+    const mechWhyOf = c => M ? M.links(c, mprof, null, true).why.map(mechWhy) : [];
     const perCard = all.filter(e => !A(e.c).isLand).map(e => {
-      const my = cardSides.get(e.c); let links = 0; const why = new Set();
-      for (const [k, side] of my) {
-        const other = side === 'en' ? 'pay' : 'en';
-        for (const f of all) { if (f.c === e.c) continue; if (cardSides.get(f.c).some(([k2, s2]) => k2 === k && s2 === other)) { links++; } }
-        if (cmdSides.some(([k2, s2]) => k2 === k && s2 === other)) { links += 3; why.add('commander ' + k); }
-        why.add(k + (side === 'en' ? ' enabler' : ' payoff'));
-      }
+      const my = cardSides.get(e.c); let links = 0, mlinks = 0; const why = new Set();
+      for (const f of all) { if (f.c === e.c) continue; const t = themeLink(my, cardSides.get(f.c)), m = mechLink(e.c, f.c); if (t || m) links++; if (m) mlinks++; }
+      const cmdT = themeLink(my, cmdSides), cmdM = cmds.some(k => mechLink(e.c, k));
+      if (cmdT || cmdM) { links += 3; why.add('commander'); }
+      for (const [k, side] of my) why.add(k + (side === 'en' ? ' enabler' : ' payoff'));
+      if (mlinks) for (const w of mechWhyOf(e.c)) why.add(w);
       if (tribal && (new RegExp('\\b' + tribal.type + '\\b').test(e.c.ft) || e.c.kw.includes('changeling'))) { links += 1; why.add(tribal.type + ' tribal'); }
       const roles = Object.keys(A(e.c).roles);
-      return { c: e.c, links, why: [...why], roles, locked: e.locked };
+      return { c: e.c, links, mlinks, why: [...why], roles, locked: e.locked };
     });
     const withSyn = perCard.filter(x => x.links > 0).length;
     const synShare = perCard.length ? withSyn / perCard.length : 0;
@@ -606,7 +613,11 @@ const Analysis = (function () {
     const lim = Object.assign(E.bracketDefaults(S.bracket || 3), S.bl || {});
     const denied = new Set(opts.deny || []);
     const pool = db ? db.all.filter(c => c.leg === 'legal' && !E.isBasic(c) && !inDeck.has(c.n) && !denied.has(c.n) && [...c.ci].every(x => CI.includes(x)) && !(pcap != null && (c.p[cur] == null || c.p[cur] > pcap)) && !(c.gc && cnt.gc >= lim.gc) && !(A(c).flags.tutor && cnt.tutor >= lim.tutor) && !(A(c).flags.mld && lim.mld <= 0) && !(A(c).flags.xturn && cnt.xturn >= lim.xturn)) : [];
-    const synBonus = c => { let s = 0; for (const [k, side] of sides(c)) if (activeKeys.has(k)) { const p = pairStats.find(x => x.key === k); s += side === 'en' ? (p.status.startsWith('payoff') ? 2 : 1) : (p.status.startsWith('enabler') ? 2 : 1); } if (tribal && new RegExp('\\b' + tribal.type + '\\b').test(c.ft)) s += 1; return s; };
+    // cards outside the deck: mechanics links estimated from the deck profile (exact pairs for the commanders),
+    // scaled by this deck's ratio of exact mechanics links to profile weight
+    const mRatio = (() => { if (!M) return 0; let a = 0, b = 0; for (const x of perCard) { a += x.mlinks; b += M.links(x.c, mprof, null, true).w; } return b > 0 ? a / b : 0; })();
+    const mechAsAdd = c => M ? Math.round(M.links(c, mprof, null, false).w * mRatio) + (cmds.some(k => mechLink(c, k)) ? 3 : 0) : 0;
+    const synBonus = c => { let s = 0; for (const [k, side] of sides(c)) if (activeKeys.has(k)) { const p = pairStats.find(x => x.key === k); s += side === 'en' ? (p.status.startsWith('payoff') ? 2 : 1) : (p.status.startsWith('enabler') ? 2 : 1); } if (tribal && new RegExp('\\b' + tribal.type + '\\b').test(c.ft)) s += 1; return Math.max(s, mechAsAdd(c) / 8); };
     const pick = (pred, k) => pool.filter(pred).map(c => ({ c, s: synBonus(c) * 0.6 + (c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0) })).sort((a, b) => b.s - a.s || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
     const addRec = (sev, text, cards) => recs.push({ sev, text, cards: (cards || []).map(c => ({ n: c.n, mc: c.mc, price: c.p[cur], rank: c.rank, uri: c.uri })) });
     for (const r of ['ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon']) {
@@ -675,7 +686,7 @@ const Analysis = (function () {
     // A card outside the deck gets the links it would have in it: deck cards on the other side of each active theme,
     // +3 for the commander, +1 for the tribal type; the same terms perCard counts for cards in the deck.
     const sideCount = new Map(); for (const e of all) for (const [k, sd] of cardSides.get(e.c)) sideCount.set(k + ':' + sd, (sideCount.get(k + ':' + sd) || 0) + 1);
-    const linksAsAdd = c => { let l = 0; for (const [k, sd] of sides(c)) { if (!activeKeys.has(k)) continue; const o = sd === 'en' ? 'pay' : 'en'; l += sideCount.get(k + ':' + o) || 0; if (cmdSides.some(([k2, s2]) => k2 === k && s2 === o)) l += 3; } if (tribal && (new RegExp('\\b' + tribal.type + '\\b').test(c.ft) || c.kw.includes('changeling'))) l += 1; return l; };
+    const linksAsAdd = c => { let l = 0; for (const [k, sd] of sides(c)) { if (!activeKeys.has(k)) continue; const o = sd === 'en' ? 'pay' : 'en'; l += sideCount.get(k + ':' + o) || 0; if (cmdSides.some(([k2, s2]) => k2 === k && s2 === o)) l += 3; } if (tribal && (new RegExp('\\b' + tribal.type + '\\b').test(c.ft) || c.kw.includes('changeling'))) l += 1; return Math.max(l, mechAsAdd(c)); };
     const colorOf = Object.fromEntries(colors.map(k => [k.color, k]));
     // land value: colours of the identity it makes (−1), untapped +1, popularity; a basic of an over-supplied colour is worth less
     const landValue = c => { const on = srcOf(c).filter(x => CI.includes(x)).length; if (E.isBasic(c)) { const k = colorOf[c.pm[0]]; return (k ? -2 * (k.srcShare - k.pipShare) : 0) + 1; } return 2 * Math.max(0, on - 1) + (manaModel(c).tapped ? 0 : 1) + rankTerm(c); };

@@ -133,6 +133,7 @@ Each page is one self-contained HTML file with no frameworks, libraries or build
 |---|---|
 | `src/engine.js` | Card normalisation, role and theme tagging, brackets, deck generation and the swap optimiser, commander quiz scoring |
 | `src/analysis.js` | Power level, bracket estimate, goldfish simulation, draw odds, recommendations |
+| `src/mech.js` | Mechanics graph: Oracle text parsed into what each card needs (triggers, costs, scaling) and makes (effects and the events they cause); links between cards |
 | `src/deep.js` | Deep search: wide swap screen, combo completions, sequential swap package; runs in Web Workers |
 | `src/app.js` | Deck generator interface |
 | `src/similar.js` | Card explorer similarity index and ranking |
