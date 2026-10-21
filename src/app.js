@@ -383,7 +383,7 @@
     X.impact = []; X.impactDone = !X.plans.length;
     X.held = !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
     renderAnView();
-    if (!X.plans.length || X.held) return;
+    if (!X.plans.length || X.held) { if (!X.held && App.DEEP) { deepMerge(X); renderSwaps(); } return; }
     // swap impact: one plan per tick so the page stays responsive
     const names = inp.cmds.map(c => c.n).concat(inp.deck.map(e => e.c.n));
     const combosFor = (cut, add) => {
@@ -399,7 +399,7 @@
       setStatus('Evaluating changes ' + X.impact.length + '/' + X.plans.length + '…');
       if (App.tab === 'analysis' || App.tab === 'changes') renderSwaps();
     }
-    X.impactDone = true; setStatus('Analysis done; ' + X.plans.length + ' changes evaluated.');
+    X.impactDone = true; setStatus('Analysis done; ' + X.plans.length + ' changes evaluated.'); deepMerge(X);
     if (App.tab === 'analysis' || App.tab === 'changes') renderSwaps();
   }
   // apply one swap to the analysed list: the generated deck (validated, locked) or the pasted text
@@ -427,6 +427,53 @@
     if (done && App.anSource !== 'paste' && App.R) histPush('edit', 'Accepted ' + done + ' change' + (done === 1 ? '' : 's'));
     App.acceptNote = 'Accepted ' + done + ' change' + (done === 1 ? '' : 's') + (skipped ? '; skipped ' + skipped + ' whose card was already cut or added by an earlier change' : '') + '. The list below is re-scored against the new deck.';
   }
+  /* ---------- deep search (Improve page): Deep.search in Web Workers, results join the swap list ---------- */
+  const deepWorkers = () => Math.max(1, Math.min(8, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4) - 1));
+  function deepBarHTML(X) {
+    const D = App.DEEP, busy = D && D.busy;
+    const res = D && !busy && D.res ? D.res.stats : null;
+    return '<div class="an-card wide deep" id="deepBox"><div class="row" style="gap:8px;align-items:center">' +
+      (busy ? '<button type="button" class="small" data-deep="cancel">Cancel</button>' : '<button type="button" class="small primary" data-deep="run">Deep search</button>') +
+      '<progress id="deepBar" max="1" value="' + (busy ? D.frac || 0 : res ? 1 : 0) + '"' + (busy || res ? '' : ' hidden') + '></progress><span class="note" id="deepNote">' + esc(D && D.note || 'Measures ~700 candidate swaps and builds a package of swaps that work together (about 10–30 s).') + '</span></div>' +
+      (res ? '<p class="note">' + res.evals.toLocaleString() + ' measured lists: ' + res.cands + ' candidate swaps screened at ' + Deep.G1.toLocaleString() + ' games, ' + res.confirmed + ' confirmed at ' + Deep.G2.toLocaleString() + ', ' + res.cuts + ' cut candidates, ' + res.workers + ' worker' + (res.workers === 1 ? '' : 's') + ', ' + D.secs.toFixed(1) + ' s.' + (D.X !== X ? ' Measured before your last accepted change' + (D.repaired ? '; ' + D.repaired + ' swap' + (D.repaired === 1 ? '' : 's') + ' re-paired with the next cut because the measured cut is gone' : '') + '. Run again to re-measure.' : '') + '</p>' : '') + '</div>';
+  }
+  const deepSay = (t, frac) => { const D = App.DEEP; if (D) { D.note = t; if (frac != null) D.frac = frac; } const n = $('deepNote'), b = $('deepBar'); if (n) n.textContent = t; if (b && frac != null) { b.hidden = false; b.value = frac; } };
+  async function deepRun() {
+    const X = App.AN; if (!X || !X.planner || (App.DEEP && App.DEEP.busy)) return;
+    const inp = X.inp, cp = comboProvider(), t0 = performance.now();
+    const keep = new Set(inp.cmds.map(c => c.n).concat(App.anSource !== 'paste' && App.R ? App.R.deck.filter(e => e.inc).map(e => e.c.n) : []));
+    const src = ['src-engine', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
+    const useW = typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && src.every(Boolean);
+    let ex = null;
+    const D = App.DEEP = { busy: true, frac: 0, note: 'Preparing candidates…', X, cancel: () => { if (ex) ex.cancel(); } };
+    renderView();
+    try {
+      const res = await Deep.search(X, { deck: inp.deck, cmds: inp.cmds, combos: X.combos || null, prov: cp, keep, settings: App.S },
+        init => (ex = useW ? Deep.workerExec(init, src.join('\n'), deepWorkers()) : Deep.localExec(init)),
+        (d, t) => { const el = (performance.now() - t0) / 1000, eta = d > 20 ? el / d * (t - d) : null; deepSay('Measured ' + d + '/' + t + (eta != null ? ' · about ' + Math.max(1, Math.round(eta)) + ' s left' : '') + '…', d / t); return useW ? null : new Promise(r => setTimeout(r, 0)); });
+      D.res = res; D.secs = (performance.now() - t0) / 1000; D.rows = Deep.rows(X, res); D.note = res.pkg.length ? 'Package of ' + res.pkg.length + ' swap' + (res.pkg.length === 1 ? '' : 's') + ', ' + res.singles.length + ' best single swaps.' : res.singles.length ? res.singles.length + ' single swaps gain ' + Deep.MIN_GAIN + ' or more; none combine into a package.' : 'No swap measured a gain of ' + Deep.MIN_GAIN + ' or more.';
+      if (App.AN && App.AN.impactDone) deepMerge(App.AN);
+    } catch (e) {
+      D.note = /cancel/.test(String(e && e.message)) ? 'Cancelled.' : 'Deep search failed: ' + (e && e.message || e); D.res = null;
+    } finally { D.busy = false; if (App.tab === 'changes') renderView(); }
+  }
+  // put the deep rows that still apply (cut in the list, add not in it) into the analysis' swap list
+  function deepMerge(X) {
+    const D = App.DEEP; if (!X || !D || !D.rows || X.deepIn) return;
+    const deck = X.inp ? X.inp.deck : [], has = c => deck.some(e => e.c === c || e.c.n === c.n);
+    const den = App.denied || new Set();
+    // a row whose measured cut was taken by an accepted swap gets the next cut of the search's cut order that is still in the list
+    const order = (D.res.order || []).filter(has), taken = new Set();
+    const live = []; D.repaired = 0;
+    for (const p of D.rows) {
+      if (has(p.add) || den.has(p.add.n)) continue;
+      if (has(p.cut) && !(p.group === 'Package' && taken.has(p.cut))) { if (p.group === 'Package') taken.add(p.cut); live.push(p); continue; }
+      const c = order.find(x => !taken.has(x)); if (!c) continue;
+      live.push(Object.assign({}, p, { cut: c, reason: p.reason + ' · measured with ' + p.cut.n + ' as the cut' })); D.repaired++;
+    }
+    X.plans = live.concat(X.plans); X.impact = live.concat(X.impact); X.deepIn = true;
+    const box = $('deepBox'); if (box && App.AN === X) box.outerHTML = deepBarHTML(X);
+  }
   function renderSwaps() {
     const el = $('anSwaps'), X = App.AN; if (!el || !X) return;
     el.innerHTML = swapsHTML(X);
@@ -438,7 +485,8 @@
     const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
     const VL = { speed: 'Speed', consistency: 'Consistency', interaction: 'Interaction', manabase: 'Mana base', threats: 'Threats' };
     const AL = Object.fromEntries(X.axes.map(a => [a.key, a.label]));
-    const groups = ['Fix gaps', 'Upgrades', 'Budget'];
+    const groups = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'];
+    const GSUB = { Upgrades: ' (weakest power vectors)', Budget: ' (cheaper card, same role or theme)', Package: ' (deep search: swaps chosen one after another, each measured on the list as changed so far)', 'Deep search': ' (best single swaps of the wide search)' };
     const all = X.impactDone && X.impact.length ? '<button type="button" class="small primary" data-sw="accept-all">Accept all (' + X.impact.length + ')</button>' : '';
     const head = '<div class="an-top"><h3>Recommended changes</h3><span class="note">' + (X.impactDone ? X.impact.length + ' evaluated' : 'evaluating ' + X.impact.length + '/' + X.plans.length + '…') + '</span>' + all + '</div>' + (App.acceptNote ? '<p class="note">' + esc(App.acceptNote) + '</p>' : '');
     const log = (App.accepted || []).filter(a => a.src === App.anSource);
@@ -463,7 +511,7 @@
       const acts = '<div class="sw-acts"><button type="button" class="small primary" data-sw="accept" data-i="' + i + '">Accept</button><button type="button" class="small" data-sw="deny" data-i="' + i + '">Deny</button></div>';
       return '<tr><td><div class="sw"><span class="out">− ' + esc(p.cut.n) + '</span><span class="in">+ ' + (p.add.uri ? '<a href="' + esc(p.add.uri) + '" target="_blank" rel="noopener">' + esc(p.add.n) + '</a>' : esc(p.add.n)) + '</span></div><div class="note">' + esc(p.reason) + (p.tag ? ' · ' + esc(p.tag) : '') + '</div></td><td class="n nw">' + price + '</td><td><div class="eff">' + (eff.length ? eff.join(' ') : '<span class="note">no measurable change</span>') + '</div>' + acts + '</td></tr>';
     }).join('');
-    return head + logHTML + denN + groups.filter(g => X.plans.some(p => p.group === g)).map(g => '<h4 class="an-sub">' + g + (g === 'Upgrades' ? ' (weakest power vectors)' : g === 'Budget' ? ' (cheaper card, same role or theme)' : '') + (X.impactDone && X.impact.some(p => p.group === g) ? ' <button type="button" class="small" data-sw="accept-group" data-g="' + g + '">Accept ' + X.impact.filter(p => p.group === g).length + '</button>' : '') + '</h4><div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th>Projected effect</th></tr></thead><tbody>' + (rows(g) || '<tr><td colspan="3" class="note">evaluating…</td></tr>') + '</tbody></table></div>').join('') +
+    return head + logHTML + denN + groups.filter(g => X.plans.some(p => p.group === g)).map(g => '<h4 class="an-sub">' + g + (GSUB[g] || '') + (X.impactDone && X.impact.some(p => p.group === g) ? ' <button type="button" class="small" data-sw="accept-group" data-g="' + g + '">Accept ' + X.impact.filter(p => p.group === g).length + '</button>' : '') + '</h4><div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th>Projected effect</th></tr></thead><tbody>' + (rows(g) || '<tr><td colspan="3" class="note">evaluating…</td></tr>') + '</tbody></table></div>').join('') +
       '<p class="note">Each change is applied alone and the whole analysis is re-run with 5,000 simulated games on the same shuffles as the current list, so differences come from the swap, not from random variation. Cuts are the lowest-value cards whose removal keeps every role at or above target (value = synergy links + 2×roles + Game Changer/fast/tutor bonus + EDHREC popularity). Adds come from the loaded card data within your color identity, bracket limits and per-card budget cap. Price is the difference in ' + cur.toUpperCase() + ' between the added and removed card.</p>';
   }
   // header-sized radar: no labels, the scores are in the tooltip
@@ -587,7 +635,7 @@
     if (X.error) { $('view').innerHTML = '<div class="msg err">' + esc(X.error) + '</div>'; return; }
     const who = X.label + ': ' + X.cmds.map(c => esc(c.n)).join(' + ') + ' · power ' + X.power.pl.toFixed(1) + ' · fundamentals ' + X.overall + '/100';
     $('view').innerHTML = '<p class="note">' + who + '. Each change is scored alone against the current list. Accept applies it; Deny hides that card.</p>' +
-      '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + (X.recs.length ? '<details class="an-more"><summary class="note">More candidate cards for each problem (' + X.recs.length + ')</summary>' + findingsHTML(X, true) + '</details>' : '');
+      deepBarHTML(X) + '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + (X.recs.length ? '<details class="an-more"><summary class="note">More candidate cards for each problem (' + X.recs.length + ')</summary>' + findingsHTML(X, true) + '</details>' : '');
   }
   function renderAnalysis() {
     const X = App.AN;
@@ -1744,6 +1792,8 @@
     $('view').addEventListener('click', e => { if (e.target.closest('#impBtn')) importDeck();
       const ic = e.target.closest('[data-impcmd]'); if (ic) { App.impPick = ic.dataset.impcmd; importDeck(); } const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
     $('view').addEventListener('click', async e => {
+      const dp = e.target.closest('button[data-deep]');
+      if (dp) { if (dp.dataset.deep === 'run') deepRun(); else if (App.DEEP && App.DEEP.cancel) App.DEEP.cancel(); return; }
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
       const X = App.AN, a = b.dataset.sw;
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }

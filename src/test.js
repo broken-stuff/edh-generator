@@ -203,6 +203,21 @@ function legalCheck(R, label) {
     const UP = await An.upgradePlan(prep, PX.planner, 5, { maxCuts: 4 });
     const inDeckN = new Set(pdeck.map(e => e.c.n)), nonCuts = UP.swaps.filter(x => !E.analyze(x.add).isLand).map(x => x.cut);
     assert(UP.spent <= 5 + 1e-9 && UP.swaps.every(x => !inDeckN.has(x.add.n) && x.add.leg === 'legal' && inDeckN.has(x.cut.n) && x.g > 0) && new Set(nonCuts).size === nonCuts.length, 'upgradePlan: adds fit the amount, are legal and new, cuts are distinct deck cards (' + UP.swaps.length + ' swaps, ' + UP.spent + ')');
+    // deep search: same shuffles give the same score; the package only holds measured gains, distinct cuts, new legal adds
+    const Dp = require('./deep.js'), keepN = new Set([rb.n]);
+    const v2 = PX.planner.pool.filter(c => !E.analyze(c).isLand).slice(3, 5), prov2 = E.localComboProvider([{ id: 'syn-pair', c: [v2[0].n, v2[1].n, pdeck[5].c.n], cmd: [], p: ['Win the game'], t: [], r: 0, pop: 9 }], {});
+    const dctx = { deck: pdeck, cmds: [rb], combos: [], prov: prov2, keep: keepN, settings: base.settings };
+    const init = Dp.makeInit(PX, dctx, v2, { settings: base.settings });
+    const ev = Dp.evaluator(typeof structuredClone === 'function' ? structuredClone(init) : JSON.parse(JSON.stringify(init)));
+    const cutN = pdeck.find(e => !E.analyze(e.c).isLand && e.c.n !== pdeck[5].c.n).c.n, t1 = { id: 1, games: 300, swaps: [{ cut: cutN, add: v2[0].n }] };
+    assert(ev({ id: 0, games: 300, swaps: [] }).g === 0 && ev(t1).g === ev(Object.assign({}, t1, { id: 2 })).g, 'deep evaluator: no swap scores 0, the same swap twice scores the same (common random numbers, structured-cloned input)');
+    assert(init.comp[v2[0].n] && init.comp[v2[0].n].length === 1, 'deep: a candidate that completes a Spellbook line with another candidate carries that line');
+    let ticks = 0;
+    const DS = await Dp.search(PX, dctx, Dp.localExec, async () => { ticks++; }, { g1: 200, g2: 300, cuts: 6, nonland: 10, popular: 2, perRole: 1, perVector: 1, lands: 3, single: 2, pairs: 2, confirm: 14, rounds: 3, lead: 4, altFor: 1, altCuts: 2 });
+    const pc2 = DS.pkg.map(x => x.cut);
+    assert(DS.stats.evals > 10 && ticks === DS.stats.evals + 1 && DS.pkg.every(x => !inDeckN.has(x.add.n) && x.add.leg === 'legal' && inDeckN.has(x.cut.n) && !keepN.has(x.cut.n) && x.m >= Dp.MIN_GAIN) && new Set(pc2).size === pc2.length && DS.pkg.every((x, i) => !i || x.total >= DS.pkg[i - 1].total), 'deep search: ' + DS.stats.evals + ' measured lists; package of ' + DS.pkg.length + ' with new legal adds, distinct cuts, each step gaining ' + Dp.MIN_GAIN + '+');
+    const DR = Dp.rows(PX, DS);
+    assert(DR.length === DS.pkg.length + DS.singles.reduce((s, it) => s + it.adds.length, 0) && DR.every(r => r.d && r.after && r.cut && r.add && /^(Package|Deep search)$/.test(r.group)), 'deep rows: one accept/deny row per swap, with the measured effect');
     // colour check: Karsten's definition (colour given land drops); his 99-card figures 19 (C, T1) and 30 (CC, T2) at 37 lands
     assert(Math.abs(An.castOdds(99, 37, 19, 7, 1, 1) - 0.813) < 0.002 && Math.abs(An.castOdds(99, 37, 30, 8, 2, 2) - 0.872) < 0.002, 'castOdds: 19 sources C on T1 = 81.3%, 30 sources CC on T2 = 87.2%');
     assert(An.castOdds(99, 37, 37, 9, 3, 3) === 1 && An.castOdds(99, 37, 0, 9, 1, 3) === 0, 'castOdds: all lands of the colour → 1, none → 0');

@@ -71,7 +71,7 @@ Scores any deck, generated, imported or pasted, or compares two. The top of the 
 
 ### Improve
 
-- **Suggested swaps:** recommended cuts and adds for the analyzed list, each scored with simulated games. Accept or deny them one at a time, by group or all at once. Candidate cards for each problem are under the list.
+- **Suggested swaps:** recommended cuts and adds for the analyzed list, each scored with simulated games. Accept or deny them one at a time, by group or all at once. Candidate cards for each problem are under the list. **Deep search** (10–30 s, runs in background workers, with a progress bar and Cancel) screens several hundred candidate adds at 1,500 simulated games, confirms the best 60 at 5,000, includes cards and pairs that complete Commander Spellbook combos, and builds a package of swaps chosen one after another on the list as changed so far, so synergy between the added cards counts. Its swaps join the list for you to accept or deny.
 - **Budget upgrades:** pick $20, $50, $200 or another amount. The page finds the set of swaps that raises the deck most for at most that much: each add is Commander-legal and inside your colour identity and bracket limits, and each replaces the most replaceable card (lowest value that keeps every role at its target; never the commander, a combo piece or a card you locked; lands replace a basic of your most over-supplied colour). Candidates are measured with 3,000 simulated games on the same shuffles as the current list (gain = 10 × power level change + fundamentals change) and the best set within the amount is chosen by knapsack. The whole set is then measured together. **Apply** or **Apply all** makes the swaps; **Copy buy list** copies the adds as `1 Card Name` lines.
 - **Combos:** combos already in the deck, and combos one or two cards away with each missing card's price. **+ Add** (one card) or **+ Add 2 cards** pairs each missing card with a suggested cut, which you can change, and checks the whole change first: it won't add cards that break your bracket or budget, and says which rule. Two-card infinites your bracket doesn't allow are marked "not allowed" and listed last.
 
@@ -133,6 +133,7 @@ Each page is one self-contained HTML file with no frameworks, libraries or build
 |---|---|
 | `src/engine.js` | Card normalisation, role and theme tagging, brackets, deck generation and the swap optimiser, commander quiz scoring |
 | `src/analysis.js` | Power level, bracket estimate, goldfish simulation, draw odds, recommendations |
+| `src/deep.js` | Deep search: wide swap screen, combo completions, sequential swap package; runs in Web Workers |
 | `src/app.js` | Deck generator interface |
 | `src/similar.js` | Card explorer similarity index and ranking |
 | `src/card.js` | Card explorer interface |

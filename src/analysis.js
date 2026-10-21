@@ -812,14 +812,18 @@ const Analysis = (function () {
     const o = Object.assign({}, opts, { games, seed, almost: null });
     return { db: null, deck, cmds, opts: o, games, base: snap(run(null, deck, cmds, o)) }; // db only feeds the add pool, which snap() doesn't read
   }
-  function impactOne(prep, p) {
-    const d2 = applySwap(prep.deck, p.cut, p.add);
-    const combos = prep.opts.combosFor ? prep.opts.combosFor(p.cut, p.add) : (prep.opts.combos || null);
+  // a set of swaps applied together, scored against prep.base; combos: the deck's combos after the swaps (null = none known)
+  function impactSwaps(prep, swaps, combos) {
+    let d2 = prep.deck; for (const s of swaps) d2 = applySwap(d2, s.cut, s.add);
     const a = snap(run(prep.db, d2, prep.cmds, Object.assign({}, prep.opts, { combos }))), b = prep.base;
     const dv = Object.keys(a.v).map(k => [k, a.v[k] - b.v[k]]).filter(x => x[1] !== 0);
     const da = Object.keys(a.axes).map(k => [k, a.axes[k] - b.axes[k]]).filter(x => x[1] !== 0);
     const dsrc = Object.keys(a.src).map(k => [k, a.src[k] - (b.src[k] || 0)]).filter(x => x[1] !== 0);
-    return Object.assign({}, p, { d: { src: dsrc, warn: a.warn - b.warn, castLow: a.castLow - b.castLow, pl: Math.round((a.pl - b.pl) * 10) / 10, fund: a.fund - b.fund, minB: a.minB - b.minB, typical: a.typical - b.typical, keep: a.keep - b.keep, t4: a.t4 - b.t4, vectors: dv, axes: da }, after: a });
+    return { d: { src: dsrc, warn: a.warn - b.warn, castLow: a.castLow - b.castLow, pl: Math.round((a.pl - b.pl) * 10) / 10, fund: a.fund - b.fund, minB: a.minB - b.minB, typical: a.typical - b.typical, keep: a.keep - b.keep, t4: a.t4 - b.t4, vectors: dv, axes: da }, after: a, g: a.exact - b.exact };
+  }
+  function impactOne(prep, p) {
+    const combos = prep.opts.combosFor ? prep.opts.combosFor(p.cut, p.add) : (prep.opts.combos || null);
+    return Object.assign({}, p, impactSwaps(prep, [p], combos));
   }
   function impact(db, deck, cmds, opts, plans) { const prep = impactPrep(db, deck, cmds, opts); return plans.map(p => impactOne(prep, p)); }
 
@@ -898,6 +902,6 @@ const Analysis = (function () {
     return { cmds: [], how: null, main, missing: [], candidates: cand };
   }
 
-  return { run, impact, impactPrep, impactOne, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
+  return { run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;
