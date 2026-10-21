@@ -10,8 +10,8 @@ const fs = require('fs'), zlib = require('zlib'), readline = require('readline')
 
 const TOP = ['object', 'id', 'oracle_id', 'name', 'lang', 'layout', 'released_at', 'mana_cost', 'cmc', 'type_line', 'oracle_text',
   'power', 'toughness', 'loyalty', 'defense', 'color_identity', 'keywords', 'produced_mana', 'game_changer', 'reserved', 'set',
-  'set_type', 'border_color', 'security_stamp', 'edhrec_rank'];
-const FACE = ['name', 'oracle_id', 'mana_cost', 'type_line', 'oracle_text', 'power', 'toughness', 'loyalty', 'defense'];
+  'set_type', 'border_color', 'security_stamp', 'edhrec_rank', 'flavor_name'];
+const FACE = ['name', 'flavor_name', 'oracle_id', 'mana_cost', 'type_line', 'oracle_text', 'power', 'toughness', 'loyalty', 'defense'];
 const pick = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = o[k]; return r; };
 const img = u => u && u.normal ? { normal: u.normal } : undefined;
 

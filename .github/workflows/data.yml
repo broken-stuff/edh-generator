@@ -1,5 +1,6 @@
 # Keeps data/ loadable by the page without any API calls:
 #  - data/oracle-cards-*.jsonl.gz: Scryfall Oracle Cards, refreshed weekly (and on demand), cut to the fields the page reads
+#  - data/aliases.json: alternate printed names (Universes Beyond flavour names) mapped to Oracle names, from Default Cards
 #  - data/spellbook/: Commander Spellbook combos, rebuilt weekly (and on demand) from variants.json into small files
 #  - data/index.json: list of files in data/, rebuilt after every push that touches data/
 name: Data files
@@ -90,6 +91,29 @@ jobs:
           echo "::notice::Downloaded $(stat -c %s "$RUNNER_TEMP/oracle.json") bytes; $(node tools/scryfall-slim.js "$RUNNER_TEMP/oracle.json" "$RUNNER_TEMP/$name.jsonl.gz")"
           git rm -q --ignore-unmatch data/oracle-cards-*.json data/oracle-cards-*.jsonl data/oracle-cards-*.json.gz data/oracle-cards-*.jsonl.gz
           mv "$RUNNER_TEMP/$name.jsonl.gz" data/
+      - name: Card name aliases from Scryfall Default Cards
+        # Same schedule as the card data; a push builds the file only when it is missing or the converter changed.
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          REFRESH: ${{ github.event.inputs.scryfall }}
+        run: |
+          run=no
+          if [ "$EVENT" = schedule ]; then run=yes; fi
+          if [ "$EVENT" = workflow_dispatch ] && [ "$REFRESH" != false ]; then run=yes; fi
+          if [ "$EVENT" = push ]; then
+            if [ ! -f data/aliases.json ]; then run=yes
+            elif git diff --name-only "$BEFORE" HEAD 2>/dev/null | grep -qE '^tools/scryfall-aliases\.js$'; then run=yes; fi
+          fi
+          echo "Refresh aliases: $run"
+          [ "$run" = yes ] || exit 0
+          trap 'echo "::error::Alias refresh failed at line $LINENO"' ERR
+          UA='broken-stuff-edh-generator/1.0 (GitHub Action; https://github.com/broken-stuff/edh-generator)'
+          curl -fsSL --retry 4 --retry-delay 10 -H "User-Agent: $UA" -H 'Accept: application/json;q=0.9,*/*;q=0.8' -o "$RUNNER_TEMP/dbulk.json" https://api.scryfall.com/bulk-data/default-cards
+          url=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.jsonl_download_uri||j.download_uri)' "$RUNNER_TEMP/dbulk.json")
+          echo "::notice::Default Cards file: $url"
+          curl -fsSL --retry 4 --retry-delay 10 -H "User-Agent: $UA" -o "$RUNNER_TEMP/default.bin" "$url"
+          echo "::notice::$(node tools/scryfall-aliases.js "$RUNNER_TEMP/default.bin" data/aliases.json)"
       - name: Index data/
         run: node tools/data-index.js data
       - name: Commit changes

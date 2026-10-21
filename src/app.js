@@ -49,7 +49,7 @@
       const { cards, parsed } = await parseBulkFile(file, f => { prog.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; });
       if (!cards.length) throw new Error('No Scryfall card objects found (' + parsed + ' records parsed).');
       const meta = { source: 'Scryfall bulk file', ...(extra || {}), nv: NORM_V, file: file.name, fileModified: file.lastModified ? new Date(file.lastModified).toISOString() : null, loadedAt: new Date().toISOString(), records: parsed };
-      App.bulk = Engine.buildDB(cards, meta); App.cmdIndex = null; $('secData').open = false; buildComboProvider();
+      App.bulk = Engine.buildDB(cards, meta); App.cmdIndex = null; $('secData').open = false; buildComboProvider(); loadAliases();
       setStatus('Loaded ' + App.bulk.all.length + ' unique cards from ' + file.name + '.');
       IDB.put('bulk', { cards, meta }).then(ok => { $('idbNote').textContent = ok ? 'Stored in this browser for next visit.' : ''; });
     } catch (e) { setStatus('Bulk file error: ' + e.message); showMsgs([e.message], []); }
@@ -140,7 +140,17 @@
     if (rc && !fresh(bulk, rc)) { try { await fromRepo(rc, loadBulk); } catch (e) { setStatus('Site card data: ' + e.message); } }
     if (!App.bulk && bulk && bulk.cards && bulk.cards.length) { App.bulk = Engine.buildDB(bulk.cards, bulk.meta); $('idbNote').textContent = 'Using stored card data: ' + (bulk.meta.file || '') + '.'; }
     renderSources(); renderView();
+    await loadAliases();
     await loadSpellbook();
+  }
+  /* ---------- data/aliases.json: Universes Beyond flavour names and other printed names → Oracle names (tools/scryfall-aliases.js),
+     so a pasted list that uses them matches. Optional: without the file only Oracle names match. ---------- */
+  async function loadAliases() {
+    if (!App.bulk || App.bulk.aliased != null || !window.EDH_SITE || !/^https?:$/.test(location.protocol)) return;
+    try {
+      const r = await fetch('data/aliases.json', { cache: 'no-cache' }); if (!r.ok) return;
+      const j = await r.json(); if (j && j.format === 'edhgen-aliases/1') App.bulk.aliased = Engine.addAliases(App.bulk, j.names);
+    } catch (e) { }
   }
 
   /* ---------- data state ---------- */
@@ -331,12 +341,10 @@
   function analysisInput(forcePaste) {
     if (forcePaste || App.anSource === 'paste') {
       if (!App.bulk) return { error: 'Load the Scryfall bulk file first.' };
-      const P = Analysis.parseDecklist(App.anText || '');
-      let cmdNames = P.cmd.map(x => x.name);
-      if (!cmdNames.length) cmdNames = App.S.commanders.map(s => (s || '').trim()).filter(Boolean);
-      const unknown = [], cmds = [], deck = [];
-      for (const n of cmdNames) { const c = Engine.lookup(App.bulk, n); if (c) cmds.push(c); else unknown.push(n); }
-      for (const it of P.main) { const c = Engine.lookup(App.bulk, it.name); if (!c) { unknown.push(it.name); continue; } if (cmds.includes(c)) continue; const ex = deck.find(e => e.c === c); if (ex) ex.qty += it.qty; else deck.push({ c, qty: it.qty }); }
+      const P = Analysis.parseDecklist(App.anText || ''), K = Analysis.pickCommanders(P, App.bulk);
+      const unknown = K.missing.slice(), cmds = K.cmds.slice(), deck = [];
+      if (!cmds.length) for (const n of App.S.commanders.map(s => (s || '').trim()).filter(Boolean)) { const c = Engine.lookup(App.bulk, n); if (c) cmds.push(c); else unknown.push(n); }
+      for (const it of K.main) { const c = Engine.lookup(App.bulk, it.name); if (!c) { unknown.push(it.name); continue; } if (cmds.includes(c)) continue; const ex = deck.find(e => e.c === c); if (ex) ex.qty += it.qty; else deck.push({ c, qty: it.qty }); }
       if (!cmds.length) return { error: 'No commander found. Put it under a "Commander" header, tag it [Commander], or fill the Commander field in settings.', unknown };
       if (!deck.length) return { error: 'Decklist is empty.', unknown };
       return { deck, cmds, unknown, label: 'Pasted list' };
@@ -781,8 +789,12 @@
       '<ol class="mono" style="padding-left:22px;margin:14px 0 0;display:flex;flex-direction:column;gap:3px">' + R.log.map(l => '<li>' + esc(l) + '</li>').join('') + '</ol>';
   }
   function renderExport() {
-    $('view').innerHTML = '<div class="row"><label class="f" style="min-width:220px">Format<select id="exFmt"><option value="plain">Plain text (1 Card Name)</option><option value="arena">Moxfield / Archidekt (Commander + Deck sections)</option><option value="archidekt">Archidekt ([Commander{top}] tag)</option><option value="mtgo">MTGO .txt (commander in sideboard)</option><option value="csv">CSV</option></select></label><button type="button" id="exCopy">Copy to clipboard</button><button type="button" id="exSave">Save file</button><span class="note" id="exNote"></span></div><textarea id="exText" rows="18" style="margin-top:8px" spellcheck="false" readonly></textarea>';
-    const upd = () => { $('exText').value = Engine.exportDeck(App.R, $('exFmt').value); };
+    $('view').innerHTML = '<div class="row"><label class="f" style="min-width:220px">Format<select id="exFmt"><option value="plain">Plain text (1 Card Name)</option><option value="arena">Moxfield / Archidekt (Commander + Deck sections)</option><option value="archidekt">Archidekt ([Commander{top}] tag)</option><option value="mtgo">MTGO .txt (commander in sideboard)</option><option value="csv">CSV</option><option value="added">Added cards only (buy list, 1 Card Name)</option></select></label><button type="button" id="exCopy">Copy to clipboard</button><button type="button" id="exSave">Save file</button><span class="note" id="exNote"></span></div><textarea id="exText" rows="18" style="margin-top:8px" spellcheck="false" readonly></textarea>';
+    const upd = () => {
+      const f = $('exFmt').value, add = addedCards(), cur = App.R.settings.budget.cur;
+      $('exText').value = f === 'added' ? buyList(add) : Engine.exportDeck(App.R, f);
+      $('exNote').textContent = f === 'added' ? (add.length ? add.reduce((s, x) => s + x.qty, 0) + ' card(s) added since the deck was ' + (App.R.asIs ? 'imported' : 'generated') + ', ' + fmtP(add.reduce((s, x) => s + (x.c.p[cur] || 0) * x.qty, 0)) + '. Paste into a store\'s mass entry (TCGplayer, Card Kingdom).' : 'No cards added since the deck was ' + (App.R.asIs ? 'imported' : 'generated') + '.') : '';
+    };
     $('exFmt').value = App.exFmt || 'plain'; upd();
     $('exFmt').addEventListener('change', () => { App.exFmt = $('exFmt').value; upd(); });
     $('exCopy').addEventListener('click', () => copyText($('exText').value, $('exText'), $('exNote')));
@@ -798,11 +810,11 @@
     start: ['Start', [['setup', 'New deck'], ['import', 'Import a list'], ['find', 'Find a commander']]],
     deck: ['Deck', [['cards', 'Cards'], ['hand', 'Sample hand'], ['export', 'Export']]],
     analysis: ['Analysis', []],
-    improve: ['Improve', [['changes', 'Suggested swaps'], ['combos', 'Combos']]],
+    improve: ['Improve', [['changes', 'Suggested swaps'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]],
     primer: ['Primer', []],
     more: ['More', []]
   };
-  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
+  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
   const FIND = [['commanders', 'Browse'], ['inspire', 'Quiz'], ['surprise', 'Random']];
   const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
   const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
@@ -821,7 +833,7 @@
     deck: 'Tap a card for its text and its actions: lock, swap or remove.', role: 'Grouped by the role slot each card fills. Tap a card for its actions.', valid: 'Every deck-building rule and whether this list passes it.',
     hand: 'Draw opening hands from this list, mulligan and draw on.', export: 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.',
     analysis: 'Power, speed, mana and problems from simulated games. Fixes are on Improve.',
-    changes: 'Cuts and adds for the analyzed list, each scored with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
+    changes: 'Cuts and adds for the analyzed list, each scored with simulated games.', upgrade: 'Set an amount to spend. The best set of swaps that fits it, each add Commander-legal and in your colours, measured with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
     primer: 'How to play this list, from its own simulation and card roles.',
     history: 'The last 25 decks and revisions in this browser. Tick two to compare them.', log: 'Each step the generator and optimiser took.', tests: 'Checks the generator against the loaded card data.'
   };
@@ -856,6 +868,7 @@
     if (App.tab === 'history') return void renderHistory();
     if (App.tab === 'primer') return void renderPrimer();
     if (App.tab === 'combos') return void renderCombos();
+    if (App.tab === 'upgrade') return renderUpgrade();
     if (App.tab === 'commanders') return renderCommanders();
     if (App.tab === 'inspire') return renderInspire();
     if (App.tab === 'surprise') return renderSurprise();
@@ -994,59 +1007,131 @@
     const cardHTML = v => v.c.map(n => { const miss = opts.missing && opts.missing.includes(n), c = App.bulk && Engine.lookup(App.bulk, n);
       return '<span class="cbcard"><span class="' + (miss ? 'pup' : inDeck.has(n) ? '' : 'note') + '">' + (c ? cardLink(c, n) : esc(n)) + '</span>' + (v.cmd.includes(n) ? ' <span class="chip">commander</span>' : '') + (!inDeck.has(n) && c ? ' <span class="note">' + fmtP(c.p[(R ? R.settings : App.S).budget.cur]) + '</span>' : '') +
         (canAdd(n, c) && !v.cmd.includes(n) && barred(v) ? ' <span class="chip" title="Bracket ' + R.settings.bracket + ' allows ' + lim2 + ' two-card infinite combo' + (lim2 === 1 ? '' : 's') + '. Raise the bracket under Start to add it.">not allowed at B' + R.settings.bracket + '</span>' : '') +
-        (canAdd(n, c) && !v.cmd.includes(n) && !barred(v) ? ' <button type="button" class="small addbtn" data-cbadd="' + esc(n) + '" data-vid="' + esc(v.id) + '" title="Add ' + esc(n) + ' to the deck">+ Add</button>' : '') + '</span>'; }).join(' <span class="note">+</span> ');
+        (canAdd(n, c) && !v.cmd.includes(n) && !barred(v) && v.c.filter(x => !inDeck.has(x)).length === 1 ? ' <button type="button" class="small addbtn" data-cbadd="' + esc(n) + '" data-vid="' + esc(v.id) + '" title="Add ' + esc(n) + ' to the deck">+ Add</button>' : '') + '</span>'; }).join(' <span class="note">+</span> ');
+    const lacking = v => v.c.filter(n => !inDeck.has(n));
+    const addAll = v => { const m = lacking(v); return m.length >= 2 && !barred(v) && !m.some(n => v.cmd.includes(n)) && m.every(n => canAdd(n, App.bulk && Engine.lookup(App.bulk, n))) ? '<div><button type="button" class="small addbtn" data-cbaddall="' + esc(v.id) + '" title="Add the ' + m.length + ' missing cards, each in place of a card the planner picks">+ Add ' + m.length + ' cards</button></div>' : ''; };
     return '<div class="scroll"><table class="t compact mrows"><thead><tr><th>Cards</th><th>Produces</th><th>Bracket tag</th><th class="n">MV</th><th class="n">Popularity</th><th></th></tr></thead><tbody>' +
-      list.map(x => { const v = x.v || x; return '<tr data-vrow="' + esc(v.id) + '"><td class="m-full">' + cardHTML(v) + (v.t.length ? '<div class="note">Also needs: ' + esc(v.t.join(', ')) + '</div>' : '') + '</td><td class="why m-full2">' + esc(v.p.join(', ')) + '</td><td>' + (v.bt ? '<span class="chip">' + esc(BT[v.bt] || v.bt) + '</span>' : '') + '</td><td class="n"' + (v.mv != null ? ' data-l="MV"' : '') + '>' + (v.mv != null ? v.mv : '') + '</td><td class="n"' + (v.pop != null ? ' data-l="Popularity"' : '') + '>' + (v.pop != null ? v.pop.toLocaleString() : '') + '</td><td class="nw"><a href="' + sbLink(v) + '" target="_blank" rel="noopener">Steps ↗</a></td></tr>'; }).join('') +
+      list.map(x => { const v = x.v || x; return '<tr data-vrow="' + esc(v.id) + '"><td class="m-full">' + cardHTML(v) + (v.t.length ? '<div class="note">Also needs: ' + esc(v.t.join(', ')) + '</div>' : '') + addAll(v) + '</td><td class="why m-full2">' + esc(v.p.join(', ')) + '</td><td>' + (v.bt ? '<span class="chip">' + esc(BT[v.bt] || v.bt) + '</span>' : '') + '</td><td class="n"' + (v.mv != null ? ' data-l="MV"' : '') + '>' + (v.mv != null ? v.mv : '') + '</td><td class="n"' + (v.pop != null ? ' data-l="Popularity"' : '') + '>' + (v.pop != null ? v.pop.toLocaleString() : '') + '</td><td class="nw"><a href="' + sbLink(v) + '" target="_blank" rel="noopener">Steps ↗</a></td></tr>'; }).join('') +
       '</tbody></table></div>';
   }
-  // Add a combo card to the generated deck: pick a card to replace (weakest first, never a piece of this combo),
-  // show budget and bracket effects, then replace and lock it (recorded in history like any other edit).
+  // analysis of the current deck for the swap planner: imported cards may be cut, cards the user locked may not
+  function plannerX() {
+    const R = App.R; if (!R || !R.stats || !App.bulk) return null;
+    const key = deckKey(R) + '|' + JSON.stringify(R.settings.targets) + R.settings.bracket + '|' + [...(App.denied || [])].join(',');
+    if (App.PX && App.PX.key === key) return App.PX.X;
+    const deck = R.deck.map(e => e.imp ? Object.assign({}, e, { locked: false }) : e);
+    const X = Analysis.run(App.bulk, deck, R.commanders, { settings: R.settings, combos: R.combos, games: 1500, deny: [...(App.denied || [])] });
+    App.PX = { key, X, deck }; return X;
+  }
+  // Add a combo's missing card(s): each goes in place of the card the planner picks (Analysis.pairCuts: lowest value,
+  // keeps every role at target, never a piece of this or another combo in the deck, never a card you locked). Each cut
+  // can be changed. The whole change is checked first (budget, bracket, Game Changers, 2-card infinites) and applied locked.
   function comboAddPanel(btn) {
     const R = App.R, cb = App.bulkCombos; if (!R || !cb) return;
     document.querySelectorAll('tr.cbpanel').forEach(x => x.remove());
-    const name = btn.dataset.cbadd, card = Engine.lookup(App.bulk, name), v = cb.variants.find(x => x.id === btn.dataset.vid); if (!card) return;
-    const keep = new Set(v ? v.c : []), inCombo = new Set([].concat(...(R.combos || []).map(x => x.c)));
-    const cuts = R.deck.filter(e => !Engine.analyze(e.c).isLand && !keep.has(e.c.n) && !inCombo.has(e.c.n) && !e.inc)
-      .sort((a, b) => (a.locked - b.locked) || (a.score - b.score) || (a.c.n < b.c.n ? -1 : 1)).slice(0, 12);
+    const v = cb.variants.find(x => x.id === btn.dataset.vid || x.id === btn.dataset.cbaddall); if (!v && !btn.dataset.cbadd) return;
+    const inDeck = new Set(R.commanders.map(c => c.n).concat(R.deck.map(e => e.c.n)));
+    const names = btn.dataset.cbadd ? [btn.dataset.cbadd] : v.c.filter(n => !inDeck.has(n));
+    const cards = names.map(n => Engine.lookup(App.bulk, n)); if (cards.some(c => !c)) return;
+    const keep = new Set((v ? v.c : []).concat(...(R.combos || []).map(x => x.c), R.commanders.map(c => c.n), R.deck.filter(e => e.inc).map(e => e.c.n)));
+    const X = plannerX(), plan = X ? Analysis.pairCuts(X.planner, cards, keep) : cards.map(add => ({ add, cut: null, alts: [] }));
     const cur = R.settings.budget.cur, pr = c => c.p[cur] || 0, cap = R.settings.budget.total, hasCap = cap != null && cap !== '';
     const roles = c => Object.keys(Engine.analyze(c).roles).map(r => Engine.SLOT_LABEL[r]).join(', ');
-    const opt = e => '<option value="' + esc(e.c.n) + '">' + esc(e.c.n) + ' · ' + fmtP(pr(e.c)) + (roles(e.c) ? ' · ' + esc(roles(e.c)) : '') + (e.locked ? ' · locked' : '') + '</option>';
+    const opt = (c, sel) => '<option value="' + esc(c.n) + '"' + (sel ? ' selected' : '') + '>' + esc(c.n) + ' · ' + fmtP(pr(c)) + (roles(c) ? ' · ' + esc(roles(c)) : '') + '</option>';
     const tr = document.createElement('tr'); tr.className = 'cbpanel alt';
-    tr.innerHTML = '<td colspan="6"><div class="row" style="gap:10px;align-items:flex-end"><label class="f" style="flex:1 1 320px"><span>Add <b>' + esc(name) + '</b> (' + fmtP(pr(card)) + ') in place of</span><select id="cbCut">' + cuts.map(opt).join('') + '</select></label>' +
-      '<button type="button" class="primary small" data-cbgo="' + esc(name) + '">Add and lock</button><button type="button" class="small" data-cbx="1">Cancel</button></div><div class="note" id="cbChk" style="margin-top:6px"></div></td>';
-    btn.closest('tr').after(tr);
+    tr.innerHTML = '<td colspan="6">' + plan.map((p, i) => '<label class="f" style="margin-bottom:6px"><span>Add <b>' + esc(p.add.n) + '</b> (' + fmtP(pr(p.add)) + ') in place of</span><select data-cbcut="' + i + '">' + (p.alts.length ? p.alts.map(c => opt(c, c === p.cut)).join('') : '<option value="">nothing to cut</option>') + '</select></label>').join('') +
+      '<div class="row" style="gap:10px"><button type="button" class="primary small" data-cbgo="1">' + (plan.length > 1 ? 'Add ' + plan.length + ' and lock' : 'Add and lock') + '</button><button type="button" class="small" data-cbx="1">Cancel</button></div><div class="note" id="cbChk" style="margin-top:6px"></div>' +
+      '<p class="note">Suggested cut: the lowest-value card that keeps every role at its target (value = synergy links + 2×roles + Game Changer/fast/tutor bonus + EDHREC popularity); pieces of combos already in the deck are never suggested.</p></td>';
+    (btn.closest('tr') || btn).after(tr);
+    const go = tr.querySelector('button[data-cbgo]');
+    const pairs = () => plan.map((p, i) => ({ entry: R.deck.find(e => e.c.n === tr.querySelector('[data-cbcut="' + i + '"]').value), card: p.add }));
+    App.cbPending = { pairs, tr };
     const check = () => {
-      const cut = R.deck.find(e => e.c.n === $('cbCut').value); if (!cut) return;
-      const after = R.stats.total - pr(cut.c) + pr(card), names = new Set(R.commanders.map(c => c.n).concat(R.deck.map(e => e.c.n))); names.delete(cut.c.n);
-      const cmds = R.commanders.map(c => c.n), newTwo = cb.completes(card.n, n => names.has(n), cmds).filter(x => x.inf && x.c.length <= 2);
-      const twoNow = (R.combos || []).filter(x => x.inf && x.c.length <= 2 && !x.c.includes(cut.c.n)).length, lim2 = R.lim ? R.lim.combo2 : 999;
-      const gcNow = R.stats.gcs.filter(n => n !== cut.c.n).length + (card.gc ? 1 : 0), limGc = R.lim ? R.lim.gc : 999;
-      const msgs = ['Price after: ' + fmtP(after) + (hasCap ? ' of ' + fmtP(+cap) + (after > +cap + 1e-9 ? ' <b class="pup">(over budget)</b>' : '') : '') + '.'];
-      if (newTwo.length && twoNow + newTwo.length > lim2) msgs.push('<b class="pup">Adds a 2-card infinite; Bracket ' + R.settings.bracket + ' allows ' + lim2 + '.</b>');
-      if (card.gc && gcNow > limGc) msgs.push('<b class="pup">Game Changer ' + gcNow + ' of ' + limGc + ' allowed at Bracket ' + R.settings.bracket + '.</b>');
-      const lost = Object.keys(Engine.analyze(cut.c).roles).filter(r => !Engine.analyze(card).roles[r]);
+      const ps = pairs();
+      if (ps.some(p => !p.entry) || new Set(ps.map(p => p.entry)).size < ps.length) { go.disabled = true; $('cbChk').innerHTML = '<b class="pup">Pick a different card to cut for each card added.</b>'; return; }
+      const after = R.stats.total + ps.reduce((s, p) => s + pr(p.card) - pr(p.entry.c), 0);
+      const msgs = ['Adds ' + fmtP(ps.reduce((s, p) => s + pr(p.card), 0)) + '; deck price after: ' + fmtP(after) + (hasCap ? ' of ' + fmtP(+cap) + (after > +cap + 1e-9 ? ' <b class="pup">(over budget)</b>' : '') : '') + '.'];
+      const lost = [...new Set([].concat(...ps.map(p => Object.keys(Engine.analyze(p.entry.c).roles).filter(r => !ps.some(q => Engine.analyze(q.card).roles[r])))))];
       if (lost.length) msgs.push('Removes a ' + lost.map(r => Engine.SLOT_LABEL[r].toLowerCase()).join(', ') + ' card.');
-      $('cbChk').innerHTML = msgs.join(' ');
-      const go = tr.querySelector('button[data-cbgo]'); go.disabled = true;
-      R.checkReplace(cut, card).then(fails => {
-        if (!tr.isConnected || $('cbCut').value !== cut.c.n) return;
+      $('cbChk').innerHTML = msgs.join(' '); go.disabled = true;
+      R.replaceMany(ps, true).then(fails => {
+        if (!tr.isConnected) return;
         go.disabled = !!(fails && fails.length);
         if (fails && fails.length) $('cbChk').innerHTML = '<b class="pup">Can\'t add: this breaks ' + fails.map(r => esc(r.label) + ' (' + esc(r.detail) + ')').join('; ') + '.</b> ' + (fails.some(r => r.id === 'bracket') ? 'Raise the bracket on Start, or pick a different combo. ' : fails.some(r => r.id === 'budget') ? 'Raise the budget, or cut a pricier card. ' : '') + msgs.join(' ');
       });
     };
-    if (!cuts.length) { $('cbChk').textContent = 'Every nonland card is part of a combo or an include, so there is nothing to cut.'; tr.querySelector('button[data-cbgo]').disabled = true; return; }
-    $('cbCut').addEventListener('change', check); check();
+    if (plan.some(p => !p.alts.length)) { $('cbChk').textContent = 'Every nonland card is part of a combo, locked or an include, so there is nothing to cut.'; go.disabled = true; return; }
+    tr.querySelectorAll('[data-cbcut]').forEach(s => s.addEventListener('change', check)); check();
   }
-  async function comboAddGo(name) {
-    const R = App.R, cut = R && R.deck.find(e => e.c.n === $('cbCut').value), card = Engine.lookup(App.bulk, name); if (!cut || !card) return;
-    const cutName = cut.c.n;
-    const fails = await R.checkReplace(cut, card);
-    if (fails && fails.length) { setStatus('Not added: ' + card.n + ' would break ' + fails.map(r => r.label).join(', ') + '.'); return; }
-    await R.replace(cut, card, true);
-    histOp({ op: 'replace', cut: cutName, add: card.n, locked: true }); App.QS = null; App.PR = null; if (App.anSource !== 'paste') App.AN = null;
-    renderAll(); histPush('edit', cutName + ' → ' + card.n + ' (combo)');
-    setStatus('Added ' + card.n + ' in place of ' + cutName + ' (locked).' + (R.ok ? '' : ' Validation now reports a failed rule.'));
+  async function comboAddGo() {
+    const R = App.R, P = App.cbPending; if (!R || !P) return;
+    const ps = P.pairs(); if (ps.some(p => !p.entry)) return;
+    const fails = await R.replaceMany(ps, true);
+    if (fails && fails.length) { setStatus('Not added: this would break ' + fails.map(r => r.label).join(', ') + '.'); return; }
+    const done = ps.map(p => ({ cut: p.entry.c.n, add: p.card.n }));
+    await R.replaceMany(ps);
+    for (const d of done) histOp({ op: 'replace', cut: d.cut, add: d.add, locked: true });
+    App.QS = null; App.PR = null; App.cbPending = null; if (App.anSource !== 'paste') App.AN = null;
+    renderAll(); histPush('edit', done.map(d => d.cut + ' → ' + d.add).join(', ') + ' (combo)');
+    setStatus('Added ' + done.map(d => d.add + ' in place of ' + d.cut).join('; ') + ' (locked).' + (R.ok ? '' : ' Validation now reports a failed rule.'));
   }
+  /* ---------- budget upgrades: Analysis.upgradePlan on the current deck ---------- */
+  const UP_PRESETS = [20, 50, 200];
+  function renderUpgrade() {
+    const R = App.R;
+    if (!R || !R.stats) { $('view').innerHTML = emptyView(); return; }
+    const U = App.UP && App.UP.key === deckKey(R) ? App.UP : null, amt = App.upAmt || 50;
+    const form = '<div class="row" style="gap:8px;align-items:flex-end"><div class="seg" role="group" aria-label="Amount">' + UP_PRESETS.map(v => '<button type="button" data-up="amt" data-v="' + v + '" aria-pressed="' + (amt === v) + '">' + esc(fmtP(v).replace(/\.00$/, '')) + '</button>').join('') + '</div>' +
+      '<label class="f inline">Other <input type="number" id="upAmt" min="1" step="1" style="width:90px" value="' + (UP_PRESETS.includes(amt) ? '' : amt) + '"></label><button type="button" class="primary small" data-up="run"' + (App.upBusy ? ' disabled' : '') + '>Find upgrades</button><span class="note" id="upNote">' + esc(App.upNote || '') + '</span></div>';
+    let body = '';
+    if (U && U.res) {
+      const r = U.res, w = r.whole, sign = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(d || 0);
+      const live = r.swaps.filter(x => !x.done);
+      body = !r.swaps.length ? '<p class="note">No swap within ' + esc(fmtP(r.budget)) + ' measured better than the current list (' + r.measured + ' simulations of ' + r.candidates + ' candidate cards).</p>' :
+        '<div class="an-top"><h3>' + r.swaps.length + ' swap' + (r.swaps.length === 1 ? '' : 's') + ', ' + esc(fmtP(r.spent)) + ' of ' + esc(fmtP(r.budget)) + '</h3>' + (live.length ? '<button type="button" class="small primary" data-up="apply-all">Apply all (' + live.length + ')</button>' : '') + '<button type="button" class="small" data-up="copy">Copy buy list</button><span class="note" id="upCopyNote"></span></div>' +
+        (w ? '<p class="note">All together, measured: power ' + sign(w.pl, 1) + ', fundamentals ' + sign(w.fund) + ', keepable 7 ' + sign(w.keep * 100, 1) + ' pts' + (w.typical ? ', typical win turn ' + sign(w.typical) : '') + (w.minB ? ', <span class="warn-t">min. bracket ' + sign(w.minB) + '</span>' : '') + '.</p>' : '') +
+        '<div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th class="n">Gain</th><th></th></tr></thead><tbody>' +
+        r.swaps.map((x, i) => '<tr><td><div class="sw"><span class="out">− ' + nameLink(x.cut.n) + '</span><span class="in">+ ' + nameLink(x.add.n) + '</span></div></td><td class="n nw">' + esc(fmtP(x.price)) + '</td><td class="n">' + x.g.toFixed(1) + '</td><td class="nw">' + (x.done ? '<span class="note">applied</span>' : '<button type="button" class="small" data-up="apply" data-i="' + i + '">Apply</button>') + '</td></tr>').join('') + '</tbody></table></div>';
+    }
+    $('view').innerHTML = form + '<div style="margin-top:12px">' + body + '</div>' +
+      '<details class="an-more"><summary class="note">How upgrades are chosen</summary><p class="note">Candidates: for each role, the cards that fit the deck best (theme fit and EDHREC rank, as on Suggested swaps), cards for the two weakest power vectors, the most played cards overall and, in decks of two or more colours, the 12 most played lands that make two of your colours. All are Commander-legal, inside your colour identity and bracket limits, and cost no more than the amount. Cuts: the 12 lowest-value nonland cards whose removal keeps every role at target (never a card you locked, a combo piece or the commander); lands replace a basic of your most over-supplied colour. Each candidate is measured with ' + (3000).toLocaleString() + ' simulated games on the same shuffles as the current list. Gain = 10 × power level change + fundamentals change. The chosen set is the one with the highest total gain whose adds fit the amount; a swap must gain at least 0.5 to be included, and each dollar costs 0.002, so equal gains go to the cheaper card. Prices are Scryfall\'s lowest ' + esc(R.settings.budget.cur.toUpperCase()) + ' print price.</p></details>';
+  }
+  async function upgradeRun() {
+    const R = App.R; if (!R || !R.stats || App.upBusy) return;
+    const inp = $('upAmt') && +$('upAmt').value; if (inp > 0) App.upAmt = inp;
+    const amt = App.upAmt || 50, key = deckKey(R);
+    const X = plannerX(); if (!X) return;
+    const say = t => { App.upNote = t; if ($('upNote')) $('upNote').textContent = t; };
+    App.upBusy = true; App.UP = null; renderUpgrade(); say('Measuring…');
+    try {
+      const keep = new Set([].concat(...(R.combos || []).map(x => x.c), R.commanders.map(c => c.n), R.deck.filter(e => e.inc).map(e => e.c.n)));
+      const prep = Analysis.impactPrep(App.bulk, App.PX.deck, R.commanders, { settings: R.settings, combos: R.combos, impactGames: 3000 });
+      const res = await Analysis.upgradePlan(prep, X.planner, amt, { keep, tick: (d, t) => { say('Measuring ' + d + '/' + t + '…'); return new Promise(r => setTimeout(r, 0)); } });
+      if (deckKey(App.R) !== key) { say('The deck changed; run it again.'); return; }
+      App.UP = { key, res }; say('');
+    } finally { App.upBusy = false; if (App.tab === 'upgrade') renderUpgrade(); }
+  }
+  async function upgradeApply(list) {
+    const R = App.R; if (!R || !App.UP) return;
+    const pairs = list.map(x => ({ x, entry: R.deck.find(e => e.c === x.cut), card: x.add })).filter(p => p.entry && !R.deck.some(e => e.c === p.card));
+    if (!pairs.length) return;
+    const fails = await R.replaceMany(pairs, true);
+    if (fails.length) { setStatus('Not applied: this would break ' + fails.map(r => r.label + ' (' + r.detail + ')').join('; ') + '.'); return; }
+    await R.replaceMany(pairs);
+    for (const p of pairs) { histOp({ op: 'swap', cut: p.x.cut.n, add: p.x.add.n }); p.x.done = true; }
+    App.UP.key = deckKey(R); App.QS = null; App.PR = null; if (App.anSource !== 'paste') App.AN = null;
+    renderAll(); histPush('edit', 'Budget upgrades: ' + pairs.length + ' swap' + (pairs.length === 1 ? '' : 's'));
+    setStatus('Applied ' + pairs.length + ' upgrade' + (pairs.length === 1 ? '' : 's') + ' (locked). Deck, Export lists the added cards.');
+  }
+  // cards in the deck now that weren't in it when it was generated or imported (App.base), as "1 Card Name" lines
+  function addedCards() {
+    const R = App.R; if (!R || !App.base) return [];
+    const was = new Map(App.base), out = [];
+    for (const e of R.deck) { const d = e.qty - (was.get(e.c.n) || 0); if (d > 0) out.push({ c: e.c, qty: d }); }
+    return out.sort((a, b) => a.c.n < b.c.n ? -1 : 1);
+  }
+  const buyList = list => list.map(x => (x.qty || 1) + ' ' + (x.c || x.add).n).join('\n');
+
   async function renderCombos() {
     const cb = App.bulkCombos, R = App.R;
     if (!cb) { $('view').innerHTML = '<div class="empty"><h2>' + (App.combosLoading ? 'Loading combos…' : 'No combo data') + '</h2><p>Combos come from Commander Spellbook files in the site\'s <code>data/spellbook/</code> folder, refreshed weekly by the repository\'s Data files workflow. The single-file version has no data folder, so combos are only available on the site.</p></div>'; return; }
@@ -1059,9 +1144,9 @@
       const pool = n => { if (have.has(n)) return false; const c = Engine.lookup(App.bulk, n); return !!c && c.leg === 'legal' && inCI(c); };
       // combos the bracket allows come first; 2-card infinites over the bracket limit go last
       const lim2 = R.lim ? R.lim.combo2 : 999, two = (R.combos || []).filter(x => x.inf && x.c.length <= 2).length, barredNow = v => v.inf && v.c.length <= 2 && two >= lim2 ? 1 : 0;
-      const near = (await cb.almost(names, pool, 1)).filter(x => !x.v.cmd.length || x.v.cmd.every(n => cmds.includes(n))).sort((a, b) => barredNow(a.v) - barredNow(b.v) || (b.v.pop || 0) - (a.v.pop || 0)).slice(0, 40);
+      const near = (await cb.almost(names, pool, 2)).filter(x => !x.v.cmd.length || x.v.cmd.every(n => cmds.includes(n))).sort((a, b) => barredNow(a.v) - barredNow(b.v) || a.missing.length - b.missing.length || (b.v.pop || 0) - (a.v.pop || 0)).slice(0, 40);
       h += '<h3 class="an-sec">In this deck (' + found.length + ')</h3>' + (found.length ? comboRows(found) : '<p class="note">No complete Spellbook combo in this list.' + (R.settings.bracket <= 2 ? ' Brackets 1–2 exclude 2-card infinite combos.' : '') + '</p>');
-      h += '<h3 class="an-sec">One card away (' + near.length + (near.length === 40 ? '+' : '') + ')</h3>' + (near.length ? '<p class="note">The missing card is in red with its price. + Add puts it in the deck in place of a card you choose and locks it.</p>' + comboRows(near.map(x => ({ v: x.v })), { missing: [].concat(...near.map(x => x.missing)) }) : '<p class="note">None.</p>');
+      h += '<h3 class="an-sec">One or two cards away (' + near.length + (near.length === 40 ? '+' : '') + ')</h3>' + (near.length ? '<p class="note">Missing cards are in red with their price. + Add puts them in the deck, each in place of a suggested cut you can change, and locks them.</p>' + comboRows(near.map(x => ({ v: x.v })), { missing: [].concat(...near.map(x => x.missing)) }) : '<p class="note">None.</p>');
     }
     const ci = ciOf();
     h += '<h3 class="an-sec">Search all combos</h3><div class="row" style="gap:10px;align-items:flex-end"><label class="f" style="flex:1 1 260px">Cards or results (all words must match)<input type="search" id="cbQ" placeholder="e.g. Thassa\'s Oracle, infinite mana" value="' + esc(App.cbQ || '') + '"></label>' +
@@ -1176,7 +1261,7 @@
       if (R.errors.length && prev && opts.locks) { showMsgs(R.errors, R.warnings); setStatus('Not rebuilt: the locked cards can\'t fit these settings (see above). The current deck is unchanged.'); }
       else if (R.errors.length) { App.R = null; showMsgs(R.errors, R.warnings); setStatus('Not generated.'); }
       else {
-        App.R = R; built = true; App.openSwap = null; App.QS = null; if (App.anSource !== 'paste') App.AN = null;
+        App.R = R; built = true; App.openSwap = null; App.QS = null; App.base = R.deck.map(e => [e.c.n, e.qty]); App.UP = null; if (App.anSource !== 'paste') App.AN = null;
         if (App.tab === 'setup' && !App.restoring) { App.tab = viewOf('cards'); window.scrollTo({ top: 0 }); }
         if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans, imported: env.imported, asIs: env.asIs }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
@@ -1200,12 +1285,17 @@
     const say = t => { App.impNote = t; if ($('impNote')) $('impNote').textContent = t; };
     if (!App.bulk) { say('Load the card data first (Start, Card data).'); return; }
     const P = Analysis.parseDecklist(App.impText || '');
-    const unknown = [], cmds = [];
-    for (const it of P.cmd) { const c = Engine.lookup(App.bulk, it.name); if (c) { if (!cmds.includes(c)) cmds.push(c); } else unknown.push(it.name); }
-    if (!cmds.length) { say('No commander found. Put it under a "Commander" or "// COMMANDER" header, or tag it [Commander].' + (unknown.length ? ' Not in the card data: ' + unknown.join('; ') + '.' : '')); return; }
+    const K = Analysis.pickCommanders(P, App.bulk), unknown = K.missing.slice(), cmds = K.cmds;
+    if (!cmds.length && App.impPick) { const c = Engine.lookup(App.bulk, App.impPick); if (c) { cmds.push(c); K.how = 'pick'; } }
+    if (!cmds.length) {
+      const cand = (K.candidates || []).slice(0, 12);
+      App.impNote = ''; say('No commander found. Put it under a "Commander" header or tag it [Commander]' + (cand.length ? ', or pick one from the list:' : '.') + (unknown.length ? ' Not in the card data: ' + unknown.join('; ') + '.' : ''));
+      if (cand.length && $('impNote')) $('impNote').insertAdjacentHTML('beforeend', ' ' + cand.map(c => '<button type="button" class="small" data-impcmd="' + esc(c.n) + '">' + esc(c.n) + '</button>').join(' '));
+      return;
+    }
     if (cmds.length > 2) { say('More than two commanders found: ' + cmds.map(c => c.n).join('; ') + '.'); return; }
     const locks = [];
-    for (const it of P.main) {
+    for (const it of K.main) {
       const c = Engine.lookup(App.bulk, it.name); if (!c) { unknown.push(it.name); continue; }
       if (cmds.includes(c)) continue;
       const ex = locks.find(l => l.name === c.n); if (ex) ex.qty += it.qty; else locks.push({ name: c.n, qty: it.qty });
@@ -1219,7 +1309,7 @@
     await runGenerate({ locks, bans: [], imported: true, asIs: true, onBuilt: R => { built = R; } });
     if (!built) { say('Not imported; see the messages above.'); return; }
     const kept = built.deck.reduce((s, e) => s + e.qty, 0), total = kept + built.commanders.length;
-    const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' with ' + cmds.map(c => c.n).join(' + ') + ' (' + total + ' total).' +
+    const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' with ' + cmds.map(c => c.n).join(' + ') + (K.how !== 'section' && K.how !== 'pick' ? ' (read as the commander from the ' + K.how + ')' : '') + ' (' + total + ' total).' +
       (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
       (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
     say(msg); setStatus(msg);
@@ -1650,8 +1740,9 @@
     document.addEventListener('click', e => { if (!moreList.classList.contains('hidden') && !e.target.closest('.morewrap')) setMore(false); });
     document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-page],button[data-tab]'); if (!b) return; setMore(false); go(b.dataset.page || b.dataset.tab); });
     $('pageHead').addEventListener('click', e => { const b = e.target.closest('button[data-view]'); if (b) go(viewOf(b.dataset.view)); });
-    $('view').addEventListener('input', e => { if (e.target.id === 'anText') App.anText = e.target.value; if (e.target.id === 'impText') App.impText = e.target.value; });
-    $('view').addEventListener('click', e => { if (e.target.closest('#impBtn')) importDeck(); const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
+    $('view').addEventListener('input', e => { if (e.target.id === 'anText') App.anText = e.target.value; if (e.target.id === 'impText') { App.impText = e.target.value; App.impPick = null; } });
+    $('view').addEventListener('click', e => { if (e.target.closest('#impBtn')) importDeck();
+      const ic = e.target.closest('[data-impcmd]'); if (ic) { App.impPick = ic.dataset.impcmd; importDeck(); } const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
       const X = App.AN, a = b.dataset.sw;
@@ -1663,9 +1754,18 @@
     });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
     $('view').addEventListener('click', e => {
-      const a = e.target.closest('button[data-cbadd]'); if (a) return comboAddPanel(a);
-      const g = e.target.closest('button[data-cbgo]'); if (g) { g.disabled = true; return comboAddGo(g.dataset.cbgo); }
+      const a = e.target.closest('button[data-cbadd],button[data-cbaddall]'); if (a) return comboAddPanel(a);
+      const g = e.target.closest('button[data-cbgo]'); if (g) { g.disabled = true; return comboAddGo(); }
       if (e.target.closest('button[data-cbx]')) document.querySelectorAll('tr.cbpanel').forEach(x => x.remove());
+      const up = e.target.closest('button[data-up]');
+      if (up) {
+        const k = up.dataset.up;
+        if (k === 'amt') { App.upAmt = +up.dataset.v; if ($('upAmt')) $('upAmt').value = ''; return upgradeRun(); }
+        if (k === 'run') return upgradeRun();
+        if (k === 'apply') { up.disabled = true; return upgradeApply([App.UP.res.swaps[+up.dataset.i]]); }
+        if (k === 'apply-all') { up.disabled = true; return upgradeApply(App.UP.res.swaps.filter(x => !x.done)); }
+        if (k === 'copy') return copyText(buyList(App.UP.res.swaps.map(x => ({ c: x.add, qty: 1 }))), null, $('upCopyNote'));
+      }
     });
     document.querySelector('.results').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
     $('view').addEventListener('click', async e => {

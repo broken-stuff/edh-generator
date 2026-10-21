@@ -587,7 +587,7 @@ const Analysis = (function () {
     // Card popularity distribution (EDHREC rank; popularity, not power)
     const RB = [['Top 500', 1, 500], ['501–2,000', 501, 2000], ['2,001–8,000', 2001, 8000], ['8,001+', 8001, 1e12]];
     const quality = RB.map(([label, lo, hi]) => ({ label, n: nonland.filter(e => e.c.rank && e.c.rank >= lo && e.c.rank <= hi).reduce((s, e) => s + e.qty, 0) })).concat([{ label: 'Unranked', n: nonland.filter(e => !e.c.rank).reduce((s, e) => s + e.qty, 0) }]);
-    const power = { cardQ: Math.round(cardQ * 100) / 100, qScore: Math.round(qScore), pl, plRaw: Math.round(plRaw * 10) / 10, manaMult: Math.round(manaMult * 100) / 100, ceiling, ceilingBinding: plPre > ceiling, label: PL_LABEL[Math.max(1, Math.min(10, Math.floor(pl)))], ci, ciParts: ciParts.map(x => x[0]), confidence: ci <= 0.5 ? 'high' : ci <= 0.8 ? 'medium' : 'low', vectors, weights: { speed: wv[0], consistency: wv[1], interaction: wv[2], threats: wv[3] }, archetypes: ARCH.slice(0, 5), primary, signals, win: { best, typical, contested, comboTurn: comboTurn < 99 ? comboTurn : null, source: typical === plTypical ? 'power level' : 'simulated combo', plTypical,
+    const power = { cardQ: Math.round(cardQ * 100) / 100, qScore: Math.round(qScore), pl, plExact: Math.min(plPre, ceiling), plRaw: Math.round(plRaw * 10) / 10, manaMult: Math.round(manaMult * 100) / 100, ceiling, ceilingBinding: plPre > ceiling, label: PL_LABEL[Math.max(1, Math.min(10, Math.floor(pl)))], ci, ciParts: ciParts.map(x => x[0]), confidence: ci <= 0.5 ? 'high' : ci <= 0.8 ? 'medium' : 'low', vectors, weights: { speed: wv[0], consistency: wv[1], interaction: wv[2], threats: wv[3] }, archetypes: ARCH.slice(0, 5), primary, signals, win: { best, typical, contested, comboTurn: comboTurn < 99 ? comboTurn : null, source: typical === plTypical ? 'power level' : 'simulated combo', plTypical,
       combo: comboSim ? { q25: comboSim.q25, median: comboSim.median, q75: comboSim.q75, by6: comboSim.byT[6], by8: comboSim.byT[8] } : null,
       range: typical !== plTypical ? [comboSim.q25, comboSim.q75] : null, goldfish: { q25: sim.kill.q25, median: sim.kill.median, q75: sim.kill.q75, life: sim.kill.life, horizon: sim.T } }, minBracket: minB, minBracketWhy: why, combos: comboList, families: families.map(f => ({ score: Math.round(f.score * 100) / 100, n: f.combos.length, best: f.best })), earlyTwo, quality };
     // Anti-synergy checks
@@ -630,7 +630,9 @@ const Analysis = (function () {
     /* ---------- swap plans (evaluated by impact()) ---------- */
     const priceOf = c => c && c.p && c.p[cur] != null ? +c.p[cur] : null;
     const linkOf = new Map(perCard.map(x => [x.c, x.links]));
-    const cardValue = c => { const a = A(c); return (linkOf.get(c) || 0) + 2 * Object.keys(a.roles).length + (a.flags.gc || a.flags.fast || a.flags.tutor ? 3 : 0) + (c.rank ? 2 * (1 - Math.log10(c.rank) / Math.log10(40000)) : 0); };
+    const rankTerm = c => c.rank ? 2 * (1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
+    const baseValue = c => { const a = A(c); return 2 * Object.keys(a.roles).length + (a.flags.gc || a.flags.fast || a.flags.tutor ? 3 : 0) + rankTerm(c); };
+    const cardValue = c => (linkOf.get(c) || 0) + baseValue(c);
     const usedCuts = new Set(), usedAdds = new Set();
     const roleSafe = c => Object.keys(A(c).roles).every(r => role(r) - 1 >= (+targets[r] || 0));
     const cutPick = (pred) => all.filter(e => !e.locked && !A(e.c).isLand && !usedCuts.has(e.c) && roleSafe(e.c) && (!pred || pred(e.c))).map(e => e.c).sort((a, b) => cardValue(a) - cardValue(b) || (a.n < b.n ? -1 : 1))[0] || null;
@@ -669,7 +671,23 @@ const Analysis = (function () {
     if (cutCandidates.length) addRec('info', 'Cut candidates (no role tag, no synergy link; worst EDHREC rank first): ' + cutCandidates.map(x => x.c.n).join(', ') + '.', []);
     if (opts.almost && opts.almost.length) addRec('info', 'Combos one card away (Spellbook):', []), recs[recs.length - 1].combos = opts.almost.slice(0, 6);
 
+    /* ---------- swap planner inputs, used by pairCuts and upgradePlan (combo adds and budget upgrades) ---------- */
+    // A card outside the deck gets the links it would have in it: deck cards on the other side of each active theme,
+    // +3 for the commander, +1 for the tribal type; the same terms perCard counts for cards in the deck.
+    const sideCount = new Map(); for (const e of all) for (const [k, sd] of cardSides.get(e.c)) sideCount.set(k + ':' + sd, (sideCount.get(k + ':' + sd) || 0) + 1);
+    const linksAsAdd = c => { let l = 0; for (const [k, sd] of sides(c)) { if (!activeKeys.has(k)) continue; const o = sd === 'en' ? 'pay' : 'en'; l += sideCount.get(k + ':' + o) || 0; if (cmdSides.some(([k2, s2]) => k2 === k && s2 === o)) l += 3; } if (tribal && (new RegExp('\\b' + tribal.type + '\\b').test(c.ft) || c.kw.includes('changeling'))) l += 1; return l; };
+    const colorOf = Object.fromEntries(colors.map(k => [k.color, k]));
+    // land value: colours of the identity it makes (−1), untapped +1, popularity; a basic of an over-supplied colour is worth less
+    const landValue = c => { const on = srcOf(c).filter(x => CI.includes(x)).length; if (E.isBasic(c)) { const k = colorOf[c.pm[0]]; return (k ? -2 * (k.srcShare - k.pipShare) : 0) + 1; } return 2 * Math.max(0, on - 1) + (manaModel(c).tapped ? 0 : 1) + rankTerm(c); };
+    const ROLES7 = ['ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon'];
+    const planner = { cur, CI, multi: CI.length >= 2, deck: all, pool, price: priceOf, landValue, upg: UPG, landOn: c => srcOf(c).filter(x => CI.includes(x)).length,
+      pick: (pred, k) => pick(pred, k),
+      value: c => (inDeck.has(c.n) ? (linkOf.get(c) || 0) : linksAsAdd(c)) + baseValue(c),
+      have: Object.fromEntries(ROLES7.map(r => [r, role(r)])), targets: Object.fromEntries(ROLES7.map(r => [r, +targets[r] || 0])),
+      combo: new Set([].concat(...(combos || []).map(v => v.c || []))) };
+
     return {
+      planner,
       at: new Date().toISOString(), CI, deckSize, nLands, nNon, avgMV, overall, axes, sim,
       prob: { openingLands, pRampEarly, nRamp2 },
       mana: { colors, tapped, pipTotal, cast, castOk: CAST_OK, landEst },
@@ -682,6 +700,102 @@ const Analysis = (function () {
     };
   }
 
+  /* ---------- swap planner: which card goes out for each card that comes in ---------- */
+  // P: X.planner. Each add takes the lowest-value card of its kind (a basic land for a land, else a nonland card) whose
+  // removal keeps every role at or above target, counting the roles the adds bring; if none is role-safe, the
+  // lowest-value card is used and marked unsafe. keep: names never cut (commander, the combo's own pieces).
+  // Locked cards (locked by the user, not imported) are never cut. Returns [{ add, cut, safe, alts }].
+  function pairCuts(P, adds, keep) {
+    keep = keep || new Set();
+    const have = Object.assign({}, P.have), left = new Map(P.deck.map(e => [e.c, e.qty])), out = [];
+    for (const a of adds) for (const r of Object.keys(A(a).roles)) if (r in have) have[r]++;
+    for (const add of adds) {
+      const land = A(add).isLand;
+      const ok = e => left.get(e.c) > 0 && !e.locked && !keep.has(e.c.n) && e.c !== add && (land ? E.isBasic(e.c) : !A(e.c).isLand);
+      const safe = c => Object.keys(A(c).roles).every(r => !(r in have) || have[r] - 1 >= P.targets[r]);
+      const cand = P.deck.filter(ok).map(e => ({ c: e.c, v: land ? P.landValue(e.c) : P.value(e.c), safe: safe(e.c) }))
+        .sort((x, y) => (y.safe - x.safe) || (x.v - y.v) || (x.c.n < y.c.n ? -1 : 1));
+      const pick = cand[0];
+      if (!pick) { out.push({ add, cut: null, safe: false, alts: [] }); continue; }
+      left.set(pick.c, left.get(pick.c) - 1); for (const r of Object.keys(A(pick.c).roles)) if (r in have) have[r]--;
+      out.push({ add, cut: pick.c, safe: pick.safe, value: pick.v, alts: cand.filter((x, i, a) => a.findIndex(y => y.c === x.c) === i).slice(0, 12).map(x => x.c) });
+    }
+    return out;
+  }
+  // Budget upgrades: the swaps whose added cards cost at most `budget` in total and raise the deck's simulated score most.
+  // Score of a list = 10 × power level + fundamentals (0.1 power counts as one fundamentals point; unrounded), from run() with the
+  // same shuffles as the base list (impactPrep), so differences come from the cards.
+  //  1. Candidates (static): for each role, the best-fitting cards that have it (theme fit + EDHREC rank, the same ranking
+  //     as Improve), cards for the two weakest power vectors, popular cards overall, and for 2+ colour decks lands that
+  //     make 2+ of its colours (the 12 most played); all within the analysis pool (Commander-legal, colour identity, bracket limits) and the budget.
+  //     Cuts: the 12 lowest-value nonland cards whose removal keeps every role at target (value as on Improve).
+  //  2. Measured: each add replaces the most replaceable cut c1 (gain g_a); each cut c_j is measured against the best add
+  //     (δ_j = how much worse cutting c_j is than cutting c1). Lands replace one basic of the most over-supplied colour.
+  //  3. Chosen: the k adds within budget that maximise Σ (g_a − 0.5 − 0.002 × price) − Σ_{j≤k} δ_j (knapsack over number of adds and cost), each
+  //     add paired with the next cut; then the whole set is scored together.
+  const worth = s => s.exact; // 10 × unrounded power level + unrounded fundamentals mean
+  async function upgradePlan(prep, P, budget, opts) {
+    opts = opts || {};
+    budget = +budget; const keep = opts.keep || new Set(), tick = opts.tick || (() => {});
+    if (!(budget > 0)) return { swaps: [], spent: 0, budget };
+    const priced = c => P.price(c) != null && P.price(c) > 0 && P.price(c) <= budget;
+    const roleSafe = c => Object.keys(A(c).roles).every(r => !(r in P.have) || P.have[r] - 1 >= P.targets[r]);
+    const cuts = P.deck.filter(e => !e.locked && !keep.has(e.c.n) && !A(e.c).isLand && roleSafe(e.c)).map(e => e.c)
+      .sort((a, b) => P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, opts.maxCuts || 12);
+    const basic = P.deck.filter(e => E.isBasic(e.c) && !e.locked && e.qty > 0).sort((a, b) => P.landValue(a.c) - P.landValue(b.c))[0];
+    const nBasic = P.deck.filter(e => E.isBasic(e.c) && !e.locked).reduce((s, e) => s + e.qty, 0);
+    const seen = new Set(), adds = [], lands = [];
+    const take = (arr, list) => { for (const c of list) if (!seen.has(c)) { seen.add(c); arr.push(c); } };
+    if (cuts.length) {
+      for (const r of Object.keys(P.targets)) take(adds, P.pick(c => priced(c) && !A(c).isLand && A(c).roles[r], 5));
+      for (const k of Object.keys(P.upg)) take(adds, P.pick(c => priced(c) && !A(c).isLand && P.upg[k][0](c), 4));
+      take(adds, P.pick(c => priced(c) && !A(c).isLand, 12));
+    }
+    if (P.multi && basic) take(lands, P.pool.filter(c => A(c).isLand && priced(c) && P.landOn(c) >= 2 && P.landValue(c) - P.landValue(basic.c) >= 1.5).sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9)).slice(0, 12)); // most played first: the simulation rates most duals alike, and pain or filter costs aren't modelled
+    const total = adds.length + lands.length + Math.max(0, cuts.length - 1) + 1; let done = 0;
+    const score = async swaps => { await tick(++done, total); return worth(impactMany(prep, swaps).after) - worth(prep.base); };
+    const gA = [];
+    for (const c of adds) gA.push({ c, g: await score([{ cut: cuts[0], add: c }]), land: false });
+    for (const c of lands) gA.push({ c, g: await score([{ cut: basic.c, add: c }]), land: true });
+    const bestAdd = gA.filter(x => !x.land).sort((a, b) => b.g - a.g)[0];
+    const delta = [0];
+    if (bestAdd) for (let j = 1; j < cuts.length; j++) delta.push(Math.max(0, bestAdd.g - await score([{ cut: cuts[j], add: bestAdd.c }])));
+    const order = cuts.map((c, j) => ({ c, d: delta[j] || 0 })).sort((a, b) => a.d - b.d);
+    // knapsack: dp[k][u] = best Σ g of k nonland adds (+ land gains) with cost ≤ u units
+    const items = gA.filter(x => x.g > 0.5 && (!x.land || nBasic > 0)).map(x => Object.assign(x, { price: P.price(x.c) }));
+    const landItems = items.filter(x => x.land).sort((a, b) => b.g - a.g).slice(0, nBasic);
+    const nonItems = items.filter(x => !x.land);
+    const K = Math.min(order.length, nonItems.length), unit = Math.max(0.05, budget / 2000), U = Math.floor(budget / unit + 1e-9);
+    // each swap must earn 0.5 to be worth making, and $1 costs 0.002, so equal gains go to the cheaper card
+    const all = nonItems.concat(landItems).map(x => Object.assign(x, { w: Math.max(1, Math.ceil(x.price / unit - 1e-9)), net: x.g - 0.5 - 0.002 * x.price }));
+    const NEG = -1e9, dp = Array.from({ length: K + 1 }, (_, k) => new Float64Array(U + 1).fill(k ? NEG : 0)), tk = [];
+    for (const it of all) {
+      const t = Array.from({ length: K + 1 }, () => new Uint8Array(U + 1));
+      for (let k = K; k >= 0; k--) {
+        const kk = it.land ? k : k - 1; if (kk < 0) continue;
+        const row = dp[k], src = dp[kk];
+        for (let u = U; u >= it.w; u--) { const v = src[u - it.w]; if (v > NEG / 2 && v + it.net > row[u] + 1e-9) { row[u] = v + it.net; t[k][u] = 1; } }
+      }
+      tk.push(t);
+    }
+    let best = 0, bk = 0, bu = 0, cum = 0;
+    for (let k = 0; k <= K; k++) { if (k) cum += order[k - 1].d; for (let u = 0; u <= U; u++) if (dp[k][u] > NEG / 2 && dp[k][u] - cum > best + 1e-9) { best = dp[k][u] - cum; bk = k; bu = u; } }
+    const chosen = []; for (let i = all.length - 1, k = bk, u = bu; i >= 0; i--) if (tk[i][k][u]) { chosen.push(all[i]); u -= all[i].w; if (!all[i].land) k--; }
+    const non = chosen.filter(x => !x.land).sort((a, b) => b.g - a.g), ls = chosen.filter(x => x.land).sort((a, b) => b.g - a.g);
+    const basics = P.deck.filter(e => E.isBasic(e.c) && !e.locked).sort((a, b) => P.landValue(a.c) - P.landValue(b.c)), left = new Map(basics.map(e => [e.c, e.qty]));
+    const nextBasic = () => { const e = basics.find(b => left.get(b.c) > 0); if (!e) return null; left.set(e.c, left.get(e.c) - 1); return e.c; };
+    const swaps = non.map((x, j) => ({ add: x.c, cut: order[j].c, price: x.price, g: Math.round((x.g - order[j].d) * 10) / 10 }))
+      .concat(ls.map(x => ({ add: x.c, cut: nextBasic(), price: x.price, g: Math.round(x.g * 10) / 10 }))).filter(x => x.cut);
+    const whole = swaps.length ? impactMany(prep, swaps) : null;
+    return { swaps, spent: Math.round(swaps.reduce((s, x) => s + x.price, 0) * 100) / 100, budget, whole, measured: done, candidates: adds.length + lands.length };
+  }
+  // several swaps at once, scored like impactOne (same seed as the base, so the difference comes from the swaps)
+  function impactMany(prep, swaps) {
+    let d2 = prep.deck; for (const s of swaps) d2 = applySwap(d2, s.cut, s.add);
+    const a = snap(run(prep.db, d2, prep.cmds, prep.opts)), b = prep.base;
+    return { pl: Math.round((a.pl - b.pl) * 10) / 10, fund: a.fund - b.fund, keep: a.keep - b.keep, t4: a.t4 - b.t4, typical: a.typical - b.typical, minB: a.minB - b.minB, vectors: Object.keys(a.v).map(k => [k, a.v[k] - b.v[k]]).filter(x => x[1] !== 0), after: a };
+  }
+
   /* ---------- swap impact: re-run the analysis with each swap, same seed (common random numbers) ---------- */
   function applySwap(deck, cut, add) {
     const out = [];
@@ -691,12 +805,12 @@ const Analysis = (function () {
     }
     return out;
   }
-  const snap = X => ({ src: Object.fromEntries(X.mana.colors.map(c => [c.color, c.landSources])), warn: X.mana.colors.filter(c => c.warn).length, castLow: X.mana.cast.filter(r => r.p < CAST_OK).length, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, typical: X.power.win.typical, keep: X.sim.keep7, t4: X.sim.manaByTurn[4], v: Object.fromEntries(X.power.vectors.map(v => [v.key, v.score])), axes: Object.fromEntries(X.axes.map(a => [a.key, a.score])) });
+  const snap = X => ({ exact: 10 * X.power.plExact + X.axes.reduce((s, a) => s + a.score, 0) / X.axes.length, src: Object.fromEntries(X.mana.colors.map(c => [c.color, c.landSources])), warn: X.mana.colors.filter(c => c.warn).length, castLow: X.mana.cast.filter(r => r.p < CAST_OK).length, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, typical: X.power.win.typical, keep: X.sim.keep7, t4: X.sim.manaByTurn[4], v: Object.fromEntries(X.power.vectors.map(v => [v.key, v.score])), axes: Object.fromEntries(X.axes.map(a => [a.key, a.score])) });
   function impactPrep(db, deck, cmds, opts) {
     const games = opts.impactGames || 5000;
     const seed = E.hashStr('impact#' + cmds.map(c => c.n).join('|'));
     const o = Object.assign({}, opts, { games, seed, almost: null });
-    return { db, deck, cmds, opts: o, games, base: snap(run(db, deck, cmds, o)) };
+    return { db: null, deck, cmds, opts: o, games, base: snap(run(null, deck, cmds, o)) }; // db only feeds the add pool, which snap() doesn't read
   }
   function impactOne(prep, p) {
     const d2 = applySwap(prep.deck, p.cut, p.add);
@@ -710,26 +824,80 @@ const Analysis = (function () {
   function impact(db, deck, cmds, opts, plans) { const prep = impactPrep(db, deck, cmds, opts); return plans.map(p => impactOne(prep, p)); }
 
   /* ---------- decklist parsing with sections ---------- */
-  // sections: "Commander", "Deck", "Sideboard" (also "// COMMANDER" and "Commander:"); a blank line ends a commander section
+  // Sections: "Commander", "Deck", "Sideboard", "Maybeboard" (also "// COMMANDER", "Commander:", "Commander (1)"), "SB:" lines,
+  // Archidekt [Commander{top}] / [Maybeboard{noDeck}] tags, Moxfield #!Commander tags, TappedOut *CMDR*, and CSV exports.
+  // Each card keeps its block (blank-line separated) so pickCommanders can find a commander that has no header.
+  // Quantities, not lines, are counted: "26 Forest" is 26 cards.
+  const SKIP_SEC = /^(maybe ?board|considering|tokens?|acquire ?board|wish ?list|wants?)$/i, SB_SEC = /^(sideboard|side|companion)$/i;
   function parseDecklist(text) {
-    const cmd = [], main = []; let section = 'main', sawBlankAfterMain = false;
-    const lines = String(text || '').split(/\r?\n/);
+    const lines = String(text || '').replace(/^﻿/, '').split(/\r?\n/);
+    if (lines.length && /,/.test(lines[0]) && /\bname\b/i.test(lines[0])) return parseCSVDeck(lines);
+    const items = []; let section = 'main', blk = 0, explicit = false;
+    const hasCmd = () => items.some(x => x.sec === 'cmd');
     for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) { if (section === 'cmd' && cmd.length) section = 'main'; else if (main.length) sawBlankAfterMain = true; continue; }
+      let line = raw.replace(/\t/g, ' ').trim();
+      if (!line) { blk++; if (section === 'cmd' && hasCmd()) section = 'main'; continue; }
       const head = line.replace(/^(?:\/\/|#)\s*/, '').replace(/\s*(?:\(\d+\))?\s*:?$/, '');
-      if (/^commanders?$/i.test(head)) { section = 'cmd'; continue; }
-      if (/^(deck|mainboard|main|maindeck)$/i.test(head)) { section = 'main'; continue; }
-      if (/^(sideboard|maybeboard|considering|companion|tokens?)$/i.test(head)) { section = 'skip'; continue; }
-      if (/^(?:\/\/|#)/.test(line)) { if (section === 'cmd' && cmd.length) section = 'main'; continue; } // other comment or category header
-      if (section === 'skip') continue;
-      const isCmdTag = /\[commander/i.test(line) || /\*CMDR\*/i.test(line);
-      const it = E.parseList(line)[0]; if (!it) continue;
-      if (isCmdTag || section === 'cmd') cmd.push(it); else if (sawBlankAfterMain && main.length >= 90) cmd.push(it); else main.push(it);
+      if (/^commanders?$/i.test(head)) { section = 'cmd'; explicit = true; continue; }
+      if (/^(deck|mainboard|main|maindeck|main deck)$/i.test(head)) { section = 'main'; continue; }
+      if (SB_SEC.test(head)) { section = 'sb'; continue; }
+      if (SKIP_SEC.test(head)) { section = 'skip'; continue; }
+      if (/^(?:\/\/|#)/.test(line) || /^[A-Za-z][\w '&/,-]*\s*\(\d+\)\s*:?$/.test(line)) { if (section === 'cmd' && hasCmd()) section = 'main'; continue; } // comment or category header such as "Creatures (30)"
+      let sec = section;
+      const sb = line.match(/^SB:\s*(.+)$/i); if (sb) { line = sb[1]; sec = 'sb'; }
+      const tags = (line.match(/\[[^\]]*\]/g) || []).join(' ');
+      const cmdTag = /\[commander/i.test(tags) || /\*CMDR\*/i.test(line) || /(?:^|\s)#!?commander\b/i.test(line);
+      if (!cmdTag && /\{nodeck\}|\[(?:maybe ?board|considering|sideboard)/i.test(tags)) continue; // Archidekt cards kept out of the deck
+      if (sec === 'skip' && !cmdTag) continue;
+      const it = E.parseLine(line); if (!it) continue;
+      if (cmdTag) { sec = 'cmd'; explicit = true; }
+      items.push(Object.assign(it, { sec, blk }));
     }
-    return { cmd, main };
+    return split(items, explicit);
+  }
+  function parseCSVDeck(lines) {
+    const h = E.splitCSV(lines[0]).map(x => x.toLowerCase().trim()), name = h.indexOf('name');
+    const qty = h.findIndex(x => x === 'count' || x === 'quantity' || x === 'qty' || x === 'amount');
+    const sect = h.map((x, i) => /^(board|section|category|categories|tags?|type|deck)$/.test(x) ? i : -1).filter(i => i >= 0);
+    const items = []; let explicit = false;
+    for (const line of lines.slice(1)) {
+      if (!line.trim()) continue;
+      const f = E.splitCSV(line), n = (f[name] || '').trim(); if (!n) continue;
+      const tag = sect.map(i => f[i] || '').join(' ');
+      if (!/commander/i.test(tag) && /maybe|considering|sideboard|wish/i.test(tag)) continue;
+      const cmd = /commander/i.test(tag); if (cmd) explicit = true;
+      items.push({ qty: qty >= 0 ? Math.max(1, parseInt(f[qty], 10) || 1) : 1, name: n, sec: cmd ? 'cmd' : 'main', blk: 0 });
+    }
+    return split(items, explicit);
+  }
+  function split(items, explicit) {
+    const of = s => items.filter(x => x.sec === s).map(x => ({ qty: x.qty, name: x.name, blk: x.blk }));
+    return { cmd: of('cmd'), main: of('main'), sb: of('sb'), explicit };
+  }
+  // Commanders for a parsed list. A "Commander" section or tag wins. Without one, in order: the last block after a blank line
+  // (Moxfield and MTGO put it there), the sideboard (MTGO), a first block of its own, then the first or last card of a 100-card list.
+  // Every guess must be commander-eligible (and a legal pair if two). Returns the cards, how they were found, the main list
+  // without them, and the eligible cards in the list when nothing was found.
+  function pickCommanders(P, db) {
+    const look = it => E.lookup(db, it.name);
+    const ok = arr => { const cs = arr.map(look); if (!cs.length || cs.length > 2 || cs.some(c => !c || !E.commanderEligibility(c).ok) || arr.some(x => x.qty !== 1)) return null; if (cs.length === 2 && (cs[0] === cs[1] || !E.pairCheck(cs[0], cs[1]).ok)) return null; return cs; };
+    const qty = arr => arr.reduce((s, x) => s + x.qty, 0);
+    if (P.cmd.length) return { cmds: P.cmd.map(look).filter(Boolean).filter((c, i, a) => a.indexOf(c) === i), how: 'section', main: P.main, missing: P.cmd.filter(x => !look(x)).map(x => x.name) };
+    const main = P.main, blks = [...new Set(main.map(x => x.blk))];
+    const tries = [];
+    if (blks.length > 1) { const last = main.filter(x => x.blk === blks[blks.length - 1]); tries.push(['last block', last]); }
+    if (P.sb.length) tries.push(['sideboard', P.sb]);
+    if (blks.length > 1) tries.push(['first block', main.filter(x => x.blk === blks[0])]);
+    if (main.length && qty(main) === 100) tries.push(['first card', [main[0]]], ['last card', [main[main.length - 1]]]);
+    for (const [how, arr] of tries) {
+      const cs = ok(arr); if (!cs) continue;
+      if (how !== 'sideboard' && qty(main) - arr.length < 60) continue; // a real deck around it, not a short list of legends
+      return { cmds: cs, how, main: how === 'sideboard' ? main : main.filter(x => !arr.includes(x)), missing: [] };
+    }
+    const cand = []; for (const it of main.concat(P.sb)) { const c = look(it); if (c && E.commanderEligibility(c).ok && !cand.includes(c)) cand.push(c); }
+    return { cmds: [], how: null, main, missing: [], candidates: cand };
   }
 
-  return { run, impact, impactPrep, impactOne, applySwap, simulate, manaModel, parseDecklist, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
+  return { run, impact, impactPrep, impactOne, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;

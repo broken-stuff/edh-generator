@@ -171,6 +171,38 @@ function legalCheck(R, label) {
     assert(P1.cmd.length === 1 && P1.cmd[0].name === 'Synth Rainbow' && P1.main.length === 2 && P1.main[1].qty === 26, 'parse: "// COMMANDER" header, blank line ends the commander section');
     const P2 = An.parseDecklist('Commander (1)\n1 A\n1 B\nDeck\n1 C\n\nSideboard:\n1 D');
     assert(P2.cmd.length === 2 && P2.main.length === 1, 'parse: "Commander (1)" header with partners, sideboard skipped');
+    // export formats seen in the wild: each must read back as the same 99 cards and commander
+    const PL = l => JSON.stringify(E.parseLine(l));
+    assert(PL('1 Sol Ring (PLST) C21-263 *F*') === PL('1x Sol Ring (cmm) 400 [Ramp] ^Have,#37d67a^') && PL('1 Sol Ring #Ramp #!Staple') === PL('Sol Ring x1') && PL('1 Sol Ring') === '{"qty":1,"name":"Sol Ring"}', 'parseLine: set codes, foil marks, Archidekt categories and ^tags^, Moxfield #tags, "Name x1"');
+    assert(E.parseLine('B.F.M. (Big Furry Monster)').name === 'B.F.M. (Big Furry Monster)' && E.parseLine('26 Forest (SOS) 280').qty === 26, 'parseLine: a name in parentheses is kept; quantities are read');
+    const rows = base.deck.map(e => [e.qty, e.c.n]), body = (f, sep) => rows.map(([q, n]) => f(q, n)).join(sep || '\n');
+    const FMT = {
+      'Moxfield, commander last': body((q, n) => q + ' ' + n) + '\n\n1 Synth Rainbow',
+      'plain, commander first, no header': '1 Synth Rainbow\n' + body((q, n) => q + ' ' + n),
+      'MTGO, commander in sideboard': body((q, n) => q + ' ' + n) + '\n\nSideboard\n1 Synth Rainbow',
+      'SB: line': body((q, n) => q + ' ' + n) + '\nSB: 1 Synth Rainbow',
+      'Archidekt with maybeboard': body((q, n) => q + 'x ' + n + ' (syn) 1 [Ramp] ^Have,#37d67a^') + '\n1x Synth Rainbow [Commander{top}]\n1x Synth C 1-0 [Maybeboard{noDeck}{noPrice}]',
+      'Moxfield #tags, #!Commander': body((q, n) => q + ' ' + n + ' (SYN) 1 #Staple') + '\n1 Synth Rainbow #!Commander',
+      'CSV without a commander column': '"Count","Name","Edition"\n' + body((q, n) => '"' + q + '","' + n + '","syn"') + '\n"1","Synth Rainbow","syn"',
+      'groups split by blank lines after 90+ cards': 'Commander\n1 Synth Rainbow\n\n' + body((q, n) => q + ' ' + n, '\n\n')
+    };
+    for (const [k, t] of Object.entries(FMT)) {
+      const K = An.pickCommanders(An.parseDecklist(t), db), n = K.main.filter(x => x.name !== 'Synth Rainbow').reduce((s, x) => s + x.qty, 0);
+      assert(K.cmds.length === 1 && K.cmds[0].n === 'Synth Rainbow' && n === 99, 'import format: ' + k + ' (commander ' + (K.cmds[0] ? K.cmds[0].n : 'none') + ', ' + n + ' cards)');
+    }
+    const K0 = An.pickCommanders(An.parseDecklist(body((q, n) => q + ' ' + n)), db);
+    assert(!K0.cmds.length && Array.isArray(K0.candidates), 'pickCommanders: a list without a commander finds none and returns candidates');
+    const db2 = E.buildDB(raw.map(E.norm).filter(Boolean), {});
+    assert(E.addAliases(db2, [['Synth Flavour Name', 'Synth Rainbow'], ['Synth Mono Lord', 'Synth Rainbow']]) === 1 && E.lookup(db2, 'Synth Flavour Name').n === 'Synth Rainbow' && E.lookup(db2, 'Synth Mono Lord').n === 'Synth Mono Lord', 'addAliases: an alternate name maps to its card, never over a real card name');
+    // swap planner: combo adds and budget upgrades
+    const rb = E.lookup(db, 'Synth Rainbow'), pdeck = base.deck.map(e => Object.assign({}, e, { locked: false }));
+    const PX = An.run(db, pdeck, [rb], { settings: base.settings, games: 300 });
+    const adds = PX.planner.pool.filter(c => !E.analyze(c).isLand).slice(0, 2), pc = An.pairCuts(PX.planner, adds, new Set([pdeck[0].c.n]));
+    assert(pc.length === 2 && pc.every(x => x.cut && !E.analyze(x.cut).isLand && x.cut !== pdeck[0].c) && pc[0].cut !== pc[1].cut, 'pairCuts: one distinct nonland cut per add, never a kept card');
+    const prep = An.impactPrep(db, pdeck, [rb], { settings: base.settings, impactGames: 300 });
+    const UP = await An.upgradePlan(prep, PX.planner, 5, { maxCuts: 4 });
+    const inDeckN = new Set(pdeck.map(e => e.c.n)), nonCuts = UP.swaps.filter(x => !E.analyze(x.add).isLand).map(x => x.cut);
+    assert(UP.spent <= 5 + 1e-9 && UP.swaps.every(x => !inDeckN.has(x.add.n) && x.add.leg === 'legal' && inDeckN.has(x.cut.n) && x.g > 0) && new Set(nonCuts).size === nonCuts.length, 'upgradePlan: adds fit the amount, are legal and new, cuts are distinct deck cards (' + UP.swaps.length + ' swaps, ' + UP.spent + ')');
     // colour check: Karsten's definition (colour given land drops); his 99-card figures 19 (C, T1) and 30 (CC, T2) at 37 lands
     assert(Math.abs(An.castOdds(99, 37, 19, 7, 1, 1) - 0.813) < 0.002 && Math.abs(An.castOdds(99, 37, 30, 8, 2, 2) - 0.872) < 0.002, 'castOdds: 19 sources C on T1 = 81.3%, 30 sources CC on T2 = 87.2%');
     assert(An.castOdds(99, 37, 37, 9, 3, 3) === 1 && An.castOdds(99, 37, 0, 9, 1, 3) === 0, 'castOdds: all lands of the colour → 1, none → 0');

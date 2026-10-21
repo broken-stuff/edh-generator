@@ -47,7 +47,7 @@ The five pages are in the left menu (a bar at the bottom on phones): **Start**, 
 ### Start
 
 - **New deck:** commander (and partner), bracket, budget, game plan, themes and creature types. **Save, load, share** saves settings as a JSON file, loads one back, or gives a share token: add it to the page address as `#token` and anyone who opens that link gets the same settings.
-- **Import a list:** paste your current list (Moxfield, Archidekt, MTGO or plain `1 Name`; set codes, collector numbers and `*F*` are ignored). The commander is read from a `Commander` or `// COMMANDER` header, or a `[Commander]` tag. The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; scored cuts and adds are on **Improve**. Rule problems, such as a deck that isn't 100 cards, show under **Rules** on Deck. Deck, Swap, Combos, Primer and Export work on the imported list too.
+- **Import a list:** paste your current list (Moxfield, Archidekt, MTGO, CSV or plain `1 Name`; set codes, collector numbers, `*F*`/`*E*`, Archidekt `[Category]` and `^Tag^`, and Moxfield `#tags` are ignored; Archidekt maybeboard and sideboard cards are left out). The commander is read from a `Commander` or `// COMMANDER` header, a `[Commander]`, `#!Commander` or `*CMDR*` tag, or a `SB:` line. Without one, the importer looks where exports put it: the last block after a blank line, the sideboard, a first block of its own, or the first or last card of a 100-card list; it says where it found it, and if it finds none it lists the legendary cards to pick from. Double-faced and split cards match by either face or with `/`, `//` or `///`; Universes Beyond flavour names (such as Secret Lair printings) match their Oracle card through `data/aliases.json`. The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; scored cuts and adds are on **Improve**. Rule problems, such as a deck that isn't 100 cards, show under **Rules** on Deck. Deck, Swap, Combos, Primer and Export work on the imported list too.
 - **Find a commander**, three ways. Each sends a pick to New deck with **Build**.
   - **Browse:** every legal commander. Filter by name, text, colour or theme.
   - **Quiz:** a seven-question quiz (colours, play style, creature type, themes, power, popularity, commander price). Every legal commander gets a match score and its reasons:
@@ -61,7 +61,7 @@ The five pages are in the left menu (a bar at the bottom on phones): **Start**, 
 
 - **Cards:** the list, grouped by type or by role (ramp, draw, removal and so on). Tap a card for its text, price, roles, why it is in the deck, and its actions: **Lock** keeps it on rebuild, **Swap** shows the five best alternatives, **Remove** takes it out. **Rebuild around locks** rebuilds while keeping locked cards (if they can't fit the budget, the current deck stays). **Undo** reverts your last edit. **Rules** in the summary opens the legality and budget checks.
 - **Sample hand:** draw 7, take London mulligans, draw more.
-- **Export:** copy or download the list.
+- **Export:** copy or download the list. **Added cards only** lists the cards added since the deck was generated or imported (combo adds, upgrades, accepted swaps) as `1 Card Name` lines for a store's mass entry (TCGplayer, Card Kingdom).
 
 ### Analysis
 
@@ -72,7 +72,8 @@ Scores any deck, generated, imported or pasted, or compares two. The top of the 
 ### Improve
 
 - **Suggested swaps:** recommended cuts and adds for the analyzed list, each scored with simulated games. Accept or deny them one at a time, by group or all at once. Candidate cards for each problem are under the list.
-- **Combos:** combos already in the deck, and combos one card away with that card's price. **+ Add** shows what to cut and checks the swap first: it won't add a card that breaks your bracket or budget, and says which rule. Two-card infinites your bracket doesn't allow are marked "not allowed" and listed last.
+- **Budget upgrades:** pick $20, $50, $200 or another amount. The page finds the set of swaps that raises the deck most for at most that much: each add is Commander-legal and inside your colour identity and bracket limits, and each replaces the most replaceable card (lowest value that keeps every role at its target; never the commander, a combo piece or a card you locked; lands replace a basic of your most over-supplied colour). Candidates are measured with 3,000 simulated games on the same shuffles as the current list (gain = 10 × power level change + fundamentals change) and the best set within the amount is chosen by knapsack. The whole set is then measured together. **Apply** or **Apply all** makes the swaps; **Copy buy list** copies the adds as `1 Card Name` lines.
+- **Combos:** combos already in the deck, and combos one or two cards away with each missing card's price. **+ Add** (one card) or **+ Add 2 cards** pairs each missing card with a suggested cut, which you can change, and checks the whole change first: it won't add cards that break your bracket or budget, and says which rule. Two-card infinites your bracket doesn't allow are marked "not allowed" and listed last.
 
 ### Primer
 
@@ -171,6 +172,7 @@ node sens.js     # prints a table of how decks respond to bracket, budget and ga
 **Data files:** `.github/workflows/data.yml` runs every Monday at 06:23 UTC and on demand (Actions → Data files → Run workflow, with options to skip either source or force a Scryfall re-download). It:
 - slims Scryfall's Oracle Cards file into `data/oracle-cards-*.jsonl.gz` with `tools/scryfall-slim.js`
 - splits Commander Spellbook's `variants.json` into `data/spellbook/` with `tools/spellbook-shard.js`
+- writes `data/aliases.json` (alternate printed names, such as Universes Beyond flavour names, mapped to Oracle names) from Scryfall's Default Cards file with `tools/scryfall-aliases.js`
 - rewrites `data/index.json` with `tools/data-index.js`, then commits to `main`
 
 **Publishing:** GitHub Pages, Settings → Pages → Deploy from a branch → `main`, `/ (root)`. Every push to `main` is live.
