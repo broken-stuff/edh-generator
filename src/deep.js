@@ -17,9 +17,9 @@ const Deep = (function () {
   const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
   const A = c => E.analyze(c);
   const G1 = 1500, G2 = 5000, MIN_GAIN = 0.5, REFINE_GAIN = 0.3;
-  const DEF = { g1: G1, g2: G2, cuts: 24, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1 };
-  // thorough (~60 s): twice the screen, half again the cuts, 100 confirmed, a longer package and a wider refinement
-  const WIDE = Object.assign({}, DEF, { cuts: 36, nonland: 800, popular: 80, perRole: 6, perVector: 6, lands: 36, single: 40, pairs: 24, confirm: 100, rounds: 12, lead: 16, altFor: 4, refineAdds: 6, refineCuts: 2 });
+  const DEF = { g1: G1, g2: G2, cuts: 24, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1, beam: 1 };
+  // thorough (~1 min on 4 cores): a wider screen, more cuts, 80 confirmed, a three-wide beam over the package, a wider refinement
+  const WIDE = Object.assign({}, DEF, { cuts: 30, nonland: 500, popular: 60, perRole: 6, perVector: 6, lands: 30, single: 40, pairs: 24, confirm: 80, rounds: 10, lead: 16, altFor: 3, refineAdds: 6, refineCuts: 2, beam: 3 });
 
   /* ---------- evaluator: the part that runs in each worker ---------- */
   // init: { cards: [card], deck: [{ n, qty, locked }], cmds: [name], opts, combos: [variant] | null, comp: { addName: [variant] } }
@@ -140,7 +140,7 @@ const Deep = (function () {
     const cuts = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c)
       .sort((a, b) => safe(b) - safe(a) || P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, o.cuts);
     const basics = ctx.deck.filter(e => E.isBasic(e.c) && !e.locked).sort((a, b) => P.landValue(a.c) - P.landValue(b.c));
-    const est = cuts.length + C.adds.length + C.lands.length + K.pairs.length + o.confirm + o.rounds * (o.lead + o.altFor * (o.altCuts - 1));
+    const est = cuts.length + C.adds.length + C.lands.length + K.pairs.length + o.confirm + o.rounds * (o.beam || 1) * (o.lead + o.altFor * (o.altCuts - 1));
     let done = 0, total = est, id = 0, evals = 0;
     const tick = async () => { done++; evals++; if (progress) await progress(Math.min(done, total - 1), total); };
     const run = (tasks) => exec.run(tasks.map(t => Object.assign({ id: ++id }, t)), tick);
@@ -168,28 +168,33 @@ const Deep = (function () {
       const rB = await run(conf.map(it => ({ games: o.g2, swaps: swapsOf(it, cutsFor(it, new Set())) })));
       conf.forEach((it, i) => { it.g2 = rB[i].g; it.r = rB[i]; it.cuts = cutsFor(it, new Set()); });
       const ranked = conf.filter(it => okB({ minB: it.r.after.minB })).sort((a, b) => b.g2 - a.g2);
-      // 3. package
-      const pkg = []; let gPrev = 0; const used = new Set(), added = new Set();
-      for (let k = 0; k < o.rounds; k++) {
-        const open = ranked.filter(it => it.g2 > 0 && !it.adds.some(a => added.has(a)));
-        const left = [...new Set(open.slice(0, o.lead / 2).concat(open.filter(it => it.kind !== 'pair').slice(0, o.lead / 2)))]; // combo pairs score high; keep single cards in the race
-        if (!left.length) break;
-        const tries = [];
-        let na = 0;
-        left.forEach(it => {
-          const cs = cutsFor(it, used); if (!cs) return; tries.push({ it, cs });
-          if (it.kind === 'add' && na++ < o.altFor) for (const x of order.filter(y => !used.has(y.c) && y.c !== cs[0]).slice(0, o.altCuts - 1)) tries.push({ it, cs: [x.c] });
+      // 3. package: beam search; each round extends the o.beam best packages by one swap (or one combo pair)
+      const okBr = r => r.after.minB <= Math.max(bracket, X.power.minBracket);
+      let beam = [{ pkg: [], g: 0, used: new Set(), added: new Set() }], bestS = beam[0];
+      for (let k = 0; k < o.rounds && beam.length; k++) {
+        const jobs = [];
+        for (const S0 of beam) {
+          const open = ranked.filter(it => it.g2 > 0 && !it.adds.some(a => S0.added.has(a)));
+          const left = [...new Set(open.slice(0, o.lead / 2).concat(open.filter(it => it.kind !== 'pair').slice(0, o.lead / 2)))]; // combo pairs score high; keep single cards in the race
+          let na = 0;
+          for (const it of left) {
+            const cs = cutsFor(it, S0.used); if (!cs) continue; jobs.push({ S0, it, cs });
+            if (it.kind === 'add' && na++ < o.altFor) for (const x of order.filter(y => !S0.used.has(y.c) && y.c !== cs[0]).slice(0, o.altCuts - 1)) jobs.push({ S0, it, cs: [x.c] });
+          }
+        }
+        if (!jobs.length) break;
+        const rC = await run(jobs.map(j => ({ games: o.g2, swaps: j.S0.pkg.map(p => sw(p.cut, p.add)).concat(swapsOf(j.it, j.cs)) })));
+        const next = [], seenK = new Set();
+        jobs.map((j, i) => ({ j, r: rC[i] })).filter(x => okBr(x.r) && x.r.g - x.j.S0.g >= MIN_GAIN * x.j.it.adds.length).sort((a, b) => b.r.g - a.r.g).forEach(({ j, r }) => {
+          if (next.length >= (o.beam || 1)) return;
+          const key = j.S0.pkg.map(p => p.add.n).concat(j.it.adds.map(a => a.n)).sort().join('|'); if (seenK.has(key)) return; seenK.add(key);
+          const S1 = { pkg: j.S0.pkg.slice(), g: r.g, used: new Set(j.S0.used), added: new Set(j.S0.added) };
+          j.it.adds.forEach((a, i) => { S1.pkg.push({ add: a, cut: j.cs[i], step: k + 1, m: (r.g - j.S0.g) / j.it.adds.length, total: r.g, r, kind: j.it.kind, v: j.it.v }); S1.used.add(j.cs[i]); S1.added.add(a); });
+          next.push(S1); if (S1.g > bestS.g) bestS = S1;
         });
-        if (!tries.length) break;
-        const pre = pkg.map(p => sw(p.cut, p.add));
-        const rC = await run(tries.map(t => ({ games: o.g2, swaps: pre.concat(swapsOf(t.it, t.cs)) })));
-        let bi = -1;
-        rC.forEach((r, i) => { if (r.after.minB > Math.max(bracket, X.power.minBracket)) return; if (bi < 0 || r.g > rC[bi].g) bi = i; });
-        if (bi < 0 || rC[bi].g - gPrev < MIN_GAIN * tries[bi].it.adds.length) break;
-        const t = tries[bi], r = rC[bi];
-        t.it.adds.forEach((a, i) => { pkg.push({ add: a, cut: t.cs[i], step: k + 1, m: (r.g - gPrev) / t.it.adds.length, total: r.g, r, kind: t.it.kind, v: t.it.v }); used.add(t.cs[i]); added.add(a); });
-        gPrev = r.g;
+        beam = next;
       }
+      const pkg = bestS.pkg; let gPrev = bestS.g;
       // 4. refine: with the rest of the package fixed, each single-card swap is measured against other adds, other cuts and
       //    leaving it out; a replacement must beat the package by REFINE_GAIN, a swap that adds nothing is dropped
       let refined = 0;
