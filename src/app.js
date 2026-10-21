@@ -149,8 +149,6 @@
     const set = (id, cls, text) => { const el = $(id); el.innerHTML = '<span class="dot ' + cls + '"></span>' + esc(text); };
     set('pBulk', App.bulk ? 'ok' : '', App.bulk ? App.bulk.all.length.toLocaleString() + ' cards' : 'Card data not loaded');
     $('pBulk').title = App.bulk ? (App.bulk.meta.file || 'stored data') : '';
-    $('railData').innerHTML = (App.bulk ? '<span>Card data</span><b>' + App.bulk.all.length.toLocaleString() + ' cards</b><span style="overflow-wrap:anywhere">' + esc(App.bulk.meta.file || 'stored data') + '</span>' : '<span>Card data</span><b>Not loaded</b>') +
-      (App.bulkCombos ? '<span style="margin-top:6px">Combos</span><b>' + App.bulkCombos.count.toLocaleString() + '</b><span>Commander Spellbook ' + esc((App.bulkCombos.meta.timestamp || '').slice(0, 10)) + '</span>' : '');
     $('dataHint').textContent = App.bulk ? (App.bulk.meta.file || 'loaded') : 'load a file';
     if (!App.bulk) $('secData').open = true;
     $('genBtn').disabled = App.busy || !App.bulk || !!App.combosLoading;
@@ -375,7 +373,7 @@
     App.AN = X;
     setStatus('Analysis done in ' + ((performance.now() - t0) / 1000).toFixed(2) + ' s (' + X.sim.games.toLocaleString() + ' simulated games).');
     X.impact = []; X.impactDone = !X.plans.length;
-    X.held = !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once the Changes page is opened
+    X.held = !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
     renderAnView();
     if (!X.plans.length || X.held) return;
     // swap impact: one plan per tick so the page stays responsive
@@ -562,24 +560,26 @@
     return '<div class="an-card wide"><h3>Expected state by turn</h3><div class="scroll"><table class="t compact turns"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
       '<p class="note">Lands, mana, spells, hand size, land drops and commander: mean (or share) across ' + X.sim.games.toLocaleString() + ' seeded goldfish games on the play, no opponents, with the mulligan and casting rules under Method. "Seen" columns are exact hypergeometric odds of at least one such card among the cards seen by that turn (deck counts: ' + RL.map(k => k[1].toLowerCase() + ' ' + (n[k[0]] || 0)).join(', ') + ').</p></div>';
   }
-  // gaps against the benchmarks; with cards, each gap also lists candidate cards to add (the Changes page)
+  // gaps against the benchmarks; with cards, each gap also lists candidate cards to add (Improve)
+  const SEV = { high: 0, med: 1, low: 2, info: 3 };
+  const rankedRecs = X => X.recs.slice().sort((a, b) => SEV[a.sev] - SEV[b.sev]);
   function findingsHTML(X, cards) {
     const sevLabel = { high: 'High', med: 'Medium', low: 'Low', info: 'Info' };
-    return '<div class="an-card wide"><h3>' + (cards ? 'Candidates by gap' : 'Findings') + '</h3>' + (X.recs.length ? '<ol class="recs">' + X.recs.map(r => '<li><span class="chip sev-' + r.sev + '">' + sevLabel[r.sev] + '</span> ' + esc(cards ? r.text : (r.text.replace(/\s*[^.]*:$/, '') || r.text)) +
+    return '<div class="an-card wide"><h3>' + (cards ? 'Candidate cards by problem' : 'Problems, most serious first') + '</h3>' + (X.recs.length ? '<ol class="recs">' + rankedRecs(X).map(r => '<li><span class="chip sev-' + r.sev + '">' + sevLabel[r.sev] + '</span> ' + esc(cards ? r.text : (r.text.replace(/\s*[^.]*:$/, '') || r.text)) +
       (!cards ? '' : r.cards.length ? '<div class="recc">' + r.cards.map(c => '<span class="chip">' + (c.uri ? '<a href="' + esc(c.uri) + '" target="_blank" rel="noopener">' + esc(c.n) + '</a>' : esc(c.n)) + (c.price != null ? ' · ' + fmtP(c.price) : '') + (c.rank ? ' · #' + c.rank : '') + '</span>').join('') + '</div>' : '') +
       (r.combos && cards ? '<div class="recc">' + r.combos.map(v => '<span class="chip">+ ' + esc(v.missing.join(', ')) + ' → ' + esc(v.cards.join(' + ')) + (v.produces.length ? ' (' + esc(v.produces[0]) + ')' : '') + '</span>').join('') + '</div>' : '') + '</li>').join('') + '</ol>' : '<p class="note">No gaps against the benchmarks.</p>') + '</div>';
   }
-  // the Analysis and Changes pages share one analysis (App.AN)
+  // Analysis and Improve share one analysis (App.AN)
   function renderAnView() { if (App.tab === 'changes') renderChanges(); else if (App.tab === 'analysis') renderAnalysis(); }
   function renderChanges() {
-    if (App.anSource === 'compare') { $('view').innerHTML = '<p class="note">Changes apply to one list. On <button type="button" class="link" data-go="analysis">Analysis</button>, choose the deck or a pasted list instead of Compare.</p>'; return; }
+    if (App.anSource === 'compare') { $('view').innerHTML = '<p class="note">Suggested swaps apply to one list. On <button type="button" class="link" data-go="analysis">Analysis</button>, choose the deck or a pasted list instead of Compare.</p>'; return; }
     App.recsShown = true; // opening Changes is asking for them
     const X = App.AN;
     if (!X || X.held) { $('view').innerHTML = '<p class="note">Analyzing…</p>'; App.AN = null; runAnalysis(); return; }
     if (X.error) { $('view').innerHTML = '<div class="msg err">' + esc(X.error) + '</div>'; return; }
     const who = X.label + ': ' + X.cmds.map(c => esc(c.n)).join(' + ') + ' · power ' + X.power.pl.toFixed(1) + ' · fundamentals ' + X.overall + '/100';
     $('view').innerHTML = '<p class="note">' + who + '. Each change is scored alone against the current list. Accept applies it; Deny hides that card.</p>' +
-      '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + findingsHTML(X, true);
+      '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + (X.recs.length ? '<details class="an-more"><summary class="note">More candidate cards for each problem (' + X.recs.length + ')</summary>' + findingsHTML(X, true) + '</details>' : '');
   }
   function renderAnalysis() {
     const X = App.AN;
@@ -588,17 +588,26 @@
     if (!X) { $('view').innerHTML = src + '<p class="note" style="margin-top:10px">Scores speed, mana, card advantage, interaction, resilience, synergy, consistency and win pressure from card data, exact probabilities and a seeded goldfish simulation. Runs entirely in this page.</p>'; return; }
     if (X.error) { $('view').innerHTML = src + '<div class="msg err" style="margin-top:10px">' + esc(X.error) + (X.unknown && X.unknown.length ? '<br>Unknown names: ' + esc(X.unknown.join(', ')) : '') + '</div>'; return; }
     if (X.compare) { $('view').innerHTML = src + compareHTML(X); return; }
-    const s = X.sim, b = X.bracket;
+    const s = X.sim, b = X.bracket, W = X.power.win;
+    // the header cards already show power, bracket and win turn for the deck; a pasted list shows them here
+    const own = App.anSource === 'paste';
+    const castLow = X.mana.cast.filter(r => r.p < X.mana.castOk), low = X.axes.slice().sort((a, b) => a.score - b.score)[0];
     const head = '<div class="summary an-head">' + [
-      ['Power level', '<span class="big">' + X.power.pl.toFixed(1) + '</span><span class="note"> ±' + X.power.ci.toFixed(1) + '</span>'],
-      ['Fundamentals', X.overall + '<span class="note"> / 100</span>'],
+      own && ['Power level', '<span class="big">' + X.power.pl.toFixed(1) + '</span><span class="note"> ±' + X.power.ci.toFixed(1) + '</span>'],
+      own && ['Min. bracket', String(X.power.minBracket)],
+      own && ['Win turn', 'T' + W.typical + (W.range ? '<span class="note"> T' + W.range[0] + '–' + W.range[1] + '</span>' : '')],
       ['Commander', X.cmds.map(c => esc(c.n)).join(' + ') + ' ' + pipsHTML(X.CI)],
-      ['Min. bracket', String(X.power.minBracket)],
-      ['Win turn', 'T' + X.power.win.best + ' / T' + X.power.win.typical + ' / T' + X.power.win.contested],
+      ['Fundamentals', X.overall + '<span class="note"> / 100</span>'],
+      ['Balance', '<span class="kbal">' + miniRadarSVG(X.axes, 44) + '<span class="note">lowest<br>' + esc(low.label) + ' ' + low.score + '</span></span>'],
       ['Cards', X.deckSize + X.cmds.length + (X.deckSize + X.cmds.length !== 100 ? ' <span class="st fail">≠100</span>' : '')],
-      ['Avg MV', X.avgMV.toFixed(2)],
-      ['Commander turn (median)', s.cmdMedianTurn > 8 ? '>8' : 'T' + s.cmdMedianTurn]
-    ].map(([k, v]) => '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>').join('') + '</div>' +
+      ['Lands', X.nLands + '<span class="note"> curve estimate ' + X.mana.landEst.lands.toFixed(1) + '</span>'],
+      ['Castable on curve', castLow.length ? '<span class="pup">' + castLow.length + ' card' + (castLow.length === 1 ? '' : 's') + ' below ' + Math.round(X.mana.castOk * 100) + '%</span>' : 'all ≥ ' + Math.round(X.mana.castOk * 100) + '%'],
+      ['Commander turn (median)', s.cmdMedianTurn > 8 ? '>8' : 'T' + s.cmdMedianTurn],
+      ['Combo turn (median)', W.combo ? 'T' + W.combo.median + '<span class="note"> T' + W.combo.q25 + '–' + W.combo.q75 + '</span>' : '<span class="note">no win combo</span>'],
+      ['Avg MV', X.avgMV.toFixed(2)]
+    ].filter(Boolean).map(([k, v]) => '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>').join('') + '</div>' +
+      '<p class="note an-win">Win turn T' + W.typical + ' comes from ' + (W.source === 'simulated combo' ? 'the simulated combo turn (middle half of games T' + W.range[0] + '–T' + W.range[1] + ')' : 'the power level' + (W.combo ? '; the simulated combo median, T' + W.combo.median + ', is not faster' : '')) + '.' + (W.combo ? ' A win combo is assembled by T6 in ' + pct(W.combo.by6) + ' of games, by T8 in ' + pct(W.combo.by8) + '.' : '') +
+      (castLow.length ? ' Hardest to cast on curve: ' + castLow.slice(0, 3).map(r => esc(r.n) + ' (' + r.k + r.color + ' by T' + r.t + ', ' + pct(r.p) + ')').join(', ') + '.' : '') + '</p>' +
       (X.unknown && X.unknown.length ? '<div class="msg warn">Not found in card data (skipped): ' + esc(X.unknown.join(', ')) + '</div>' : '');
     const axes = '<div class="an-grid">' + X.axes.map(a => '<div class="an-card"><div class="an-top"><h3>' + esc(a.label) + '</h3><span class="st ' + scoreCls(a.score) + '">' + a.score + '</span></div><div class="meter-1"><span style="width:' + a.score + '%"></span></div><table class="t compact"><tbody>' +
       a.factors.map(f => '<tr><td>' + esc(f.name) + '</td><td class="n">' + esc(f.value) + '</td><td class="n note nw">' + esc(String(f.target)) + '</td><td class="sc"><i style="width:' + Math.round(f.score * 100) + '%"></i></td></tr>').join('') + '</tbody></table></div>').join('') + '</div>';
@@ -657,11 +666,15 @@
       '<li>Power model follows the structure documented by <a href="https://scrycheck.com/docs" target="_blank" rel="noopener">ScryCheck</a>: five vectors (speed, consistency, interaction, mana base, threats), combo families from Spellbook, archetype-dependent weights, a strategy ceiling from four signals, a 1–10 scale with ± uncertainty, best/typical/contested win turns and a recommended minimum bracket. ScryCheck does not publish its weights, so every weight and curve here is this tool\'s own, shown on each card, and uncalibrated against labeled decks. Typical win turn maps power to WotC turn expectations (PL 5 → T8, 7 → T6, 8 → T5, 9 → T4). Raw power = 1 + 9·(0.7·vector mix + 0.3·card quality)/100. Card power (0–1) is an oracle-text heuristic: fast mana +0.45, Game Changer +0.35, tutor +0.2–0.35, cheap instant removal +0.3, MV≤1 ramp +0.3, free spells +0.25, cheap repeatable draw +0.2, plus 0.25×EDHREC popularity. Vector components weight each card by 0.6 + card power, so a like-for-like upgrade moves the score. ScryCheck\'s Playgroup.gg anchor, edhtop16 metagame test and per-card power ratings need online data and are not reproduced.</li>' +
       '<li>Bracket estimate: lowest bracket whose card limits (Bracket panel defaults) the list satisfies, per the <a href="https://mtg.wiki/page/Commander_Brackets" target="_blank" rel="noopener">Commander Brackets</a> as updated <a href="https://draftsim.com/mtg-october-2025-commander-bracket-changes/" target="_blank" rel="noopener">Oct 21 2025</a> and <a href="https://magic.wizards.com/en/news/announcements/commander-brackets-beta-update-february-9-2026" target="_blank" rel="noopener">Feb 9 2026</a>. Tutors are counted but no longer limit any bracket. Expected game length (B1 9+, B2 8+, B3 6+, B4 4+ turns) and intent are not measurable from card data.</li></ul></details>';
     const turns = turnsHTML(X);
-    const SUBS = [['overview', 'Overview'], ['turns', 'Turn by turn'], ['power', 'Power'], ['fund', 'Fundamentals'], ['mana', 'Mana & interaction'], ['synergy', 'Synergy'], ['method', 'Method']];
-    const sub = SUBS.some(x => x[0] === App.anSub) ? App.anSub : 'overview';
-    const nav = '<div class="subtabs" role="tablist" aria-label="Analysis sections">' + SUBS.map(([k, l]) => '<button type="button" role="tab" data-ansub="' + k + '" aria-selected="' + (k === sub) + '">' + l + '</button>').join('') + '</div>';
-    const body = {
-      overview: '<div class="an-card wide"><div class="an-top"><h3>Recommended changes</h3></div><p class="note">Scored cuts and adds for this list are on the <button type="button" class="link" data-go="changes">Changes</button> page.</p></div>' + recs,
+    const stats = !own && App.R && App.R.stats;
+    const SUBS = [['turns', 'Turn by turn'], ['power', 'Power'], ['fund', 'Fundamentals'], ['mana', 'Mana & interaction'], ['synergy', 'Synergy']].concat(stats ? [['stats', 'Deck stats']] : []).concat([['method', 'Method']]);
+    const sub = SUBS.some(x => x[0] === App.anSub) ? App.anSub : 'turns';
+    const nSw = X.plans ? X.plans.length : 0;
+    const overview = recs + '<div class="an-card wide an-go"><p>' + (nSw ? nSw + ' suggested swap' + (nSw === 1 ? '' : 's') + ' for this list, each scored with simulated games.' : 'No swaps suggested for this list.') + '</p><button type="button" class="small primary" data-go="changes">Open Improve</button></div>';
+    const adv = '<div class="an-adv"><button type="button" class="small" data-an="adv" aria-expanded="' + !!App.anAdv + '">' + (App.anAdv ? 'Hide detail' : 'Show detail: turn by turn, power, fundamentals, mana, synergy' + (stats ? ', deck stats' : '') + ', method') + '</button></div>';
+    const nav = App.anAdv ? '<div class="subtabs" role="tablist" aria-label="Analysis detail">' + SUBS.map(([k, l]) => '<button type="button" role="tab" data-ansub="' + k + '" aria-selected="' + (k === sub) + '">' + l + '</button>').join('') + '</div>' : '';
+    const body = !App.anAdv ? '' : {
+      stats: stats ? statsHTML(App.R) : '',
       turns: turns + '<div class="an-grid top">' + goldfish + '</div>',
       power: power,
       fund: '<div class="an-grid top"><div class="an-card"><h3>Profile</h3>' + radarSVG(X.axes) + '</div></div>' + axes,
@@ -669,7 +682,7 @@
       synergy: synergy,
       method: method.replace('<details class="an-method">', '<details class="an-method" open>')
     }[sub];
-    $('view').innerHTML = src + head + nav + body;
+    $('view').innerHTML = src + head + overview + adv + nav + body;
   }
 
   /* ---------- views ---------- */
@@ -684,13 +697,12 @@
       ['Avg MV', s.avgMV.toFixed(2)],
       ['Unpriced', s.unknown.length],
       ['Game Changers', s.gcs.length],
-      ['Validation', fails ? '<span class="st fail">' + fails + ' FAIL</span>' : '<span class="st pass">PASS</span>'],
-      ['Seed', '<span class="mono">' + esc(R.seedUsed) + '</span>']
+      ['Rules', '<button type="button" class="st ' + (fails ? 'fail' : 'pass') + ' stbtn" data-goto="' + (App.tab === 'valid' ? viewOf('cards') : 'valid') + '" title="' + (App.tab === 'valid' ? 'Back to the cards' : 'Show every rule') + '">' + (fails ? fails + ' failed' : 'All pass') + '</button>']
     ].map(([k, v]) => '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>').join('');
   }
   function emptyView() {
-    const about = '<p>Builds a legal 100-card Commander deck from every card in the Scryfall file, then optimises it. A first pass fills lands, role slots (ramp, draw, removal, wipes, protection, recursion, win conditions) and your themes. The optimiser then scores every card in the deck against every legal candidate and keeps making the best swap until no swap raises the deck score, staying inside your bracket, budget and filters. The Analysis tab rates the result (power level, speed, consistency, interaction, mana) with 100,000 simulated games, and Compare scores any other list the same way.</p>';
-    if (App.bulk) return '<div class="empty"><h2>No deck yet</h2><p>' + App.bulk.all.length.toLocaleString() + ' unique cards loaded from ' + esc(App.bulk.meta.file || 'stored data') + '. Pick a commander, a budget and a plan under Setup, then Generate deck.</p><div class="row"><button type="button" class="primary" data-goto="setup">Go to Setup</button></div>' + about + '</div>';
+    const about = '<p>Builds a legal 100-card Commander deck from every card in the Scryfall file, then optimises it. A first pass fills lands, role slots (ramp, draw, removal, wipes, protection, recursion, win conditions) and your themes. The optimiser then scores every card in the deck against every legal candidate and keeps making the best swap until no swap raises the deck score, staying inside your bracket, budget and filters. Analysis rates the result (power level, speed, consistency, interaction, mana) with 100,000 simulated games, and Compare scores any other list the same way.</p>';
+    if (App.bulk) return '<div class="empty"><h2>No deck yet</h2><p>' + App.bulk.all.length.toLocaleString() + ' unique cards loaded from ' + esc(App.bulk.meta.file || 'stored data') + '. Pick a commander, a budget and a plan on Start, then Generate deck.</p><div class="row"><button type="button" class="primary" data-goto="setup">Go to Start</button></div>' + about + '</div>';
     return '<div class="empty"><h2>Card data</h2>' + about + (window.EDH_SITE ? '<p>Card data loads from this site automatically. If it does not appear, load a Scryfall bulk file under Data source.</p>' :
       '<ol><li>Download <b>Oracle Cards</b> from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a> (.json, .jsonl or .gz).</li><li>Load it under Data source. It is read in this browser and kept for the next visit.</li><li>Pick a commander, then Generate deck.</li></ol>') + '</div>';
   }
@@ -701,7 +713,7 @@
     let h = '';
     for (const [k, list] of groups) {
       list.sort((a, b) => a.c.cmc - b.c.cmc || (a.c.n < b.c.n ? -1 : 1));
-      h += '<tr class="grp"><td colspan="8">' + esc(k) + ' (' + list.reduce((s, e) => s + e.qty, 0) + ')</td></tr>';
+      h += '<tr class="grp"><td colspan="4">' + esc(k) + ' (' + list.reduce((s, e) => s + e.qty, 0) + ')</td></tr>';
       for (const e of list) {
         const idx = R.deck.indexOf(e), a = Engine.analyze(e.c);
         const roles = Object.keys(a.roles).map(r => '<span class="chip" title="' + esc((a.rules[r] || []).join(', ')) + '">' + esc(Engine.SLOT_LABEL[r]) + '</span>').join('') +
@@ -709,15 +721,14 @@
           ['tutor', 'fast', 'stax', 'xturn', 'mld'].filter(f => a.flags[f]).map(f => '<span class="chip flag" title="' + esc(Engine.FLAGS[f].desc) + '">' + esc(Engine.FLAGS[f].label) + '</span>').join('');
         const p = e.c.p[R.settings.budget.cur];
         h += '<tr class="' + (e.locked ? 'locked' : '') + '">' +
-          '<td>' + (idx >= 0 ? '<button type="button" class="small lockbtn" data-act="lock" data-i="' + idx + '" aria-pressed="' + e.locked + '" title="' + (e.locked ? 'Unlock' : 'Lock') + '">' + (e.locked ? '■' : '□') + '</button>' : '') + '</td>' +
-          '<td class="nm">' + (e.qty > 1 ? '<span class="mono">' + e.qty + '×</span> ' : '') + cardLink(e.c) + '</td>' +
-          '<td class="cost">' + manaHTML(e.c.mc) + '</td><td class="n">' + e.c.cmc + '</td><td class="n">' + (p == null ? '—' : fmtP(p * e.qty)) + '</td>' +
-          '<td>' + roles + '</td><td class="why">' + esc(e.why) + '</td>' +
-          '<td>' + (idx >= 0 && !Engine.isBasic(e.c) ? '<div class="acts"><button type="button" class="small" data-act="swap" data-i="' + idx + '">Swap</button><button type="button" class="small" data-act="remove" data-i="' + idx + '">Remove</button></div>' : '') + '</td></tr>';
+          '<td class="nm">' + (e.locked ? '<span class="lockmk" title="Locked: kept on rebuild" aria-label="Locked">■</span> ' : '') + (e.qty > 1 ? '<span class="mono">' + e.qty + '×</span> ' : '') + cardLink(e.c) + '</td>' +
+          '<td class="cost">' + manaHTML(e.c.mc) + '</td><td class="n">' + (p == null ? '—' : fmtP(p * e.qty)) + '</td>' +
+          '<td>' + roles + '</td></tr>';
         if (App.openSwap === e) {
           const alts = R.alternatives(e, 5);
-          h += alts.length ? alts.map((x, j) => '<tr class="alt"><td></td><td class="nm">' + cardLink(x.c) + '</td><td>' + manaHTML(x.c.mc) + '</td><td class="n">' + x.c.cmc + '</td><td class="n">' + fmtP(x.c.p[R.settings.budget.cur]) + '</td><td class="n">score ' + x.s.toFixed(2) + '</td><td class="why">' + esc(x.why) + '</td><td><button type="button" class="small" data-act="use" data-i="' + idx + '" data-j="' + j + '">Use</button></td></tr>').join('')
-            : '<tr class="alt"><td></td><td colspan="7">No eligible alternative within current constraints.</td></tr>';
+          h += '<tr class="alt"><td colspan="4"><b>Swap ' + esc(e.c.n) + '</b> <span class="note">five best alternatives inside your bracket and budget</span> <button type="button" class="link" data-act="swap" data-i="' + idx + '">close</button></td></tr>' +
+            (alts.length ? alts.map((x, j) => '<tr class="alt"><td class="nm">' + cardLink(x.c) + '<div class="note">' + esc(x.why) + '</div></td><td class="cost">' + manaHTML(x.c.mc) + '</td><td class="n">' + fmtP(x.c.p[R.settings.budget.cur]) + '</td><td><button type="button" class="small" data-act="use" data-i="' + idx + '" data-j="' + j + '">Use</button> <span class="note">score ' + x.s.toFixed(2) + '</span></td></tr>').join('')
+            : '<tr class="alt"><td colspan="4">No eligible alternative within current constraints.</td></tr>');
         }
       }
     }
@@ -725,13 +736,13 @@
   }
   function renderDeckTable(byRole) {
     const R = App.R;
-    const head = '<tr><th></th><th>Name</th><th>Cost</th><th class="n">MV</th><th class="n">Price</th><th>Roles / flags</th><th>Reason (data)</th><th></th></tr>';
-    const cmdRows = R.commanders.map(c => '<tr><td></td><td class="nm">' + cardLink(c) + '</td><td class="cost">' + manaHTML(c.mc) + '</td><td class="n">' + c.cmc + '</td><td class="n">' + fmtP(c.p[R.settings.budget.cur]) + '</td><td>' + (c.gc ? '<span class="chip gc">Game Changer</span>' : '') + '</td><td class="why">Commander' + (R.pairKind ? ' (' + esc(R.pairKind) + ')' : '') + ' · ' + (c.rank ? 'EDHREC #' + c.rank : 'no rank') + '</td><td></td></tr>').join('');
+    const head = '<tr><th>Name</th><th>Cost</th><th class="n">Price</th><th>Roles / flags</th></tr>';
+    const cmdRows = R.commanders.map(c => '<tr><td class="nm">' + cardLink(c) + (R.pairKind ? ' <span class="note">' + esc(R.pairKind) + '</span>' : '') + '</td><td class="cost">' + manaHTML(c.mc) + '</td><td class="n">' + fmtP(c.p[R.settings.budget.cur]) + '</td><td>' + (c.gc ? '<span class="chip gc">Game Changer</span>' : '') + '</td></tr>').join('');
     const order = byRole ? ['include', 'locked', 'land', 'basic', 'ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon', 'combo', 'synergy', 'flex'] : ['Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Land', 'Other'];
     const key = byRole ? (e => Engine.SLOT_LABEL[e.slot] || e.slot) : (e => Engine.typeGroup(e.c));
     const sorted = R.deck.slice().sort((a, b) => { const ka = byRole ? order.indexOf(a.slot) : order.indexOf(Engine.typeGroup(a.c)); const kb = byRole ? order.indexOf(b.slot) : order.indexOf(Engine.typeGroup(b.c)); return ka - kb; });
     return '<div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="note">' + sourceLine(R) + '</span></div>' +
-      '<div class="scroll"><table class="t deck"><thead>' + head + '</thead><tbody><tr class="grp"><td colspan="8">Commander (' + R.commanders.length + ')</td></tr>' + cmdRows + deckRows(sorted, key) + '</tbody></table></div>';
+      '<div class="scroll"><table class="t deck"><thead>' + head + '</thead><tbody><tr class="grp"><td colspan="4">Commander (' + R.commanders.length + ')</td></tr>' + cmdRows + deckRows(sorted, key) + '</tbody></table></div>';
   }
   function curveSVG(curve) {
     const W = 360, H = 150, pl = 26, pb = 22, pt = 10, max = Math.max(4, ...curve), step = max > 20 ? 10 : max > 10 ? 5 : 2;
@@ -741,8 +752,8 @@
     curve.forEach((v, i) => { const x = pl + i * bw + 3, y = sy(v); g += '<rect class="b" x="' + x + '" y="' + y + '" width="' + (bw - 6) + '" height="' + Math.max(0, H - pb - y) + '" rx="2"/>' + (v ? '<text class="lbl" x="' + (x + (bw - 6) / 2) + '" y="' + (y - 3) + '" text-anchor="middle">' + v + '</text>' : '') + '<text x="' + (x + (bw - 6) / 2) + '" y="' + (H - 7) + '" text-anchor="middle">' + (i === 7 ? '7+' : i) + '</text>'; });
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' + W + 'px" role="img" aria-label="Mana curve of nonland cards">' + g + '</svg>';
   }
-  function renderStats() {
-    const R = App.R, s = R.stats;
+  function statsHTML(R) {
+    const s = R.stats;
     const cols = (R.CI || 'C').split('');
     const pipRow = '<table class="t"><thead><tr><th>Color</th><th class="n">Pips</th><th class="n">Sources</th></tr></thead><tbody>' + cols.map(x => '<tr><td>' + pipsHTML(x === 'C' ? '' : x) + '</td><td class="n">' + (s.pips[x] || 0).toFixed(1).replace(/\.0$/, '') + '</td><td class="n">' + (s.sources[x] || 0) + '</td></tr>').join('') + '</tbody></table><div class="note">Sources: lands plus ramp cards whose Scryfall produced_mana (or fetch targets / any-color text) includes the color.</div>';
     const meters = [['lands', 'Lands']].concat(Engine.ROLES.map(r => [r, Engine.SLOT_LABEL[r]])).map(([k, label]) => {
@@ -750,7 +761,7 @@
       return '<div class="meter"><span>' + esc(label) + '</span><span class="track"><span class="fill' + (m.have < m.target ? ' short' : '') + '" style="width:' + (f * 100).toFixed(0) + '%"></span></span><span class="num">' + m.have + ' / ' + m.target + '</span></div>';
     }).join('');
     const combos = R.combos && R.combos.length ? '<ul>' + R.combos.map(v => '<li>' + esc(v.c.join(' + ')) + ' → ' + esc(v.p.join(', ')) + (v.bt ? ' <span class="chip">' + esc(v.bt) + '</span>' : '') + '</li>').join('') + '</ul>' : '<p class="note">' + (R.comboStatus === 'unavailable' ? 'No Commander Spellbook file loaded, so combos were not checked.' : 'No complete combos detected.') + '</p>';
-    $('view').innerHTML = '<div class="statsgrid">' +
+    return '<div class="statsgrid an-stats">' +
       '<div><h3>Mana curve (nonland, excl. commander)</h3>' + curveSVG(s.curve) + '<p class="note">Average MV ' + s.avgMV.toFixed(2) + ' (target ' + (+R.settings.mana.avgMV).toFixed(1) + '). Creatures: ' + s.creatures + '.</p></div>' +
       '<div><h3>Color pips and sources</h3>' + pipRow + '</div>' + colourCheckHTML(R) +
       '<div><h3>Category counts vs targets</h3><div style="display:flex;flex-direction:column;gap:6px">' + meters + '</div><p class="note">A card counts toward every role its tags match.</p></div>' +
@@ -764,7 +775,11 @@
     $('view').innerHTML = '<p class="note">' + sourceLine(R) + ' Checked ' + new Date(R.validation.at).toLocaleString() + '.</p><div class="scroll"><table class="t"><thead><tr><th>Rule</th><th>Result</th><th>Detail</th></tr></thead><tbody>' +
       R.validation.rules.map(r => '<tr><td>' + esc(r.label) + '</td><td><span class="st ' + (r.pass === true ? 'pass' : r.pass === false ? 'fail' : 'na') + '">' + (r.pass === true ? 'PASS' : r.pass === false ? 'FAIL' : 'N/A') + '</span></td><td>' + esc(r.detail) + (r.id === 'bracket' && !r.comboVerified ? ' <span class="note">(combo limit not verified)</span>' : '') + '</td></tr>').join('') + '</tbody></table></div>';
   }
-  function renderLog() { const R = App.R; $('view').innerHTML = '<ol class="mono" style="padding-left:22px;margin:0;display:flex;flex-direction:column;gap:3px">' + R.log.map(l => '<li>' + esc(l) + '</li>').join('') + '</ol>'; }
+  function renderLog() {
+    const R = App.R, O = R.optimize;
+    $('view').innerHTML = '<div class="summary panel">' + [['Seed', '<span class="mono">' + esc(R.seedUsed) + '</span>'], ['Candidates', R.poolSize.toLocaleString()]].concat(O ? [['Deck score (optimiser objective)', O.baseline.toFixed(1) + ' → ' + O.final.toFixed(1)], ['Swaps', O.swaps.length + (O.timedOut ? ' (time cap reached)' : ' (no better single swap left)')], ['Card pairs scored', O.pairs.toLocaleString()]] : []).map(([k, v]) => '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>').join('') + '</div>' +
+      '<ol class="mono" style="padding-left:22px;margin:14px 0 0;display:flex;flex-direction:column;gap:3px">' + R.log.map(l => '<li>' + esc(l) + '</li>').join('') + '</ol>';
+  }
   function renderExport() {
     $('view').innerHTML = '<div class="row"><label class="f" style="min-width:220px">Format<select id="exFmt"><option value="plain">Plain text (1 Card Name)</option><option value="arena">Moxfield / Archidekt (Commander + Deck sections)</option><option value="archidekt">Archidekt ([Commander{top}] tag)</option><option value="mtgo">MTGO .txt (commander in sideboard)</option><option value="csv">CSV</option></select></label><button type="button" id="exCopy">Copy to clipboard</button><button type="button" id="exSave">Save file</button><span class="note" id="exNote"></span></div><textarea id="exText" rows="18" style="margin-top:8px" spellcheck="false" readonly></textarea>';
     const upd = () => { $('exText').value = Engine.exportDeck(App.R, $('exFmt').value); };
@@ -778,23 +793,62 @@
     if (!T) { $('view').innerHTML = '<p>Runs the acceptance tests against the currently loaded data: 1-color, 5-color and Partner commanders chosen by EDHREC rank from the data, budget cap, infeasible budget, determinism, and Bracket 2 Game Changer count.</p><p class="note">Press Run acceptance tests.</p>'; return; }
     $('view').innerHTML = '<p class="note">' + esc(T.source) + ' · ' + esc(T.at) + '</p><div class="scroll"><table class="t"><thead><tr><th>Test</th><th>Result</th><th>Detail</th></tr></thead><tbody>' + T.rows.map(r => '<tr><td>' + esc(r.name) + '</td><td><span class="st ' + (r.pass === true ? 'pass' : r.pass === false ? 'fail' : 'na') + '">' + (r.pass === true ? 'PASS' : r.pass === false ? 'FAIL' : 'N/A') + '</span></td><td>' + esc(r.detail) + '</td></tr>').join('') + '</tbody></table></div>';
   }
+  /* ---------- pages: five in the rail (plus More), each holding one or more views; App.tab is the current view ---------- */
+  const PAGES = {
+    start: ['Start', [['setup', 'New deck'], ['import', 'Import a list'], ['find', 'Find a commander']]],
+    deck: ['Deck', [['cards', 'Cards'], ['hand', 'Sample hand'], ['export', 'Export']]],
+    analysis: ['Analysis', []],
+    improve: ['Improve', [['changes', 'Suggested swaps'], ['combos', 'Combos']]],
+    primer: ['Primer', []],
+    more: ['More', []]
+  };
+  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
+  const FIND = [['commanders', 'Browse'], ['inspire', 'Quiz'], ['surprise', 'Random']];
+  const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
+  const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
+  const lastView = {};
+  // opens a view (or a page's last view), as a click in the rail would
+  function go(v) {
+    if (PAGES[v] && v !== 'analysis' && v !== 'primer') v = lastView[v] || viewOf(PAGES[v][1][0][0]);
+    if (!PAGE_OF[v]) return;
+    hidePop(); App.tab = v; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 });
+    if (v === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis();
+  }
+  const VIEW_NOTE = {
+    setup: 'Choose a commander, a budget and a plan. Generate scores every legal card in the data and optimises the list inside your bracket and budget.',
+    import: 'Paste your current list to analyze it as it is. Suggested swaps come after, on Improve, when you ask for them.',
+    commanders: 'Every legal commander in the card data, by colour, theme and popularity.', inspire: 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.', surprise: 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.',
+    deck: 'Tap a card for its text and its actions: lock, swap or remove.', role: 'Grouped by the role slot each card fills. Tap a card for its actions.', valid: 'Every deck-building rule and whether this list passes it.',
+    hand: 'Draw opening hands from this list, mulligan and draw on.', export: 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.',
+    analysis: 'Power, speed, mana and problems from simulated games. Fixes are on Improve.',
+    changes: 'Cuts and adds for the analyzed list, each scored with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
+    primer: 'How to play this list, from its own simulation and card roles.',
+    history: 'The last 25 decks and revisions in this browser. Tick two to compare them.', log: 'Each step the generator and optimiser took.', tests: 'Checks the generator against the loaded card data.'
+  };
+  function pageHeadHTML(page) {
+    const v = App.tab, sub = subOf(v), views = PAGES[page][1];
+    const title = page === 'more' ? { history: 'History', log: 'Build log', tests: 'Acceptance tests' }[v] : PAGES[page][0];
+    const pill = (k, l, cur) => '<button type="button" role="tab" data-view="' + k + '" aria-selected="' + (k === cur) + '">' + l + '</button>';
+    const opt = (k, l, cur) => '<button type="button" data-view="' + k + '" aria-pressed="' + (k === cur) + '">' + l + '</button>';
+    let nav = views.length ? '<div class="subtabs" role="tablist" aria-label="' + esc(title) + ' views">' + views.map(([k, l]) => pill(k, l, sub)).join('') + '</div>' : '';
+    if (sub === 'find') nav += '<div class="seg pgseg" role="group" aria-label="Find a commander">' + FIND.map(([k, l]) => opt(k, l, v)).join('') + '</div>';
+    if (sub === 'cards' && v !== 'valid') nav += '<div class="seg pgseg" role="group" aria-label="Group cards by">' + [['deck', 'By type'], ['role', 'By role']].map(([k, l]) => opt(k, l, v)).join('') + '</div>';
+    return '<h2>' + esc(title) + '</h2><p class="note">' + (VIEW_NOTE[v] || '') + '</p>' + (nav ? '<div class="pgnav">' + nav + '</div>' : '');
+  }
   function renderView() {
-    document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === App.tab));
+    const page = PAGE_OF[App.tab] || 'start';
+    if (App.tab === 'deck' || App.tab === 'role') App.groupBy = App.tab === 'role' ? 'role' : 'type';
+    if (FIND.some(f => f[0] === App.tab)) App.findMode = App.tab;
+    if (App.tab !== 'valid') lastView[page] = App.tab;
+    document.body.dataset.page = page; document.body.dataset.view = App.tab;
+    document.querySelectorAll('.tabs button[data-page]').forEach(b => b.setAttribute('aria-selected', b.dataset.page === page));
+    document.querySelectorAll('.tabs button[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === App.tab));
+    $('moreBtn').classList.toggle('on', page === 'more');
     const setup = App.tab === 'setup';
     $('setupView').classList.toggle('hidden', !setup); $('view').classList.toggle('hidden', setup);
-    $('summary').classList.toggle('hidden', setup || !(App.tab === 'deck' || App.tab === 'role') || !App.R || !App.R.stats);
-    $('testBtn').classList.toggle('hidden', App.tab !== 'tests'); syncActions();
-    const PH = { deck: ['Deck list', 'Grouped by card type. Lock a card to keep it on rebuild; Swap shows the five best alternatives.'], role: ['By role', 'Cards grouped by the role slot they fill.'],
-      analysis: ['Analysis', 'Power level, fundamentals, win turns and gaps from simulated games. Suggested cuts and adds are on Changes.'], primer: ['Primer', 'How to play this list, from its own simulation and card roles.'],
-      stats: ['Stats', 'Mana curve, role counts against targets, price and combos.'], valid: ['Validation', 'Every deck-building rule and whether this list passes it.'],
-      combos: ['Combos', 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.'],
-      log: ['Build log', 'Each step the generator and optimiser took.'], export: ['Export', 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.'],
-      history: ['History', 'The last 25 decks and revisions in this browser. Tick two to compare them.'],
-      changes: ['Changes', 'Recommended cuts and adds for the analyzed list, each scored with simulated games, and candidate cards for every gap.'],
-      import: ['Import deck', 'Paste your current list to analyze it as it is. Recommended changes come after, when you ask for them.'],
-      hand: ['Sample hand', 'Draw opening hands from this list, mulligan and draw on.'], commanders: ['Commanders', 'Every legal commander in the card data, by colour, theme and popularity.'], inspire: ['Inspire me', 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.'], surprise: ['Surprise me', 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.'], tests: ['Acceptance tests', 'Checks the generator against the loaded card data.'] }[App.tab];
-    $('pageHead').classList.toggle('hidden', setup || !PH);
-    if (PH) $('pageHead').innerHTML = '<h2>' + PH[0] + '</h2><p class="note">' + PH[1] + '</p>';
+    $('summary').classList.toggle('hidden', !(App.tab === 'deck' || App.tab === 'role' || App.tab === 'valid') || !App.R || !App.R.stats);
+    $('testBtn').classList.toggle('hidden', App.tab !== 'tests'); syncActions(); syncMini();
+    $('pageHead').classList.remove('hidden'); $('pageHead').innerHTML = pageHeadHTML(page);
     if (setup) return;
     if (App.tab === 'tests') return renderTests();
     if (App.tab === 'analysis') return renderAnalysis();
@@ -811,7 +865,6 @@
     switch (App.tab) {
       case 'deck': $('view').innerHTML = renderDeckTable(false); break;
       case 'role': $('view').innerHTML = renderDeckTable(true); break;
-      case 'stats': renderStats(); break;
       case 'valid': renderValidation(); break;
       case 'log': renderLog(); break;
       case 'export': renderExport(); break;
@@ -839,15 +892,15 @@
     const e = (await histLoad()).find(x => x.id === id); if (!e || App.busy) return;
     if (!(await replayChain({ settings: e.settings, env: e.env }, e.ops))) return;
     const R = App.R, now = R.deck.map(x => x.qty + ' ' + x.c.n).sort(), same = now.join('|') === e.names.join('|');
-    App.AN = null; App.QS = null; App.tab = 'deck'; renderAll();
+    App.AN = null; App.QS = null; App.tab = viewOf('cards'); renderAll();
     setStatus(same ? 'Restored "' + e.label + '" from ' + new Date(e.at).toLocaleString() + ' (identical card list).' : 'Restored "' + e.label + '", but ' + now.filter(n => !e.names.includes(n)).length + ' card(s) differ: the card or combo data changed since it was saved (' + (e.file || 'unknown file') + ' → ' + ((R.dbMeta && R.dbMeta.file) || 'current') + (App.bulkCombos ? ' + Spellbook ' + (App.bulkCombos.meta.timestamp || '').slice(0, 10) : '') + ').');
   }
   async function renderHistory() {
     const h = await histLoad(); if (App.tab !== 'history') return;
     if (!h.length) { $('view').innerHTML = '<p class="note">No saved decks yet. Each generated deck and each accepted change is saved here (last ' + HIST_MAX + ', in this browser).</p>'; return; }
     const sel = (App.hsel = (App.hsel || []).filter(id => h.some(x => x.id === id)));
-    $('view').innerHTML = '<div class="scroll"><table class="t compact mrows"><thead><tr><th><span class="sr">Select</span></th><th>When</th><th>Deck</th><th>Change</th><th class="n">Bracket</th><th class="n">Price</th><th class="n">Power</th><th class="n">Score</th><th></th></tr></thead><tbody>' +
-      h.map(e => '<tr><td class="m-1"><input type="checkbox" data-hsel="' + e.id + '" aria-label="Select for compare"' + (sel.includes(e.id) ? ' checked' : '') + '></td><td class="nw m-2">' + esc(new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</td><td class="m-full"><b class="mb">' + esc(e.cmds.join(' + ')) + '</b></td><td class="why m-full2">' + esc(e.label) + '</td><td class="n">B' + e.m.bracket + '</td><td class="n nw">' + Engine.fmt(e.m.price, e.m.cur || 'usd') + (e.m.cap != null && e.m.cap !== '' ? '<span class="note"> / ' + Engine.fmt(+e.m.cap, e.m.cur || 'usd') + '</span>' : '') + '</td><td class="n" data-l="Power">' + (e.m.pl != null ? e.m.pl.toFixed(1) : '—') + '</td><td class="n" data-l="Score">' + (e.m.score != null ? e.m.score.toFixed(1) : '—') + '</td><td class="nw m-3"><button type="button" class="small" data-hist="open" data-id="' + e.id + '">Open</button> <button type="button" class="small" data-hist="del" data-id="' + e.id + '" aria-label="Delete">✕</button></td></tr>').join('') +
+    $('view').innerHTML = '<div class="scroll"><table class="t compact mrows"><thead><tr><th><span class="sr">Select</span></th><th>When</th><th>Deck</th><th>Change</th><th class="n">Bracket</th><th class="n">Price</th><th class="n">Power</th><th></th></tr></thead><tbody>' +
+      h.map(e => '<tr><td class="m-1"><input type="checkbox" data-hsel="' + e.id + '" aria-label="Select for compare"' + (sel.includes(e.id) ? ' checked' : '') + '></td><td class="nw m-2">' + esc(new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</td><td class="m-full"><b class="mb">' + esc(e.cmds.join(' + ')) + '</b></td><td class="why m-full2">' + esc(e.label) + '</td><td class="n">B' + e.m.bracket + '</td><td class="n nw">' + Engine.fmt(e.m.price, e.m.cur || 'usd') + (e.m.cap != null && e.m.cap !== '' ? '<span class="note"> / ' + Engine.fmt(+e.m.cap, e.m.cur || 'usd') + '</span>' : '') + '</td><td class="n" data-l="Power">' + (e.m.pl != null ? e.m.pl.toFixed(1) : '—') + '</td><td class="nw m-3"><button type="button" class="small" data-hist="open" data-id="' + e.id + '">Open</button> <button type="button" class="small" data-hist="del" data-id="' + e.id + '" aria-label="Delete">✕</button></td></tr>').join('') +
       '</tbody></table></div><div class="row" style="margin-top:8px"><button type="button" class="small primary" data-hist="diff"' + (sel.length === 2 ? '' : ' disabled') + '>Compare selected (' + sel.length + '/2)</button><span class="note">Opening an entry rebuilds it from its settings and replays its edits; it flags any difference if the card data has changed since.</span><button type="button" class="small" data-hist="clear">Clear history</button></div>' +
       (sel.length === 2 && App.hdiff ? '<div id="hdiff" style="margin-top:14px">' + histDiffHTML(h.find(x => x.id === sel[0]), h.find(x => x.id === sel[1])) + '</div>' : '');
   }
@@ -940,7 +993,7 @@
     const barred = v => v.inf && v.c.length <= 2 && two >= lim2;
     const cardHTML = v => v.c.map(n => { const miss = opts.missing && opts.missing.includes(n), c = App.bulk && Engine.lookup(App.bulk, n);
       return '<span class="cbcard"><span class="' + (miss ? 'pup' : inDeck.has(n) ? '' : 'note') + '">' + (c ? cardLink(c, n) : esc(n)) + '</span>' + (v.cmd.includes(n) ? ' <span class="chip">commander</span>' : '') + (!inDeck.has(n) && c ? ' <span class="note">' + fmtP(c.p[(R ? R.settings : App.S).budget.cur]) + '</span>' : '') +
-        (canAdd(n, c) && !v.cmd.includes(n) && barred(v) ? ' <span class="chip" title="Bracket ' + R.settings.bracket + ' allows ' + lim2 + ' two-card infinite combo' + (lim2 === 1 ? '' : 's') + '. Raise the bracket under Setup to add it.">not allowed at B' + R.settings.bracket + '</span>' : '') +
+        (canAdd(n, c) && !v.cmd.includes(n) && barred(v) ? ' <span class="chip" title="Bracket ' + R.settings.bracket + ' allows ' + lim2 + ' two-card infinite combo' + (lim2 === 1 ? '' : 's') + '. Raise the bracket under Start to add it.">not allowed at B' + R.settings.bracket + '</span>' : '') +
         (canAdd(n, c) && !v.cmd.includes(n) && !barred(v) ? ' <button type="button" class="small addbtn" data-cbadd="' + esc(n) + '" data-vid="' + esc(v.id) + '" title="Add ' + esc(n) + ' to the deck">+ Add</button>' : '') + '</span>'; }).join(' <span class="note">+</span> ');
     return '<div class="scroll"><table class="t compact mrows"><thead><tr><th>Cards</th><th>Produces</th><th>Bracket tag</th><th class="n">MV</th><th class="n">Popularity</th><th></th></tr></thead><tbody>' +
       list.map(x => { const v = x.v || x; return '<tr data-vrow="' + esc(v.id) + '"><td class="m-full">' + cardHTML(v) + (v.t.length ? '<div class="note">Also needs: ' + esc(v.t.join(', ')) + '</div>' : '') + '</td><td class="why m-full2">' + esc(v.p.join(', ')) + '</td><td>' + (v.bt ? '<span class="chip">' + esc(BT[v.bt] || v.bt) + '</span>' : '') + '</td><td class="n"' + (v.mv != null ? ' data-l="MV"' : '') + '>' + (v.mv != null ? v.mv : '') + '</td><td class="n"' + (v.pop != null ? ' data-l="Popularity"' : '') + '>' + (v.pop != null ? v.pop.toLocaleString() : '') + '</td><td class="nw"><a href="' + sbLink(v) + '" target="_blank" rel="noopener">Steps ↗</a></td></tr>'; }).join('') +
@@ -978,7 +1031,7 @@
       R.checkReplace(cut, card).then(fails => {
         if (!tr.isConnected || $('cbCut').value !== cut.c.n) return;
         go.disabled = !!(fails && fails.length);
-        if (fails && fails.length) $('cbChk').innerHTML = '<b class="pup">Can\'t add: this breaks ' + fails.map(r => esc(r.label) + ' (' + esc(r.detail) + ')').join('; ') + '.</b> ' + (fails.some(r => r.id === 'bracket') ? 'Raise the bracket under Setup, or pick a different combo. ' : fails.some(r => r.id === 'budget') ? 'Raise the budget, or cut a pricier card. ' : '') + msgs.join(' ');
+        if (fails && fails.length) $('cbChk').innerHTML = '<b class="pup">Can\'t add: this breaks ' + fails.map(r => esc(r.label) + ' (' + esc(r.detail) + ')').join('; ') + '.</b> ' + (fails.some(r => r.id === 'bracket') ? 'Raise the bracket on Start, or pick a different combo. ' : fails.some(r => r.id === 'budget') ? 'Raise the budget, or cut a pricier card. ' : '') + msgs.join(' ');
       });
     };
     if (!cuts.length) { $('cbChk').textContent = 'Every nonland card is part of a combo or an include, so there is nothing to cut.'; tr.querySelector('button[data-cbgo]').disabled = true; return; }
@@ -1045,7 +1098,7 @@
     if (App.QS && App.QS.key === key) return App.QS;
     const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label !== 'Pasted list' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
     const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, games: 4000 });
-    App.QS = { key, pl: X.power.pl, plLabel: X.power.label, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, winBest: X.power.win.best, winCont: X.power.win.contested, arch: X.power.primary, score: R.deckScore ? R.deckScore() : null, games: X.sim.games, axes: X.axes.map(a => ({ label: a.label, score: a.score })) };
+    App.QS = { key, pl: X.power.pl, plLabel: X.power.label, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, winBest: X.power.win.best, winCont: X.power.win.contested, winSrc: X.power.win.source, winRange: X.power.win.range, arch: X.power.primary, score: R.deckScore ? R.deckScore() : null, games: X.sim.games, axes: X.axes.map(a => ({ label: a.label, score: a.score })) };
     return App.QS;
   }
   const KI = {
@@ -1063,18 +1116,15 @@
     const used = hasCap && +cap > 0 ? Math.min(1, total / +cap) : null;
     const K = [
       ['power', 'Power level', 'var(--i-violet)', q.pl.toFixed(1) + '<small> /10</small>', esc(q.plLabel || '')],
-      ['fund', 'Fundamentals', 'var(--i-green)', q.fund + '<small> /100</small>', esc(q.arch || '')],
       ['price', 'Total price', 'var(--i-orange)', Engine.fmt(total, cur), hasCap ? (over ? 'over the ' : 'of ') + Engine.fmt(+cap, cur) + ' cap' + (used != null ? ' · ' + Math.round(total / +cap * 100) + '%' : '') : 'no budget cap', over ? 'bad' : '', used],
       ['bracket', 'Bracket', 'var(--i-blue)', 'B' + R.settings.bracket + '<small> ' + esc(Engine.BRACKETS[R.settings.bracket].name) + '</small>', hi ? 'cards play like B' + q.minB : 'cards fit B' + R.settings.bracket, hi ? 'warn' : ''],
-      ['win', 'Win turn', 'var(--i-pink)', 'T' + q.win, 'best T' + q.winBest + ' · contested T' + q.winCont],
-      ['score', 'Deck score', 'var(--i-teal)', q.score != null ? q.score.toFixed(1) : '—', 'optimiser objective']
+      ['win', 'Win turn', 'var(--i-pink)', 'T' + q.win + (q.winRange ? '<small> T' + q.winRange[0] + '–' + q.winRange[1] + '</small>' : ''), q.winSrc === 'simulated combo' ? 'simulated combo' + (q.winRange ? ', middle half of games' : '') : 'from power level · best T' + q.winBest]
     ];
-    const low = q.axes.slice().sort((a, b) => a.score - b.score)[0];
+    const KO = ['power', 'bracket', 'win', 'price']; K.sort((a, b) => KO.indexOf(a[0]) - KO.indexOf(b[0]));
     el.innerHTML = K.map(([k, l, c, v, sub, cls, bar]) => '<div class="kpi' + (cls ? ' ' + cls : '') + '"><div class="kh"><span class="ki" style="background:' + c + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + KI[k] + '</svg></span><span class="kl">' + l + '</span></div><div class="kv2">' + v + '</div>' +
-      (bar != null ? '<div class="kbar"><i style="width:' + (bar * 100).toFixed(1) + '%"></i></div>' : '') + '<div class="ks">' + sub + '</div></div>').join('') +
-      '<div class="kpi bal"><div class="kh"><span class="ki" style="background:var(--i-green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + KI.bal + '</svg></span><span class="kl">Balance</span></div><div class="kbal">' + miniRadarSVG(q.axes, 64) + '<div class="ks">lowest<br><b>' + esc(low.label) + ' ' + low.score + '</b></div></div></div>';
-    el.title = 'Power, fundamentals, bracket and win turn from ' + q.games.toLocaleString() + ' simulated games; deck score is the optimiser\'s objective for the current list.';
-    mini.innerHTML = [['Power', q.pl.toFixed(1)], ['Fund.', q.fund], ['Price', Engine.fmt(total, cur) + (hasCap ? ' / ' + Engine.fmt(+cap, cur) : ''), over ? 'bad' : ''], ['Bracket', 'B' + R.settings.bracket + (hi ? ' (plays B' + q.minB + ')' : ''), hi ? 'warn' : ''], ['Win', 'T' + q.win], ['Score', q.score != null ? q.score.toFixed(1) : '—']]
+      (bar != null ? '<div class="kbar"><i style="width:' + (bar * 100).toFixed(1) + '%"></i></div>' : '') + '<div class="ks">' + sub + '</div></div>').join('');
+    el.title = 'Power, bracket and win turn from ' + q.games.toLocaleString() + ' simulated games of the current list. Fundamentals and balance are on Analysis.';
+    mini.innerHTML = [['Power', q.pl.toFixed(1)], ['Bracket', 'B' + R.settings.bracket + (hi ? ' (plays B' + q.minB + ')' : ''), hi ? 'warn' : ''], ['Win', 'T' + q.win], ['Price', Engine.fmt(total, cur) + (hasCap ? ' / ' + Engine.fmt(+cap, cur) : ''), over ? 'bad' : '']]
       .map(([k, v, c]) => '<div' + (c ? ' class="' + c + '"' : '') + '><span>' + k + '</span><b>' + v + '</b></div>').join('');
     el.classList.remove('hidden'); syncMini();
   }
@@ -1127,11 +1177,11 @@
       else if (R.errors.length) { App.R = null; showMsgs(R.errors, R.warnings); setStatus('Not generated.'); }
       else {
         App.R = R; built = true; App.openSwap = null; App.QS = null; if (App.anSource !== 'paste') App.AN = null;
-        if (App.tab === 'setup' && !App.restoring) { App.tab = 'deck'; window.scrollTo({ top: 0 }); }
+        if (App.tab === 'setup' && !App.restoring) { App.tab = viewOf('cards'); window.scrollTo({ top: 0 }); }
         if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans, imported: env.imported, asIs: env.asIs }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
         const O = R.optimize;
-        setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '. Optimised: deck score ' + O.baseline.toFixed(1) + ' → ' + O.final.toFixed(1) + ' (' + O.swaps.length + ' swaps; ' + O.pairs.toLocaleString() + ' card pairs scored' + (O.timedOut ? '; time cap reached' : '; no better single swap left') + ').' : '.'));
+        setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '; the optimiser made ' + O.swaps.length + ' swap' + (O.swaps.length === 1 ? '' : 's') + (O.timedOut ? ' before its time cap' : '') + '. Details: More, Build log.' : '.'));
       }
     } catch (e) { App.R = null; showMsgs([e.message || String(e)], []); setStatus('Error.'); console.error(e); }
     App.busy = false; setProg(null); renderSources(); renderAll();
@@ -1144,11 +1194,11 @@
   function renderImport() {
     $('view').innerHTML = '<label class="f">Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; the commander goes under a "Commander" or "// COMMANDER" header, or tagged [Commander])<textarea id="impText" rows="16" spellcheck="false" placeholder="// COMMANDER&#10;1 Galadriel, Light of Valinor (LTC) 498&#10;&#10;1 Arcane Signet (LTC) 273&#10;26 Forest (SOS) 280&#10;...">' + esc(App.impText || '') + '</textarea></label>' +
       '<div class="row" style="margin-top:8px"><button type="button" class="primary" id="impBtn">Import and analyze</button><span class="note" id="impNote">' + esc(App.impNote || '') + '</span></div>' +
-      '<p class="note">The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; ask for recommended changes there when you want them. Rule problems (card count, colour identity, budget) show on Validation.</p>';
+      '<p class="note">The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; suggested swaps are on Improve when you want them. Rule problems (card count, colour identity, budget) show under Rules on Deck.</p>';
   }
   async function importDeck() {
     const say = t => { App.impNote = t; if ($('impNote')) $('impNote').textContent = t; };
-    if (!App.bulk) { say('Load the card data first (Setup, Card data).'); return; }
+    if (!App.bulk) { say('Load the card data first (Start, Card data).'); return; }
     const P = Analysis.parseDecklist(App.impText || '');
     const unknown = [], cmds = [];
     for (const it of P.cmd) { const c = Engine.lookup(App.bulk, it.name); if (c) { if (!cmds.includes(c)) cmds.push(c); } else unknown.push(it.name); }
@@ -1171,7 +1221,7 @@
     const kept = built.deck.reduce((s, e) => s + e.qty, 0), total = kept + built.commanders.length;
     const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' with ' + cmds.map(c => c.n).join(' + ') + ' (' + total + ' total).' +
       (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
-      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total !== 100 ? ' Not 100 cards; Validation lists it.' : '');
+      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
     say(msg); setStatus(msg);
     App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
     runAnalysis();
@@ -1256,6 +1306,7 @@
       '<div class="cp-m">' + (p != null ? fmtP(p) : 'no price') + (c.rank ? ' · EDHREC #' + c.rank.toLocaleString() : '') + (c.leg !== 'legal' ? ' · <span class="pup">' + esc(c.leg.replace('_', ' ')) + ' in Commander</span>' : '') + '</div>' +
       (chips ? '<div>' + chips + '</div>' : '') +
       (isCmd ? '<div class="cp-why"><b>Commander</b></div>' : e ? '<div class="cp-why"><b>Why it is in the deck:</b> ' + esc(e.why || Engine.SLOT_LABEL[e.slot] || e.slot || '') + (e.locked ? ' (locked)' : '') + '</div>' : '') +
+      (e && !isCmd ? (i => '<div class="row cp-acts"><button type="button" class="small" data-act="lock" data-i="' + i + '" aria-pressed="' + !!e.locked + '">' + (e.locked ? 'Unlock' : 'Lock') + '</button>' + (Engine.isBasic(c) ? '' : '<button type="button" class="small" data-act="swap" data-i="' + i + '">Swap</button><button type="button" class="small" data-act="remove" data-i="' + i + '">Remove</button>') + '</div>')(R.deck.indexOf(e)) : '') +
       '<div class="row"><a href="card.html#' + encodeURIComponent(c.n) + '" target="_blank" rel="noopener">Similar cards and combos ↗</a>' + (c.uri ? '<a href="' + esc(c.uri) + '" target="_blank" rel="noopener">Scryfall ↗</a>' : '') + '</div>';
   }
   let popT = 0, popFor = null, popPinned = false;
@@ -1323,11 +1374,11 @@
         shown.map(c => '<tr><td class="m-2">' + cardLink(c) + (pair(c) ? ' <span class="chip">' + pair(c) + '</span>' : '') + '<div class="note">' + esc(c.tl) + '</div></td><td class="cost">' + manaHTML(c.mc) + '</td><td class="nw">' + pipsHTML(c.ci) + '</td><td class="why m-full">' + esc(cmdThemes(c).slice(0, 3).map(k => Engine.TAGS[k].label).join(', ')) + '</td><td class="n" data-l="EDHREC">' + (c.rank ? '#' + c.rank.toLocaleString() : '—') + '</td><td class="n">' + (c.p[cur] != null ? fmtP(c.p[cur]) : '—') + '</td><td class="m-3"><button type="button" class="small" data-cuse="' + esc(c.n) + '">Build</button></td></tr>').join('') +
         '</tbody></table></div>' : '') +
       (list.length > shown.length ? '<div class="row" style="margin-top:8px"><button type="button" class="small" data-cmore="1">Show 50 more</button></div>' : '') +
-      '<p class="note">Themes are the generator\'s own synergy tags matched against each commander\'s rules text. Build sets the commander under Setup; add a partner or background there.</p>';
+      '<p class="note">Themes are the generator\'s own synergy tags matched against each commander\'s rules text. Build sets the commander on Start; add a partner or background there.</p>';
   }
 
   /* ---------- Inspire me: a short quiz that ranks every legal commander with Engine.inspire and says why each fits.
-     Surprise me: random commanders from the same pool. Both send a pick to Setup with Build. ---------- */
+     Surprise me: random commanders from the same pool. Both send a pick to New deck with Build. ---------- */
   const comboCounts = new WeakMap();
   function comboCount(n) {
     const cb = App.bulkCombos; if (!cb) return null;
@@ -1358,7 +1409,7 @@
       q(4, 'Themes you enjoy?', 'Pick any number; a commander scores for each one its rules text supports.', '<div class="chips" data-iq="themes">' + Object.keys(Engine.TAGS).map(k => '<button type="button" data-v="' + k + '" aria-pressed="' + Q.themes.includes(k) + '">' + esc(Engine.TAGS[k].label) + '</button>').join('') + '</div>') +
       q(5, 'How strong should the table be?', '', segHTML('power', [['', 'Any'], ['casual', 'Casual (brackets 1–2)'], ['mid', 'Upgraded (3)'], ['high', 'High power (4–5)']], Q.power)) +
       q(6, 'Popular or off the beaten path?', '', segHTML('pop', [['', 'No preference'], ['popular', 'Popular'], ['hidden', 'Hidden gems']], Q.pop)) +
-      q(7, 'Price limit for the commander card?', 'The deck budget is set later under Setup.', segHTML('price', [['', 'Any'], ['1', sym + '1'], ['5', sym + '5'], ['20', sym + '20']], Q.price)) +
+      q(7, 'Price limit for the commander card?', 'The deck budget is set later on Start.', segHTML('price', [['', 'Any'], ['1', sym + '1'], ['5', sym + '5'], ['20', sym + '20']], Q.price)) +
       '<div class="row qgo"><button type="button" class="primary" data-insp="go">Show my commanders</button><button type="button" data-insp="reset">Reset answers</button></div>' +
       '</div><div id="inspRes"></div>';
     if (Q.shown) renderInspireResults();
@@ -1527,7 +1578,7 @@
     return '<h3 class="an-sec">' + when(a) + ' → ' + when(b) + '</h3>' +
       (a.cmds.join('|') !== b.cmds.join('|') ? '<p class="msg warn">Different commanders: ' + esc(a.cmds.join(' + ')) + ' → ' + esc(b.cmds.join(' + ')) + '.</p>' : '') +
       '<table class="t compact" style="max-width:520px"><thead><tr><th></th><th class="n">Older</th><th class="n">Newer</th><th class="n">Change</th></tr></thead><tbody>' +
-      row('Price', a.m.price, b.m.price, money, false) + row('Power', a.m.pl, b.m.pl, v => v.toFixed(1), true) + row('Deck score', a.m.score, b.m.score, v => v.toFixed(1), true) + row('Fundamentals', a.m.fund, b.m.fund, v => String(Math.round(v)), true) + row('Bracket', a.m.bracket, b.m.bracket, v => 'B' + v, false, String) +
+      row('Price', a.m.price, b.m.price, money, false) + row('Power', a.m.pl, b.m.pl, v => v.toFixed(1), true) + row('Fundamentals', a.m.fund, b.m.fund, v => String(Math.round(v)), true) + row('Bracket', a.m.bracket, b.m.bracket, v => 'B' + v, false, String) +
       '</tbody></table><div class="grid2" style="margin-top:10px"><div><h3>Out (' + out.length + ')</h3>' + (out.length ? '<ul class="dl">' + out.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p class="note">None</p>') + '</div><div><h3>In (' + inn.length + ')</h3>' + (inn.length ? '<ul class="dl">' + inn.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p class="note">None</p>') + '</div></div>';
   }
 
@@ -1554,7 +1605,7 @@
     const last = ch.ops[ch.ops.length - 1], locked = new Set(App.R.deck.filter(e => e.locked).map(e => e.c.n)), tab = App.tab;
     if (!(await replayChain(ch, ch.ops.slice(0, -1)))) return;
     for (const e of App.R.deck) if (locked.has(e.c.n)) e.locked = true;
-    App.AN = null; App.QS = null; App.PR = null; App.SH = null; App.tab = tab === 'setup' ? 'deck' : tab; renderAll();
+    App.AN = null; App.QS = null; App.PR = null; App.SH = null; App.tab = tab === 'setup' ? viewOf('cards') : tab; renderAll();
     histPush('edit', 'Undid ' + opLabel(last)); setStatus('Undid ' + opLabel(last) + '.');
   }
 
@@ -1571,7 +1622,7 @@
   }
 
   /* ---------- keyboard shortcuts ---------- */
-  const KEYS_HELP = 'Keys: 1–9 and 0 open pages in menu order · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
+  const KEYS_HELP = 'Keys: 1–5 open Start, Deck, Analysis, Improve and Primer · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
 
   function wire() {
     document.querySelector('.settings').addEventListener('input', onFormChange);
@@ -1594,9 +1645,13 @@
       runGenerate({ locks, bans: App.R.bans || [], imported: !!(App.chain && App.chain.env && App.chain.env.imported) });
     });
     $('testBtn').addEventListener('click', runTests);
-    document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; hidePop(); App.tab = b.dataset.tab; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 }); if (App.tab === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis(); });
+    const moreList = $('moreList'), setMore = open => { moreList.classList.toggle('hidden', !open); $('moreBtn').setAttribute('aria-expanded', open); };
+    $('moreBtn').addEventListener('click', e => { e.stopPropagation(); setMore(moreList.classList.contains('hidden')); });
+    document.addEventListener('click', e => { if (!moreList.classList.contains('hidden') && !e.target.closest('.morewrap')) setMore(false); });
+    document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-page],button[data-tab]'); if (!b) return; setMore(false); go(b.dataset.page || b.dataset.tab); });
+    $('pageHead').addEventListener('click', e => { const b = e.target.closest('button[data-view]'); if (b) go(viewOf(b.dataset.view)); });
     $('view').addEventListener('input', e => { if (e.target.id === 'anText') App.anText = e.target.value; if (e.target.id === 'impText') App.impText = e.target.value; });
-    $('view').addEventListener('click', e => { if (e.target.closest('#impBtn')) importDeck(); const g = e.target.closest('[data-go]'); if (g) document.querySelector('.tabs button[data-tab="' + g.dataset.go + '"]').click(); });
+    $('view').addEventListener('click', e => { if (e.target.closest('#impBtn')) importDeck(); const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
       const X = App.AN, a = b.dataset.sw;
@@ -1612,7 +1667,7 @@
       const g = e.target.closest('button[data-cbgo]'); if (g) { g.disabled = true; return comboAddGo(g.dataset.cbgo); }
       if (e.target.closest('button[data-cbx]')) document.querySelectorAll('tr.cbpanel').forEach(x => x.remove());
     });
-    $('view').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
+    document.querySelector('.results').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-hist]'); if (!b) return;
       const v = b.dataset.hist, h = await histLoad();
@@ -1652,17 +1707,20 @@
       const a = b.dataset.an;
       if (a === 'src-deck' || a === 'src-paste' || a === 'src-compare') { App.anSource = a.slice(4) === 'deck' ? 'deck' : a.slice(4); App.AN = null; renderAnalysis(); if (App.anSource === 'deck' && App.R) runAnalysis(); }
       else if (a === 'run') runAnalysis();
+      else if (a === 'adv') { App.anAdv = !App.anAdv; try { localStorage.setItem('edhgen.anAdv', App.anAdv ? '1' : ''); } catch (x) { } renderAnalysis(); }
     });
-    $('view').addEventListener('click', async e => {
+    // deck edits: from the swap rows in the list, or from a card's popover anywhere
+    const deckAct = async e => {
       const b = e.target.closest('button[data-act]'); if (!b || !App.R) return;
       const entry = App.R.deck[+b.dataset.i]; if (!entry) return;
-      const act = b.dataset.act;
+      const act = b.dataset.act; hidePop();
       if (act === 'lock') { entry.locked = !entry.locked; entry.imp = false; renderView(); }
-      else if (act === 'swap') { App.openSwap = App.openSwap === entry ? null : entry; renderView(); }
+      else if (act === 'swap') { App.openSwap = App.openSwap === entry ? null : entry; if (App.tab !== 'deck' && App.tab !== 'role') App.tab = viewOf('cards'); renderView(); }
       else if (act === 'use') { const alt = App.R.alternatives(entry, 5)[+b.dataset.j]; if (alt) { const cut = entry.c.n; await App.R.replace(entry, alt.c, true); histOp({ op: 'replace', cut, add: alt.c.n, locked: true }); App.QS = null; App.openSwap = null; renderAll(); histPush('edit', cut + ' → ' + alt.c.n); } }
       else if (act === 'remove') { const cut = entry.c.n; const ne = await App.R.remove(entry); histOp({ op: 'remove', cut }); App.QS = null; App.openSwap = null; renderAll(); histPush('edit', 'Removed ' + cut + (ne && ne.c ? ' → ' + ne.c.n : '')); }
       if (act === 'use' || act === 'remove') { if (App.anSource !== 'paste') App.AN = null; }
-    });
+    };
+    $('view').addEventListener('click', deckAct); $('cardPop').addEventListener('click', e => { if (e.target.closest('button[data-act]')) { e.stopPropagation(); deckAct(e); } });
     $('saveSet').addEventListener('click', () => saveFile('edh-settings.json', JSON.stringify(readForm(), null, 2), $('idbNote')));
     $('loadSet').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; try { applySettings(JSON.parse(await f.text())); setStatus('Settings loaded.'); checkCommanders(); } catch (err) { setStatus('Settings file error: ' + err.message); } });
     $('copyTok').addEventListener('click', () => copyText($('shareTok').value, $('shareTok'), null));
@@ -1715,14 +1773,14 @@
       const k = e.key;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && k.toLowerCase() === 'z') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } return; }
       if (e.ctrlKey || e.metaKey) return;
-      const tabs = [...document.querySelectorAll('.tabs button[data-tab]')];
-      if (/^[0-9]$/.test(k)) { const b = tabs[k === '0' ? 9 : +k - 1]; if (b) { e.preventDefault(); b.click(); } }
+      const tabs = [...document.querySelectorAll('.tabs button[data-page]')];
+      if (/^[1-9]$/.test(k)) { const b = tabs[+k - 1]; if (b) { e.preventDefault(); b.click(); } }
       else if (k === 'g' || k === 'G') { if (!$('genBtn').disabled) { e.preventDefault(); $('genBtn').click(); } }
       else if (k === 'u' || k === 'U') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } }
       else if (k === '/') { e.preventDefault(); let f = $('cbQ') || $('cbrQ'); if (!f || f.offsetParent === null) { App.tab = 'setup'; renderView(); f = $('cmd1'); } f.focus(); }
       else if (k === '?') { e.preventDefault(); setStatus(KEYS_HELP); }
     });
-    App.anGames = +(LS.get('edhgen.anGames') || 100000); App.anSub = LS.get('edhgen.anSub') || 'overview';
+    App.anGames = +(LS.get('edhgen.anGames') || 100000); App.anSub = LS.get('edhgen.anSub') || 'turns'; App.anAdv = !!LS.get('edhgen.anAdv');
     setupAC('cmd1', 'cmd1L'); setupAC('cmd2', 'cmd2L');
     wireQuick(); syncQuick(App.S);
   }
