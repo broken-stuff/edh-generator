@@ -164,5 +164,12 @@ function legalCheck(R, label) {
     assert(R3.deck.reduce((s, e) => s + e.qty, 0) === 99 && R3.deck.filter(e => e.locked).length === 60, 'import: short list is filled to 100, filled cards unlocked');
     const R4 = await E.generate(db, { commanders: ['Synth Rainbow'], seed: 'imp' }, { locks: locks.concat([{ name: 'Synth C 1-0' }, { name: 'Synth C 1-1' }]).filter((l, i, a) => a.findIndex(x => x.name === l.name) === i), imported: true });
     assert(R4.errors.some(e => /^Imported list has/.test(e)), 'import: more than 99 cards is an error');
+    const R5 = await E.generate(db, { commanders: ['Synth Rainbow'], seed: 'imp', bracket: 4, bl: E.bracketDefaults(4) }, { locks: locks.slice(0, 60), imported: true, asIs: true });
+    assert(R5.deck.length === 60 && R5.deck.every(e => e.locked) && R5.validation.rules.some(r => r.id === 'count' && r.pass === false), 'import as-is: short list is not filled, count rule fails');
+    const An = require('./analysis.js');
+    const P1 = An.parseDecklist('// COMMANDER\n1 Synth Rainbow (LTC) 498\n\n1 Sol Ring (LTC) 284\n26 Forest (SOS) 280\n// Sideboard\n1 Opt');
+    assert(P1.cmd.length === 1 && P1.cmd[0].name === 'Synth Rainbow' && P1.main.length === 2 && P1.main[1].qty === 26, 'parse: "// COMMANDER" header, blank line ends the commander section');
+    const P2 = An.parseDecklist('Commander (1)\n1 A\n1 B\nDeck\n1 C\n\nSideboard:\n1 D');
+    assert(P2.cmd.length === 2 && P2.main.length === 1, 'parse: "Commander (1)" header with partners, sideboard skipped');
   }
 })();
