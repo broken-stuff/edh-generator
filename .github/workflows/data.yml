@@ -116,6 +116,9 @@ jobs:
           echo "::notice::$(node tools/scryfall-aliases.js "$RUNNER_TEMP/default.bin" data/aliases.json)"
       - name: Index data/
         run: node tools/data-index.js data
+      - name: Mechanics coverage report
+        continue-on-error: true
+        run: node tools/mech-report.js data --newest 300 | while IFS= read -r l; do echo "::notice::$l"; done
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"

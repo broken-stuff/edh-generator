@@ -669,7 +669,7 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
 </div>
 <div id="cardPop" class="hidden" role="tooltip"></div>
 </div>
-<script>
+<script id="src-engine">
 /* ===== Engine: pure deck-generation logic (no DOM, no network) ===== */
 const Engine = (function () {
   'use strict';
@@ -2015,11 +2015,298 @@ const Engine = (function () {
 })();
 if (typeof module !== 'undefined') module.exports = Engine;
 </script>
-<script>
+<script id="src-mech">
+/* ===== Mech: card abilities parsed from Oracle text, and the synergy graph between cards (pure; uses Engine) ===== */
+// Each card is split into abilities (triggered, activated, static/spell). Each ability is read into tags:
+//   needs: what the card triggers on, pays as a cost, or counts (e.g. 'creature.dies', 'fodder.creature', 'count.creature')
+//   makes: what its effects produce (e.g. 'token.creature', 'mana', 'card', 'counter') and the events those effects cause
+// Two cards are linked when one makes what the other needs; the link weight is the product of both tags' weights.
+// Self-references ("this creature", the card's name, "~") are normalised to "~". Reminder text in parentheses is dropped.
+const Mech = (function () {
+  'use strict';
+  const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
+
+  /* ---------- text ---------- */
+  const SELF = /\b(?:this (?:creature|artifact|enchantment|land|permanent|spell|card|planeswalker|vehicle|equipment|aura|saga|battle|siege|class|case|room))\b/g;
+  function norm(c) {
+    let t = (c.low || '').replace(/\([^)]*\)/g, '').replace(SELF, '~');
+    const nm = (c.n || '').toLowerCase().split(' // ');
+    for (const n of nm) if (n.length > 2) { t = t.split(n).join('~'); const first = n.split(',')[0]; if (first.length > 3 && first !== n) t = t.split(first).join('~'); }
+    return t;
+  }
+  // abilities: one per line; modal bullets join the line above
+  function split(t) {
+    const out = [];
+    for (const raw of t.split('\n')) { const l = raw.trim(); if (!l) continue; if (/^•/.test(l) && out.length) out[out.length - 1] += ' ' + l.slice(1); else out.push(l); }
+    return out;
+  }
+
+  /* ---------- vocabulary ---------- */
+  // [tag, regex, weight]; a clause can match several
+  const YOU = "(?:you control |under your control )?";
+  const EVENTS = [ // trigger condition → needs
+    ['self.enters', /^~ enters|^~ is turned face up|^~ or another [^,]* enters/, 1],
+    ['creature.enters', new RegExp('(?:a|an|another|one or more|each) (?:nontoken |non-human |other )?(?:[a-z]+ )?creatures? ' + YOU + '(?:enter|enters)'), 1],
+    ['token.enters', /tokens? (?:you control )?(?:enters?|you control enter)|you create (?:one or more |a )?(?:[a-z ]+ )?tokens?/, 1],
+    ['land.enters', /lands? (?:you control )?enters?|landfall/, 1],
+    ['artifact.enters', /artifacts? (?:you control )?enters?|you create (?:one or more |a )?(?:[a-z]+ )?artifact tokens?/, 1],
+    ['enchantment.enters', /enchantments? (?:you control )?enters?/, 1],
+    ['self.dies', /^~ dies|^~ is put into a graveyard from the battlefield|^~ or another creature dies/, 1],
+    ['creature.dies', /creatures? (?:you control |an opponent controls |card )?(?:other than ~ )?(?:dies|die)|creature (?:card )?is put into (?:a|your|an opponent's) graveyard from the battlefield|another creature dies|creature you control dies/, 1],
+    ['artifact.dies', /artifacts? (?:you control )?(?:is|are) put into a graveyard from the battlefield|you sacrifice (?:an|one or more) artifacts?/, 1],
+    ['sacrifice', /you sacrifice (?:a|an|one or more|another)/, 1],
+    ['self.leaves', /^~ leaves the battlefield/, 0.5],
+    ['spell.noncreature', /casts? (?:(?:a|an|your (?:first|second)|their (?:first|second)) )?(?:instant or sorcery|noncreature|instant|sorcery|kicked|multicolored)(?: or [a-z]+)? spell|cast or copy an instant or sorcery|magecraft/, 1],
+    ['spell.creature', /casts? (?:a|an) (?:[a-z]+ )?creature spell/, 1],
+    ['spell.any', /casts? (?:(?:a|your (?:first|second)|their (?:first|second)) )?spell|casts? (?:a|an) (?:historic|artifact|enchantment|legendary|colorless|multicolored|white|blue|black|red|green) spell/, 0.8],
+    ['self.cast', /^(?:when )?you cast (?:~|this spell)/, 0.5],
+    ['attack', /attacks?\b|attack with/, 0.6],
+    ['damage.player', /deals? combat damage to (?:a player|an opponent|one or more players|that player)/, 0.8],
+    ['card.draw', /you draw (?:a|your second|one or more) cards?|draws? (?:a|your second) card each turn/, 1],
+    ['discard', /(?:you )?discards? (?:a|one or more) cards?|cycle or discard/, 1],
+    ['gy.enter', /cards? (?:are|is) put into (?:your|an opponent's|a) graveyard|cards? leave your graveyard|mill/, 1],
+    ['life.gain', /you gain life|gain life for the first time/, 1],
+    ['life.loss', /(?:an )?opponents? loses? life|loses life/, 0.8],
+    ['counter.placed', /counters? (?:is|are) put on|put one or more (?:[+-]1\/[+-]1 )?counters|counters on (?:it|~) (?:is|are)/, 1],
+    ['tapped', /becomes tapped|you tap an untapped|tap an untapped/, 0.5],
+    ['mana.tapped', /tap (?:a|an|another)? ?(?:nonland |untapped )?(?:permanent|land|artifact|creature|[a-z]+)s? for (?:mana|\{)/, 1],
+    ['ability.activated', /you activate an ability|activate an ability that isn't a mana ability/, 1],
+    ['opp.draw', /(?:an|each) opponent draws (?:a|their)|a player draws a card/, 1],
+    ['damage.dealt', /deals (?:combat )?damage(?: to (?:an opponent|a player|one or more))?|is dealt damage/, 0.8],
+    ['creature.damaged', /a creature is dealt damage|is dealt damage/, 0.8],
+    ['targeted', /becomes the target/, 0.6],
+    ['upkeep', /beginning of (?:your|each) upkeep/, 0.3],
+    ['end', /beginning of (?:your|each) end step/, 0.3],
+    ['combat', /beginning of combat/, 0.3]
+  ];
+  const EFFECTS = [ // effect → makes
+    ['mana', /\badd (?:\{|one|two|three|x |an amount|that much|mana)|adds? an additional|spells? (?:you cast )?costs? \{\d\} less|costs? \{\d\} less to cast/, 1],
+    ['card', /\bdraws? (?:a|an|one|two|three|four|five|x|that many|cards?|seven)|exile the top [^.]* you may (?:play|cast) (?:it|them|that card)|put (?:it|that card|those cards|one of them|them) into your hand/, 1],
+    ['token.creature', /create[^.]*creature tokens?|create[^.]*tokens? that'?s? (?:a )?cop(?:y|ies)|tokens that are copies|create (?:a|x|that many|[a-z]+) [^.]*\d+\/\d+[^.]*tokens?|amass|populate|afterlife/, 1],
+    ['token.copy', /create[^.]*tokens? that'?s? (?:a )?cop(?:y|ies)|tokens that are copies|create a copy of/, 1],
+    ['card.opp', /(?:target player|each player|each opponent|that player|target opponent) draws/, 1],
+    ['library.exile', /exile (?:the top [^.]*of )?your library|until you reveal a card with the chosen name|exile[^.]*cards? from the top of your library[^.]*repeat/, 1],
+    ['token.treasure', /create[^.]*treasure tokens?|create (?:a|x|that many|two|three) gold tokens?/, 1],
+    ['token.artifact', /create[^.]*(?:treasure|clue|food|blood|map|powerstone|gold|incubator|junk|artifact)[^.]*tokens?|investigate/, 1],
+    ['counter', /put[^.]*counters? on|proliferate|enters with[^.]*counters?|bolster|adapt|support|amass|incubate/, 1],
+    ['life', /\bgains? (?:\d+|x|that much|life equal|twice|life)|double (?:target player's|your) life total|(?:has|have|gains?) lifelink/, 1],
+    ['drain', /(?:each opponent|target player|target opponent|that player|defending player) loses (?:\d+|x|that much|life)|\bloses? (?:half|\d+|x|that much)[^.]* life/, 1],
+    ['damage', /deals (?:\d+|x|that much|damage equal)[^.]*damage/, 0.6],
+    ['gy.fill', /\bmill|put the top [^.]* into your graveyard|surveil|you may discard|discard (?:a|two|x|your hand|that many)|dredge/, 1],
+    ['reanimate', /return[^.]*from (?:your|a) graveyard to the battlefield|return enchanted creature card to the battlefield|put[^.]*from (?:your|a) graveyard onto the battlefield/, 1],
+    ['regrowth', /return[^.]*from your graveyard to your hand/, 1],
+    ['cast.gy', /(?:cast|play)[^.]*from your graveyard/, 1],
+    ['blink', /exile [^.]*(?:\. |, then )return (?:it|that card|them|those cards|the exiled card)[^.]* to the battlefield|exile (?:target|another|up to)[^.]*creature[^.]*return[^.]*battlefield/, 1],
+    ['bounce.own', /return (?:target |a |another )?(?:creature|permanent|nonland permanent)s? you control to (?:its|their) owner'?s?'? hand/, 0.6],
+    ['land.drop', /(?:put|puts) (?:a|up to \w+|that|those|x|any number of)? ?(?:basic )?lands? cards?[^.]* onto the battlefield|play an additional land|play (?:up to )?(?:two|three) additional lands|search your library for [^.]*lands? cards?[^.]*(?:onto|put (?:it|them) onto) the battlefield/, 1],
+    ['untap', /\buntap (?:target|all|each|another|up to|~|it|those|that|x|two)|\{q\}/, 1],
+    ['deathtouch', /(?:has|have|gains?) deathtouch/, 0.8],
+    ['tutor', /search your library for (?:a|an|up to \w+|any number of|x)? ?(?!basic land|land|[a-z]* ?land card)(?:[a-z ]*)card/, 1],
+    ['extra.combat', /additional combat phase/, 1],
+    ['extra.turn', /extra turn/, 1],
+    ['copy', /copy (?:target|that|it|the next)[^.]*(?:spell|ability)|copy (?:target|that) (?:instant|sorcery)/, 1],
+    ['sac.outlet', /sacrifice (?:a|an|another|any number of|x) (?:other )?(?:nontoken |non-[a-z]+ )?(?:creatures?|permanents?|artifacts?)(?! (?:an opponent|they|that player))/, 0.6],
+    ['edict', /(?:each opponent|target player|target opponent|each player) sacrifices/, 0.6],
+    ['removal', /destroy target|exile target (?:creature|artifact|enchantment|nonland|permanent|planeswalker)|deals \d+ damage to (?:target|any target)|return target (?:creature|nonland permanent|permanent)[^.]* to (?:its|their) owner's hand|counter target/, 0.5],
+    ['wipe', /destroy all|exile all (?:creatures|nonland|permanents)|each creature gets -|deals \d+ damage to each creature|all creatures get -/, 1],
+    ['anthem', /creatures you control get \+|other [a-z ]*creatures you control get \+|creature tokens you control get \+/, 1],
+    ['evasion', /creatures you control (?:gain|have) (?:flying|trample|menace|unblockable)|can't be blocked/, 0.4],
+    ['free.cast', /without paying (?:its|their) mana costs?/, 1],
+    ['top', /\bscry|look at the top|surveil|reveal the top/, 0.4],
+    ['haste', /(?:creatures you control |it |they )?(?:gain|have|has) haste/, 0.4],
+    ['protect', /(?:gain|have|has) (?:hexproof|indestructible|shroud|protection)|phase out/, 0.4],
+    ['discard.opp', /(?:each opponent|target player|target opponent|each player) discards/, 0.6]
+  ];
+  const COSTS = [ // activated-ability cost → needs
+    ['fodder.creature', /sacrifice (?:a|an|another|two|x|one or more) (?:other )?(?:nontoken )?(?:[a-z]+ )?creatures?/, 1],
+    ['fodder.artifact', /sacrifice (?:a|an|another|two|x) (?:other )?(?:nontoken )?artifacts?|sacrifice (?:a|an) (?:treasure|clue|food|blood)/, 1],
+    ['fodder.land', /sacrifice (?:a|an|another) lands?/, 0.6],
+    ['fodder.permanent', /sacrifice (?:a|an|another) (?:nonland )?permanents?/, 1],
+    ['fodder.self', /sacrifice ~/, 0.2],
+    ['fodder.creature', /exile (?:a|another) creature you control/, 1],
+    ['discard', /\bdiscard/, 0.6],
+    ['life', /pay \d+ life|pay x life/, 0.3],
+    ['counter.remove', /remove[^:]*counters?/, 0.8],
+    ['gy.cards', /exile[^:]*from your graveyard/, 1],
+    ['untap.self', /\{t\}/, 0.6],
+    ['tap.creatures', /tap (?:an?|two|three|four|five|x|one or more) untapped (?:[a-z]+ )?creatures?(?: you control)?/, 1],
+    ['tap.artifacts', /tap (?:an?|two|three|x) untapped artifacts?/, 1],
+    ['mana.sink', /\{x\}|\{[4-9]\}|\{1\d\}/, 0.4],
+    ['untap.self', /\{q\}/, 0.3]
+  ];
+  const COUNTS = [ // static scaling or condition → needs (go-wide, graveyard size, etc.)
+    ['count.creature', /for each (?:other )?(?:[a-z]+ )?creatures? (?:you control|on the battlefield)|number of (?:[a-z]+ )?creatures (?:you control|on the battlefield)|equal to the number of creatures|convoke|you control (?:three|four|five|seven|ten) or more creatures/, 1],
+    ['count.artifact', /for each artifact|number of artifacts|affinity for artifacts|improvise|metalcraft|you control (?:three|five) or more artifacts/, 1],
+    ['count.enchantment', /for each enchantment|number of enchantments|constellation/, 1],
+    ['count.land', /for each land you control|number of lands you control|equal to the number of lands/, 0.6],
+    ['gy.cards', /cards? in your graveyard|for each (?:[a-z]+ )?card in your graveyard|threshold|delirium|descend|escape|delve|flashback|unearth|embalm|eternalize|disturb|encore|scavenge|jump-start|retrace|aftermath/, 1],
+    ['count.counter', /for each [^.]*counter|number of [^.]*counters|with (?:a|one or more) [+-]1\/[+-]1 counters? on (?:it|them)/, 1],
+    ['count.spell', /for each (?:instant(?: and|,| or) sorcery|noncreature)|storm|number of instant and sorcery cards/, 1],
+    ['count.hand', /cards? in your hand|no cards in hand|maximum hand size/, 0.6],
+    ['life.total', /life total|you have \d+ or more life/, 0.5],
+    ['amp.token', /would create one or more tokens|create twice that many|tokens? (?:would be )?created[^.]*instead|creates? that many plus one/, 1],
+    ['amp.counter', /would (?:put|be put) one or more counters|twice that many (?:of those )?counters|that many plus one [^.]*counters/, 1],
+    ['amp.life', /if you would gain life|gain twice that much/, 1],
+    ['amp.mill', /would mill/, 1],
+    ['amp.damage', /would deal (?:noncombat )?damage|deals? double that damage|twice that much damage|would lose life[^.]*(?:twice|double)/, 1],
+    ['library.small', /number of cards in your library|no cards in your library|library has no cards|draw a card while your library|cards in your library/, 1],
+    ['amp.trigger', /triggers? an additional time/, 1],
+    ['amp.etb', /entering the battlefield causes a triggered ability/, 1],
+    ['mana.sink', /\{x\}[^.]*(?:deals x|draw x|create x|x target)|spend this mana/, 0.3]
+  ];
+  // keywords Scryfall lists that carry a mechanic but whose text is reminder-only
+  const KW = {
+    convoke: ['needs', 'count.creature'], improvise: ['needs', 'count.artifact'], delve: ['needs', 'gy.cards'], flashback: ['needs', 'gy.cards'],
+    escape: ['needs', 'gy.cards'], unearth: ['makes', 'self.reenter'], embalm: ['makes', 'token.creature'], eternalize: ['makes', 'token.creature'],
+    afterlife: ['makes', 'token.creature'], persist: ['makes', 'self.reenter'], undying: ['makes', 'self.reenter'], proliferate: ['makes', 'counter'],
+    investigate: ['makes', 'token.artifact'], populate: ['makes', 'token.creature'], amass: ['makes', 'token.creature'], fabricate: ['makes', 'counter'],
+    exploit: ['needs', 'fodder.creature'], devour: ['needs', 'fodder.creature'], emerge: ['needs', 'fodder.creature'], casualty: ['needs', 'fodder.creature'],
+    storm: ['needs', 'count.spell'], cascade: ['makes', 'free.cast'], prowess: ['needs', 'spell.noncreature'], 'jump-start': ['needs', 'gy.cards'],
+    retrace: ['needs', 'gy.cards'], dredge: ['makes', 'gy.fill'], cycling: ['makes', 'card'], connive: ['makes', 'gy.fill'], explore: ['makes', 'counter'],
+    mentor: ['makes', 'counter'], training: ['needs', 'attack'], evolve: ['needs', 'creature.enters'], modular: ['makes', 'counter'], riot: ['makes', 'counter'],
+    adapt: ['makes', 'counter'], bolster: ['makes', 'counter'], incubate: ['makes', 'token.artifact'], 'living weapon': ['makes', 'token.creature'],
+    affinity: ['needs', 'count.artifact'], metalcraft: ['needs', 'count.artifact'], landfall: ['needs', 'land.enters'], 'for mirrodin!': ['makes', 'token.creature'],
+    magecraft: ['needs', 'spell.noncreature'], constellation: ['needs', 'enchantment.enters'], threshold: ['needs', 'gy.cards'], delirium: ['needs', 'gy.cards'],
+    mill: ['makes', 'gy.fill'], surveil: ['makes', 'gy.fill'], scry: ['makes', 'top'], treasure: ['makes', 'token.artifact'], blitz: ['makes', 'self.dies']
+  };
+  // what each produced tag also causes, as an event other cards can need
+  const CAUSES = {
+    'token.creature': ['creature.enters', 'token.enters', 'fodder.creature', 'fodder.permanent', 'count.creature', 'tap.creatures'],
+    'token.treasure': ['mana', 'artifact.enters', 'token.enters', 'fodder.artifact', 'count.artifact', 'artifact.dies'],
+    'token.artifact': ['artifact.enters', 'token.enters', 'fodder.artifact', 'fodder.permanent', 'count.artifact', 'tap.artifacts', 'artifact.dies'],
+    'sac.outlet': ['creature.dies', 'self.dies', 'sacrifice', 'artifact.dies'], wipe: ['creature.dies', 'self.dies', 'creature.damaged'], edict: ['creature.dies'],
+    counter: ['counter.placed', 'count.counter', 'counter.remove'], card: ['card.draw', 'count.hand'], life: ['life.gain', 'life.total'],
+    drain: ['life.loss'], damage: ['life.loss', 'creature.damaged', 'damage.dealt'], deathtouch: ['deathtouch'], 'card.opp': ['opp.draw'], 'library.exile': ['library.small'],
+    'token.copy': ['self.reenter', 'creature.enters', 'token.enters', 'fodder.creature', 'count.creature'], 'gy.fill': ['gy.enter', 'gy.cards', 'discard'], reanimate: ['creature.enters', 'self.reenter'], blink: ['creature.enters', 'self.reenter', 'self.enters', 'self.leaves'],
+    'bounce.own': ['self.reenter'], 'mana.tap': ['mana.tapped'], activation: ['ability.activated'], 'land.drop': ['land.enters', 'count.land'], 'extra.combat': ['attack', 'damage.player', 'combat'], copy: ['spell.noncreature', 'spell.any'],
+    'free.cast': ['spell.any'], mana: ['mana.sink'], untap: ['untap.self'], 'discard.opp': [], 'cast.gy': ['spell.any', 'fodder.creature', 'creature.enters'], regrowth: [], haste: ['attack']
+  };
+  // needs that a card meets just by being a card of a type (weak: many cards qualify)
+  const TYPE_MAKES = [
+    [c => /\bCreature\b/.test(c.ft), [['creature.enters', 0.15], ['fodder.creature', 0.15], ['count.creature', 0.1], ['creature.dies', 0.05]]],
+    [c => /\bArtifact\b/.test(c.ft), [['artifact.enters', 0.15], ['fodder.artifact', 0.15], ['count.artifact', 0.15]]],
+    [c => /\bEnchantment\b/.test(c.ft), [['enchantment.enters', 0.15], ['count.enchantment', 0.15]]],
+    [c => /\b(?:Instant|Sorcery)\b/.test(c.ft), [['spell.noncreature', 0.2], ['spell.any', 0.1], ['count.spell', 0.1]]],
+    [c => !/\bLand\b/.test(c.ft) && c.cmc <= 1, [['spell.any', 0.7]]],
+    [c => !/\b(?:Land|Creature)\b/.test(c.ft) && c.cmc <= 1, [['spell.noncreature', 0.5]]],
+    [c => /\bLand\b/.test(c.ft) && !/\bBasic\b/.test(c.ft), [['land.enters', 0.05]]]
+  ];
+  // needs that only matter with other cards: a card that needs 'self.enters' wants blink/reanimate, etc.
+  const SELF_NEEDS = { 'self.enters': 'self.reenter', 'self.dies': 'sacrifice-of-self' };
+
+  /* ---------- parse ---------- */
+  const PC = new WeakMap();
+  function parse(c) {
+    let P = PC.get(c); if (P) return P;
+    const t = norm(c), abil = [], needs = new Map(), makes = new Map();
+    const add = (m, k, w) => { if ((m.get(k) || 0) < w) m.set(k, w); };
+    const scan = (txt, table, m, hits) => { for (const [k, re, w] of table) if (re.test(txt)) { add(m, k, w); hits.push(k); } };
+    for (const line of split(t)) {
+      const a = { text: line, kind: 'static', needs: [], makes: [] };
+      let m;
+      if ((m = line.match(/^(?:[a-z' ,!-]+ — )?(whenever|when|at) (.+?), (.+)$/))) {
+        a.kind = 'trigger'; scan(m[2], EVENTS, needs, a.needs);
+        if (/^~ /.test(m[2]) && /attacks|deals combat damage/.test(m[2])) add(needs, 'evasion', 0.3);
+        scan(m[3], EFFECTS, makes, a.makes); scan(m[3], COUNTS, needs, a.needs);
+      } else if ((m = line.match(/^([^:"]{1,140}?):\s+(.+)$/)) && /\{|sacrifice|discard|pay|remove|exile|tap|^[+−-]\d|^0$/.test(m[1])) {
+        a.kind = 'activated'; scan(m[1], COSTS, needs, a.needs);
+        scan(m[2], EFFECTS, makes, a.makes); scan(m[2], COUNTS, needs, a.needs);
+        const tapMana = /\{t\}/.test(m[1]) && /^add /.test(m[2]);
+        if (tapMana) { add(needs, 'untap.self', 1); add(makes, 'mana.tap', 1); } else if (!/^[+−-]?\d+$/.test(m[1])) add(makes, 'activation', 0.6);
+      } else {
+        scan(line, EFFECTS, makes, a.makes); scan(line, COUNTS, needs, a.needs);
+        for (const q of line.match(/"(?:whenever|when|at) [^"]+"/g) || []) { const qm = q.slice(1, -1).match(/^(?:whenever|when|at) (.+?), (.+)$/); if (qm) scan(qm[1], EVENTS, needs, a.needs); }
+        if (/^(?:as an additional cost|additional cost)[^.]*sacrifice (?:a|an) creature/.test(line)) { add(needs, 'fodder.creature', 1); a.needs.push('fodder.creature'); }
+      }
+      for (const q of line.slice(1).match(/(?:whenever|when) [^,"]+,/g) || []) scan(q, EVENTS, needs, a.needs); // "until end of turn, whenever …" and granted abilities
+      for (const q of line.match(/"[^"]*\{[^"]*:[^"]*"/g) || []) { const qm = q.slice(1, -1).match(/^([^:]{1,80}):\s+(.+)$/); if (qm) { scan(qm[1], COSTS, needs, a.needs); scan(qm[2], EFFECTS, makes, a.makes); } }
+      if (a.kind === 'activated' && /deals \d+ damage/.test(line)) add(needs, 'deathtouch', 0.6);
+      if (a.needs.length || a.makes.length) abil.push(a);
+    }
+    for (const k of c.kw || []) { const r = KW[k]; if (r) { add(r[0] === 'needs' ? needs : makes, r[1], 1); } }
+    // a creature or artifact with a "when ~ enters" ability needs re-entry (blink, reanimation, bounce)
+    if (needs.has('self.enters')) add(needs, 'self.reenter', needs.get('self.enters'));
+    if (/\b(?:Instant|Sorcery)\b/.test(c.ft)) add(needs, 'copy', makes.has('mana') || makes.has('card.opp') || makes.has('token.copy') ? 1 : 0.3);
+    if (needs.has('self.dies')) add(needs, 'sac.outlet.any', 0.6);
+    // effects cause events
+    const causes = new Map();
+    for (const [k, w] of makes) for (const e of CAUSES[k] || []) add(causes, e, w);
+    for (const [pred, list] of TYPE_MAKES) if (pred(c)) for (const [e, w] of list) add(causes, e, w);
+    if (makes.has('sac.outlet')) add(causes, 'sac.outlet.any', makes.get('sac.outlet'));
+    if (needs.has('fodder.creature') || needs.has('fodder.permanent') || needs.has('fodder.artifact')) { add(causes, 'sac.outlet.any', 0.8); add(causes, 'creature.dies', needs.has('fodder.creature') ? 0.8 : 0.3); add(causes, 'sacrifice', 0.8); }
+    for (const k of ['amp.token']) if (needs.has(k)) add(causes, 'token.creature', 0.3);
+    P = { abil, needs, makes, causes, parsed: abil.length > 0 || [...needs.keys()].length > 0 || [...makes.keys()].length > 0 };
+    PC.set(c, P); return P;
+  }
+  // amplifiers need the thing they amplify
+  const AMP = { 'amp.mill': ['gy.fill'], 'amp.damage': ['damage', 'drain'], 'amp.token': ['token.creature', 'token.artifact'], 'amp.counter': ['counter'], 'amp.life': ['life'], 'amp.trigger': ['creature.enters', 'self.reenter'], 'amp.etb': ['creature.enters', 'self.reenter'] };
+  // B's needs met by A: A.makes (direct) or A.causes (events)
+  function link(a, b) {
+    const A = parse(a), B = parse(b); let w = 0; const why = [];
+    for (const [k, wn] of B.needs) {
+      const keys = AMP[k] || [k];
+      for (const kk of keys) { const wm = Math.max(A.makes.get(kk) || 0, A.causes.get(kk) || 0); if (wm > 0) { w += wn * wm; why.push(kk); } }
+    }
+    return { w, why };
+  }
+  // symmetric synergy between two cards
+  function pair(a, b) { const x = link(a, b), y = link(b, a); return { w: x.w + y.w, why: x.why.concat(y.why) }; }
+  // the same weight, cached (analysis asks for every pair of a deck on every run)
+  const PW = new WeakMap();
+  function pairW(a, b) {
+    if (a === b) return 0;
+    let m = PW.get(a); if (m && m.has(b)) return m.get(b);
+    const w = pair(a, b).w;
+    if (!m) PW.set(a, m = new Map()); m.set(b, w);
+    let n = PW.get(b); if (!n) PW.set(b, n = new Map()); n.set(a, w);
+    return w;
+  }
+  const LINK = 0.5; // pair weight at which two cards count as linked (Spellbook 2-card combos: 45.5% linked, random pairs of combo cards 12.3%)
+  // each card's links to the rest of a list; minW drops weak type-only links
+  function graph(cards, minW) {
+    minW = minW == null ? 0.25 : minW;
+    const n = cards.length, deg = new Float64Array(n), edges = [];
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const p = pair(cards[i], cards[j]); if (p.w >= minW) { deg[i] += p.w; deg[j] += p.w; edges.push([i, j, p.w, p.why]); } }
+    return { deg, edges };
+  }
+
+  /* ---------- deck profile: fast links for any card against a list (O(tags) per card) ---------- */
+  // supply(c): what c makes or causes; S[k] = Σ supply over the list, N[k] = Σ needs over the list.
+  // links(c) = Σ_k min(CAP, need_c(k) · S[k]) + Σ_k min(CAP, supply_c(k) · N[k]) (+ the same against the commanders × CMD),
+  // minus c's own share when c is in the list. CAP keeps one broad tag (e.g. "creature enters" in a 30-creature deck) from dominating.
+  const CAP = 4, CMD = 3;
+  function supply(c) { const P = parse(c), m = new Map(P.causes); for (const [k, w] of P.makes) if ((m.get(k) || 0) < w) m.set(k, w); return m; }
+  const ampNeeds = new Map(); for (const [k, list] of Object.entries(AMP)) for (const t of list) { if (!ampNeeds.has(t)) ampNeeds.set(t, []); ampNeeds.get(t).push(k); }
+  function profile(cards) {
+    const S = new Map(), N = new Map(), add = (m, k, w) => m.set(k, (m.get(k) || 0) + w);
+    for (const c of cards) { for (const [k, w] of supply(c)) add(S, k, w); for (const [k, w] of parse(c).needs) add(N, k, w); }
+    return { S, N };
+  }
+  function links(c, prof, cmdProf, inList) {
+    const P = parse(c), sup = supply(c), why = new Map();
+    const own = inList ? { S: sup, N: P.needs } : null;
+    const get = (pr, m, k, self) => Math.max(0, (pr[m].get(k) || 0) - (self ? (self[m].get(k) || 0) : 0));
+    const side = (pr, self, mult) => {
+      let w = 0;
+      for (const [k, wn] of P.needs) for (const kk of AMP[k] || [k]) { const v = Math.min(CAP, wn * get(pr, 'S', kk, self)) * mult; if (v > 0) { w += v; why.set('needs ' + kk, (why.get('needs ' + kk) || 0) + v); } }
+      for (const [k, ws] of sup) for (const kk of [k].concat(ampNeeds.get(k) || [])) { const v = Math.min(CAP, ws * get(pr, 'N', kk, self)) * mult; if (v > 0) { w += v; why.set('makes ' + k, (why.get('makes ' + k) || 0) + v); } }
+      return w;
+    };
+    const w = side(prof, own, 1) + (cmdProf ? side(cmdProf, null, CMD) : 0);
+    return { w, why: [...why].sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]) };
+  }
+
+  return { parse, link, pair, pairW, LINK, graph, profile, links, supply, norm, split, EVENTS, EFFECTS, COSTS, COUNTS, KW, CAUSES };
+})();
+if (typeof module !== 'undefined') module.exports = Mech;
+</script>
+<script id="src-analysis">
 /* ===== Analysis: offline deck evaluation (pure; uses Engine) ===== */
 const Analysis = (function () {
   'use strict';
   const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
+  const M = (typeof Mech !== 'undefined') ? Mech : (typeof require === 'function' ? require('./mech.js') : null);
+  const mechWhy = t => t.replace(/^needs /, 'uses ').replace(/\./g, ' ');
   const A = c => E.analyze(c);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const ratio = (have, target) => target > 0 ? clamp(have / target, 0, 1) : 1;
@@ -2124,6 +2411,12 @@ const Analysis = (function () {
   const BIT = { W: 1, U: 2, B: 4, R: 8, G: 16 };
   const NUMW = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, x: 2 };
   const popc = m => { let n = 0; while (m) { n += m & 1; m >>= 1; } return n; };
+  /* trigger economy (Mech): event ids the goldfish fires, and effect bits a triggered ability resolves into */
+  const EVN = ['spell.any', 'spell.noncreature', 'spell.creature', 'creature.enters', 'token.enters', 'artifact.enters', 'enchantment.enters', 'land.enters', 'card.draw', 'life.gain', 'life.loss', 'counter.placed', 'creature.dies', 'sacrifice', 'attack', 'damage.player', 'upkeep', 'end', 'combat', 'gy.enter'];
+  const EVI = Object.fromEntries(EVN.map((k, i) => [k, i])), EV = EVI;
+  const EF = { card: 1, mana: 2, 'token.creature': 4, 'token.treasure': 8, 'token.artifact': 512, drain: 16, life: 32, damage: 64, counter: 128, 'gy.fill': 256 };
+  const TRIG_TARGET = 7; // trigger output by T6 of themed generated decks: 4.8–8.5 (Atraxa, Krenko, Meren, Edgar, Talrand, Omnath)
+  const effBits = list => list.reduce((b, k) => b | (EF[k] || 0), 0);
   const SMC = new WeakMap();
   function simModel(c, CI) {
     let byCI = SMC.get(c); if (!byCI) SMC.set(c, byCI = {}); if (byCI[CI]) return byCI[CI];
@@ -2157,6 +2450,18 @@ const Analysis = (function () {
     const dr = c.low.match(/each opponent loses (\d+|x) life|deals? (\d+|x) damage to each opponent/);
     if (dr) { const v = dr[1] || dr[2]; s.drain = { n: v === 'x' ? 3 : +v, per: /whenever (?:a|another|one or more)[^.]*(?:enters|attacks|dies)/.test(c.low) ? 'enter' : /at the beginning of/.test(c.low) ? 'turn' : 'once' }; }
     s.evasive = ['flying', 'trample', 'menace', 'shadow', 'horsemanship', 'fear', 'intimidate', 'skulk'].some(k => c.kw.includes(k)) || /can't be blocked/.test(c.low);
+    // triggered abilities of permanents as (events → effect bits); "when ~ enters" effects; a sacrifice outlet
+    s.trig = null; s.etb = 0; s.outlet = false; s.artifact = /\bArtifact\b/.test(c.ft); s.isCre = !!a.creature; s.ench = /\bEnchantment\b/.test(c.ft);
+    if (M && isPerm(c)) {
+      const P = M.parse(c), tr = [];
+      for (const ab of P.abil) {
+        if (ab.kind !== 'trigger') continue; const ef = effBits(ab.makes); if (!ef) continue;
+        if (ab.needs.includes('self.enters')) s.etb |= ef;
+        const ev = [...new Set(ab.needs.map(k => EVI[k]).filter(x => x != null))]; if (ev.length) tr.push({ ev, ef });
+      }
+      if (tr.length) s.trig = tr;
+      s.outlet = P.abil.some(a => a.kind === 'activated' && a.needs.includes('fodder.creature'));
+    }
     byCI[CI] = s; return s;
   }
   // pay cost from sources (array of masks, mutated on success): pips first, scarcest colour first, from the least flexible source
@@ -2193,7 +2498,7 @@ const Analysis = (function () {
     const lines = (sopt.lines || []).map(l => ({ keys: l.cards.map(n => E.nameKey(n)), cost: l.cost || 0, byT: new Array(T + 2).fill(0), turns: [] }));
     const pieceKeys = new Set(lines.flatMap(l => l.keys));
     let mulls = 0, mulls2 = 0, keep7 = 0, missT4 = 0, spent6 = 0, avail6 = 0, spells6 = 0, cmdOnCurve = 0; const cmdTurns = [], killTurns = [], winTurns = [], comboTurns = [];
-    let flood = 0, screw = 0;
+    let flood = 0, screw = 0; const tgT = { fires: 0, cards: 0, mana: 0, dmg: 0, tok: 0, ctr: 0 };
     const isL = c => M(c).land;
     const keepable = h => { const l = h.filter(isL).length; return l >= 2 && l <= 5 && h.some(c => !isL(c) && M(c).cmc <= 3); };
     for (let g = 0; g < games; g++) {
@@ -2213,7 +2518,8 @@ const Analysis = (function () {
         }
       }
       const seen = new Set(); if (pieceKeys.size) for (const c of hand) if (pieceKeys.has(keys[c])) seen.add(keys[c]);
-      const draw = n => { for (let i = 0; i < n && pos < lib.length; i++) { const c = lib[pos++]; hand.push(c); if (pieceKeys.size && pieceKeys.has(keys[c])) seen.add(keys[c]); } };
+      const draw = n => { let k = 0; for (let i = 0; i < n && pos < lib.length; i++) { const c = lib[pos++]; hand.push(c); k++; if (pieceKeys.size && pieceKeys.has(keys[c])) seen.add(keys[c]); } if (k && started) fire(EV['card.draw'], k); };
+      let started = false; const tg = { fires: 0, cards: 0, mana: 0, dmg: 0, tok: 0, ctr: 0 };
       const tutor = () => {
         // a missing piece of the line closest to done, else the best card left: a land if short of lands, else a draw card
         let want = null, bestMiss = 99;
@@ -2227,10 +2533,31 @@ const Analysis = (function () {
       let landsPlayed = 0, cmdCast = false, extraDrops = 0, engines = 0, gDrawn = 0;
       let gSpent = 0, gAvail = 0, gSpells = 0, rampLandsNext = 0;
       const board = [], tokenEngines = []; let dmg = 0, killT = 0, prevAvail = 0, anthem = 0, pump = 0, trample = false, drainTurn = 0, drainEnter = 0; const lineT = lines.map(() => 0);
-      const enter = b => { board.push(b); dmg += drainEnter; };
+      // trigger economy: listeners per event; each firing resolves its effect bits (a card, a mana, a 1/1 token, a Treasure,
+      // a drain of 1 per opponent, life, 1 damage, a +1/+1 counter, a card to the graveyard). At most TB firings per turn.
+      const lis = EVN.map(() => []); let tb = 0, curSrc = null, outlets = 0;
+      const fire = (ev, n) => { const L = lis[ev]; if (!L.length) return; for (let r = 0; r < (n || 1); r++) for (let q = 0; q < L.length; q++) { if (tb <= 0) return; tb--; resolve(L[q]); } };
+      const resolve = ef => {
+        if (tCur <= 6) tg.fires++;
+        if (ef & 1) { if (tCur <= 6) tg.cards++; draw(1); }
+        if (ef & 2) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); }
+        if (ef & 4) { if (tCur <= 6) tg.tok++; enter({ pow: 1, ev: false, t: tCur + 1, tok: true }); }
+        if (ef & 8) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); fire(EV['artifact.enters']); fire(EV['token.enters']); }
+        if (ef & 16) { if (tCur <= 6) tg.dmg += 3; fire(EV['life.loss']); }
+        if (ef & 32) fire(EV['life.gain']);
+        if (ef & 64) { if (tCur <= 6) tg.dmg += 1; fire(EV['life.loss']); }
+        if (ef & 128) { if (board.length) board[board.length - 1].pow++; if (tCur <= 6) tg.ctr++; fire(EV['counter.placed']); }
+        if (ef & 256) fire(EV['gy.enter']);
+        if (ef & 512 && !(ef & 12)) { fire(EV['artifact.enters']); fire(EV['token.enters']); }
+      };
+      const listen = m => { if (m.trig) for (const tr of m.trig) for (const e of tr.ev) lis[e].push(tr.ef); if (m.outlet) outlets++; };
+      let tCur = 0;
+      const enter = b => { board.push(b); dmg += drainEnter; fire(EV['creature.enters']); if (b.tok) fire(EV['token.enters']); };
+      started = true;
       for (let t = 1; t <= T; t++) {
-        const h0 = pos;
+        const h0 = pos; tCur = t; tb = t <= 6 ? 30 : 0; curSrc = null; // triggers are counted to turn 6, so the economy runs only that far
         if (t > 1) draw(1 + engines);
+        fire(EV.upkeep);
         for (const m of landsNext) lands.push(m); landsNext.length = 0;
         for (let k = 0; k < rampLandsNext; k++) lands.push(ciMask); rampLandsNext = 0; // fetched basics: any colour of the identity
         for (const m of dorksNext) dorksReady.push(m); dorksNext.length = 0;
@@ -2240,14 +2567,16 @@ const Analysis = (function () {
           if (i < 0) break;
           const c = hand.splice(i, 1)[0]; landsPlayed++; drops--;
           if (M(c).tapped) landsNext.push(M(c).mask); else lands.push(M(c).mask);
+          fire(EV['land.enters']);
         }
         if (landsPlayed > before) dropT[t]++;
-        const src = lands.concat(rocks, dorksReady); const avail = src.length;
+        const src = lands.concat(rocks, dorksReady); const avail = src.length; curSrc = src;
         mana[t] += avail; landsT[t] += lands.length + landsNext.length;
         let spentN = avail;
         const cast = c => {
           const m = M(c); if (!pay(src, m.cmc, m.pips)) return false;
           hand.splice(hand.indexOf(c), 1); spellsT[t]++; if (t <= 6) gSpells++;
+          fire(EV['spell.any']); fire(m.isCre ? EV['spell.creature'] : EV['spell.noncreature']);
           if (m.rampPerm) { const mk = m.mask || 0; for (let k = 0; k < m.rampPerm; k++) { if (m.dork) dorksNext.push(mk); else { rocks.push(mk); src.push(mk); } } }
           if (m.rampLand) rampLandsNext += m.rampLand;
           if (m.extraDrop) extraDrops = Math.max(extraDrops, m.extraDrop);
@@ -2259,6 +2588,7 @@ const Analysis = (function () {
           if (m.anthem) anthem += m.anthem;
           if (m.overrun) { pump += m.overrun < 0 ? board.length : m.overrun; if (m.overrunTrample) trample = true; }
           if (m.drain) { if (m.drain.per === 'once') dmg += 3 * m.drain.n; else if (m.drain.per === 'turn') drainTurn += 3 * m.drain.n; else drainEnter += 3 * m.drain.n; }
+          listen(m); if (m.artifact) fire(EV['artifact.enters']); if (m.ench) fire(EV['enchantment.enters']); if (m.etb) resolve(m.etb);
           return true;
         };
         // 1) ramp, cheapest first; 2) tutors; 3) commander; 4) other spells, largest that fits first (repeat while something is cast)
@@ -2269,12 +2599,15 @@ const Analysis = (function () {
           if (cmdM.creature) enter({ pow: cmdM.pow, ev: cmdM.evasive, t: cmdM.haste ? t : t + 1 });
           if (cmdM.tokens) tokenEngines.push(cmdM.tokens);
           if (cmdM.anthem) anthem += cmdM.anthem;
+          listen(cmdM); if (cmdM.etb) resolve(cmdM.etb);
         }
         // re-sort only when a cast drew or tutored cards
         for (let again = true; again && src.length;) { again = false; const h1 = hand.length, list = hand.filter(c => !isL(c)).sort((a, b) => M(b).cmc - M(a).cmc); for (const c of list) { if (!src.length) break; if (M(c).cmc <= src.length && cast(c) && hand.length >= h1) { again = true; break; } } }
         spentN -= src.length;
         // token engines make their tokens; then combat (anthems, this turn's overrun) and drains
         for (const e of tokenEngines) for (let k = 0; k < e.n; k++) enter({ pow: e.pow, ev: e.ev, t: t + 1 });
+        fire(EV.combat);
+        { let na = 0, ne = 0; for (const b of board) if (b.t <= t) { na++; if (b.ev) ne++; } if (na) fire(EV.attack, Math.min(na, 5)); if (ne) fire(EV['damage.player'], Math.min(ne, 3)); }
         for (const b of board) if (b.t <= t) { const p = b.pow + anthem + pump; if (p > 0) dmg += b.ev || trample ? p : p / 2; }
         dmg += drainTurn; pump = 0; trample = false;
         if (!killT && dmg >= KILL) killT = t;
@@ -2282,6 +2615,9 @@ const Analysis = (function () {
         // combo lines
         const two = prevAvail + avail; prevAvail = avail;
         lines.forEach((l, i) => { if (!lineT[i] && l.keys.every(k => seen.has(k) || (cmdNames.has(k) && cmdCast)) && two >= l.cost) lineT[i] = t; });
+        // end step: with a sacrifice outlet and a death payoff, tokens are sacrificed (up to 6); then end-step triggers
+        if (outlets && lis[EV['creature.dies']].length) { let k = 0; for (let i = board.length - 1; i >= 0 && k < 6; i--) if (board[i].tok) { board.splice(i, 1); k++; fire(EV['creature.dies']); fire(EV.sacrifice); } }
+        fire(EV.end); curSrc = null;
         spentT[t] += spentN; handT[t] += hand.length; drawnT[t] += pos - h0; if (cmdCast) cmdByT[t]++;
         if (t <= 6) { gSpent += spentN; gAvail += avail; }
         if (t === 4 && landsPlayed < 4) missT4++;
@@ -2293,6 +2629,7 @@ const Analysis = (function () {
       const ct = lineT.reduce((m, x) => x ? Math.min(m, x) : m, T + 1); comboTurns.push(ct);
       winTurns.push(Math.min(killT || T + 1, ct));
       spent6 += gSpent; avail6 += gAvail; spells6 += gSpells;
+      for (const k in tg) tgT[k] += tg[k];
     }
     const srt = a => a.sort((x, y) => x - y);
     srt(cmdTurns); srt(killTurns); srt(winTurns); srt(comboTurns);
@@ -2302,6 +2639,8 @@ const Analysis = (function () {
       perTurn: Array.from({ length: TR }, (_, i) => { const t = i + 1; return { t, lands: landsT[t] / games, mana: mana[t] / games, spent: spentT[t] / games, spells: spellsT[t] / games, hand: handT[t] / games, drawn: drawnT[t] / games, dmg: dmgT[t] / games, pDrop: dropT[t] / games, pCmd: cmdByT[t] / games }; }),
       keep7: keep7 / games, mulligan: mulls / games, mulligan2: mulls2 / games, missLandDropT4: missT4 / games, flood6: flood / games, screw6: screw / games,
       efficiency6: avail6 ? spent6 / avail6 : 0, spellsBy6: spells6 / games,
+      // triggered-ability output by turn 6 per game; value = cards + mana + damage / 3 + (tokens + counters) / 2
+      trig: Object.assign(Object.fromEntries(Object.entries(tgT).map(([k, v]) => [k, v / games])), { value: (tgT.cards + tgT.mana + tgT.dmg / 3 + (tgT.tok + tgT.ctr) / 2) / games }),
       cmdCmc, cmdMedianTurn: cmdTurns.length ? quant(cmdTurns, 0.5) : null, cmdOnCurve: cmds.length ? cmdOnCurve / games : null,
       kill: Object.assign(dist(killTurns), { life: KILL }), combo: lines.length ? dist(comboTurns) : null, win: dist(winTurns),
       lines: lines.map(l => ({ median: quant(srt(l.turns), 0.5), byT: l.byT.map(x => x / games) }))
@@ -2407,17 +2746,22 @@ const Analysis = (function () {
 
     const cardSides = new Map(all.map(e => [e.c, sides(e.c).filter(([k]) => activeKeys.has(k))]));
     const cmdSides = cmds.flatMap(sides);
+    // Links: a card is linked to each other card it shares a theme with (enabler ↔ payoff) or whose mechanics meet its needs or
+    // use what it makes (Mech: pair weight ≥ Mech.LINK); +3 if linked to a commander, +1 for the tribal type.
+    const themeLink = (sa, sb) => sa.some(([k, sd]) => sb.some(([k2, s2]) => k2 === k && s2 !== sd));
+    const mechLink = (a, b) => !!M && M.pairW(a, b) >= M.LINK;
+    const mprof = M ? M.profile(all.filter(e => !A(e.c).isLand).map(e => e.c)) : null;
+    const mechWhyOf = c => M ? M.links(c, mprof, null, true).why.map(mechWhy) : [];
     const perCard = all.filter(e => !A(e.c).isLand).map(e => {
-      const my = cardSides.get(e.c); let links = 0; const why = new Set();
-      for (const [k, side] of my) {
-        const other = side === 'en' ? 'pay' : 'en';
-        for (const f of all) { if (f.c === e.c) continue; if (cardSides.get(f.c).some(([k2, s2]) => k2 === k && s2 === other)) { links++; } }
-        if (cmdSides.some(([k2, s2]) => k2 === k && s2 === other)) { links += 3; why.add('commander ' + k); }
-        why.add(k + (side === 'en' ? ' enabler' : ' payoff'));
-      }
+      const my = cardSides.get(e.c); let links = 0, mlinks = 0; const why = new Set();
+      for (const f of all) { if (f.c === e.c) continue; const t = themeLink(my, cardSides.get(f.c)), m = mechLink(e.c, f.c); if (t || m) links++; if (m) mlinks++; }
+      const cmdT = themeLink(my, cmdSides), cmdM = cmds.some(k => mechLink(e.c, k));
+      if (cmdT || cmdM) { links += 3; why.add('commander'); }
+      for (const [k, side] of my) why.add(k + (side === 'en' ? ' enabler' : ' payoff'));
+      if (mlinks) for (const w of mechWhyOf(e.c)) why.add(w);
       if (tribal && (new RegExp('\\b' + tribal.type + '\\b').test(e.c.ft) || e.c.kw.includes('changeling'))) { links += 1; why.add(tribal.type + ' tribal'); }
       const roles = Object.keys(A(e.c).roles);
-      return { c: e.c, links, why: [...why], roles, locked: e.locked };
+      return { c: e.c, links, mlinks, why: [...why], roles, locked: e.locked };
     });
     const withSyn = perCard.filter(x => x.links > 0).length;
     const synShare = perCard.length ? withSyn / perCard.length : 0;
@@ -2456,7 +2800,7 @@ const Analysis = (function () {
     const covKeys = ['creature', 'artifact', 'enchantment', 'planeswalker'];
     axes.push({ key: 'interaction', label: 'Interaction', factors: [F('Targeted removal / counters', role('removal'), P(targets.removal, 'removal'), ratio(role('removal'), targets.removal)), F('Board wipes', role('wipes'), P(targets.wipes, 'wipes'), ratio(role('wipes'), targets.wipes)), F('Instant-speed interaction', instantInteraction.length, '≥ 50% of interaction', removalCards.length ? instantInteraction.length / removalCards.length / 0.5 : 0), F('Permanent types answerable', covKeys.filter(k => coverage[k].length).length + '/4', '4/4', covKeys.filter(k => coverage[k].length).length / 4), F('Graveyard hate', gyHate.length, '≥ 1', gyHate.length ? 1 : 0.4)] });
     axes.push({ key: 'resilience', label: 'Protection & resilience', factors: [F('Protection pieces', protection.length, targets.protection, ratio(protection.length, targets.protection)), F('Recursion', recursion.length, targets.recursion, ratio(recursion.length, targets.recursion)), F('Commander protection effects', cmdProtect.length, '≥ 2', ratio(cmdProtect.length, 2)), F('Self-protected permanents (hexproof/indestructible/ward)', indestructibleSelf.length, '≥ 3', ratio(indestructibleSelf.length, 3))] });
-    axes.push({ key: 'synergy', label: 'Synergy', factors: [F('Nonland cards with ≥1 synergy link', Math.round(synShare * 100) + '%', '≥ 60%', synShare / 0.6), F('Median links per card', medianLinks, '≥ 3', medianLinks / 3), F('Active themes balanced', active.filter(p => p.status === 'balanced').length + '/' + active.length, 'all', active.length ? active.filter(p => p.status === 'balanced').length / active.length : 0.5), F('Commander-linked themes', pairStats.filter(p => p.cmdEn || p.cmdPay).length + (tribal && tribal.cmdMentions ? 1 : 0), '≥ 1', (pairStats.some(p => p.cmdEn || p.cmdPay) || (tribal && tribal.cmdMentions)) ? 1 : 0.3)] });
+    axes.push({ key: 'synergy', label: 'Synergy', factors: [F('Nonland cards with ≥1 synergy link', Math.round(synShare * 100) + '%', '≥ 60%', synShare / 0.6), F('Median links per card', medianLinks, '≥ 3', medianLinks / 3), F('Active themes balanced', active.filter(p => p.status === 'balanced').length + '/' + active.length, 'all', active.length ? active.filter(p => p.status === 'balanced').length / active.length : 0.5), F('Commander-linked themes', pairStats.filter(p => p.cmdEn || p.cmdPay).length + (tribal && tribal.cmdMentions ? 1 : 0), '≥ 1', (pairStats.some(p => p.cmdEn || p.cmdPay) || (tribal && tribal.cmdMentions)) ? 1 : 0.3), F('Simulated trigger output by turn 6', sim.trig.value.toFixed(1), '≥ ' + TRIG_TARGET, sim.trig.value / TRIG_TARGET, 'Goldfish average of cards + mana + damage ÷ 3 + (tokens + counters) ÷ 2 from triggered abilities (mechanics graph)')] });
     axes.push({ key: 'consistency', label: 'Consistency', factors: [F('Opening 7 with 2–5 lands', Math.round(openingLands.p2to5 * 100) + '%', '≥ 85%', openingLands.p2to5 / 0.85), F('Keepable 7 (sim, before mulligan)', Math.round(sim.keep7 * 100) + '%', '≥ 85%', sim.keep7 / 0.85), F('Mana spent / available, turns 1–6 (sim)', Math.round(sim.efficiency6 * 100) + '%', '≥ 70%', sim.efficiency6 / 0.7), F('Draw + tutors (redundancy)', role('draw') + tutors.length, '≥ 12', (role('draw') + tutors.length) / 12)] });
     axes.push({ key: 'threat', label: 'Win pressure', factors: [F('Win conditions', wincons.length, targets.wincon, ratio(wincons.length, targets.wincon)), F('Evasive creatures', evasive.length, '≥ ' + targets.evasive, ratio(evasive.length, targets.evasive)), F('Creatures', creatures, 'context', creatures >= 12 || wincons.length >= 5 ? 1 : 0.6), F('Complete combos (Spellbook)', combos ? combos.length : '—', 'context', combos && combos.length ? 1 : 0.7)] });
     for (const ax of axes) ax.score = Math.round(wmean(ax.factors) * 100);
@@ -2624,7 +2968,11 @@ const Analysis = (function () {
     const lim = Object.assign(E.bracketDefaults(S.bracket || 3), S.bl || {});
     const denied = new Set(opts.deny || []);
     const pool = db ? db.all.filter(c => c.leg === 'legal' && !E.isBasic(c) && !inDeck.has(c.n) && !denied.has(c.n) && [...c.ci].every(x => CI.includes(x)) && !(pcap != null && (c.p[cur] == null || c.p[cur] > pcap)) && !(c.gc && cnt.gc >= lim.gc) && !(A(c).flags.tutor && cnt.tutor >= lim.tutor) && !(A(c).flags.mld && lim.mld <= 0) && !(A(c).flags.xturn && cnt.xturn >= lim.xturn)) : [];
-    const synBonus = c => { let s = 0; for (const [k, side] of sides(c)) if (activeKeys.has(k)) { const p = pairStats.find(x => x.key === k); s += side === 'en' ? (p.status.startsWith('payoff') ? 2 : 1) : (p.status.startsWith('enabler') ? 2 : 1); } if (tribal && new RegExp('\\b' + tribal.type + '\\b').test(c.ft)) s += 1; return s; };
+    // cards outside the deck: mechanics links estimated from the deck profile (exact pairs for the commanders),
+    // scaled by this deck's ratio of exact mechanics links to profile weight
+    const mRatio = (() => { if (!M) return 0; let a = 0, b = 0; for (const x of perCard) { a += x.mlinks; b += M.links(x.c, mprof, null, true).w; } return b > 0 ? a / b : 0; })();
+    const mechAsAdd = c => M ? Math.round(M.links(c, mprof, null, false).w * mRatio) + (cmds.some(k => mechLink(c, k)) ? 3 : 0) : 0;
+    const synBonus = c => { let s = 0; for (const [k, side] of sides(c)) if (activeKeys.has(k)) { const p = pairStats.find(x => x.key === k); s += side === 'en' ? (p.status.startsWith('payoff') ? 2 : 1) : (p.status.startsWith('enabler') ? 2 : 1); } if (tribal && new RegExp('\\b' + tribal.type + '\\b').test(c.ft)) s += 1; return Math.max(s, mechAsAdd(c) / 8); };
     const pick = (pred, k) => pool.filter(pred).map(c => ({ c, s: synBonus(c) * 0.6 + (c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0) })).sort((a, b) => b.s - a.s || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
     const addRec = (sev, text, cards) => recs.push({ sev, text, cards: (cards || []).map(c => ({ n: c.n, mc: c.mc, price: c.p[cur], rank: c.rank, uri: c.uri })) });
     for (const r of ['ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon']) {
@@ -2693,7 +3041,7 @@ const Analysis = (function () {
     // A card outside the deck gets the links it would have in it: deck cards on the other side of each active theme,
     // +3 for the commander, +1 for the tribal type; the same terms perCard counts for cards in the deck.
     const sideCount = new Map(); for (const e of all) for (const [k, sd] of cardSides.get(e.c)) sideCount.set(k + ':' + sd, (sideCount.get(k + ':' + sd) || 0) + 1);
-    const linksAsAdd = c => { let l = 0; for (const [k, sd] of sides(c)) { if (!activeKeys.has(k)) continue; const o = sd === 'en' ? 'pay' : 'en'; l += sideCount.get(k + ':' + o) || 0; if (cmdSides.some(([k2, s2]) => k2 === k && s2 === o)) l += 3; } if (tribal && (new RegExp('\\b' + tribal.type + '\\b').test(c.ft) || c.kw.includes('changeling'))) l += 1; return l; };
+    const linksAsAdd = c => { let l = 0; for (const [k, sd] of sides(c)) { if (!activeKeys.has(k)) continue; const o = sd === 'en' ? 'pay' : 'en'; l += sideCount.get(k + ':' + o) || 0; if (cmdSides.some(([k2, s2]) => k2 === k && s2 === o)) l += 3; } if (tribal && (new RegExp('\\b' + tribal.type + '\\b').test(c.ft) || c.kw.includes('changeling'))) l += 1; return Math.max(l, mechAsAdd(c)); };
     const colorOf = Object.fromEntries(colors.map(k => [k.color, k]));
     // land value: colours of the identity it makes (−1), untapped +1, popularity; a basic of an over-supplied colour is worth less
     const landValue = c => { const on = srcOf(c).filter(x => CI.includes(x)).length; if (E.isBasic(c)) { const k = colorOf[c.pm[0]]; return (k ? -2 * (k.srcShare - k.pipShare) : 0) + 1; } return 2 * Math.max(0, on - 1) + (manaModel(c).tapped ? 0 : 1) + rankTerm(c); };
@@ -2830,14 +3178,18 @@ const Analysis = (function () {
     const o = Object.assign({}, opts, { games, seed, almost: null });
     return { db: null, deck, cmds, opts: o, games, base: snap(run(null, deck, cmds, o)) }; // db only feeds the add pool, which snap() doesn't read
   }
-  function impactOne(prep, p) {
-    const d2 = applySwap(prep.deck, p.cut, p.add);
-    const combos = prep.opts.combosFor ? prep.opts.combosFor(p.cut, p.add) : (prep.opts.combos || null);
+  // a set of swaps applied together, scored against prep.base; combos: the deck's combos after the swaps (null = none known)
+  function impactSwaps(prep, swaps, combos) {
+    let d2 = prep.deck; for (const s of swaps) d2 = applySwap(d2, s.cut, s.add);
     const a = snap(run(prep.db, d2, prep.cmds, Object.assign({}, prep.opts, { combos }))), b = prep.base;
     const dv = Object.keys(a.v).map(k => [k, a.v[k] - b.v[k]]).filter(x => x[1] !== 0);
     const da = Object.keys(a.axes).map(k => [k, a.axes[k] - b.axes[k]]).filter(x => x[1] !== 0);
     const dsrc = Object.keys(a.src).map(k => [k, a.src[k] - (b.src[k] || 0)]).filter(x => x[1] !== 0);
-    return Object.assign({}, p, { d: { src: dsrc, warn: a.warn - b.warn, castLow: a.castLow - b.castLow, pl: Math.round((a.pl - b.pl) * 10) / 10, fund: a.fund - b.fund, minB: a.minB - b.minB, typical: a.typical - b.typical, keep: a.keep - b.keep, t4: a.t4 - b.t4, vectors: dv, axes: da }, after: a });
+    return { d: { src: dsrc, warn: a.warn - b.warn, castLow: a.castLow - b.castLow, pl: Math.round((a.pl - b.pl) * 10) / 10, fund: a.fund - b.fund, minB: a.minB - b.minB, typical: a.typical - b.typical, keep: a.keep - b.keep, t4: a.t4 - b.t4, vectors: dv, axes: da }, after: a, g: a.exact - b.exact };
+  }
+  function impactOne(prep, p) {
+    const combos = prep.opts.combosFor ? prep.opts.combosFor(p.cut, p.add) : (prep.opts.combos || null);
+    return Object.assign({}, p, impactSwaps(prep, [p], combos));
   }
   function impact(db, deck, cmds, opts, plans) { const prep = impactPrep(db, deck, cmds, opts); return plans.map(p => impactOne(prep, p)); }
 
@@ -2916,9 +3268,223 @@ const Analysis = (function () {
     return { cmds: [], how: null, main, missing: [], candidates: cand };
   }
 
-  return { run, impact, impactPrep, impactOne, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
+  return { run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;
+</script>
+<script id="src-deep">
+/* ===== Deep: wide swap search with the simulation as the judge (pure; uses Engine and Analysis; runs in Web Workers or in-process) ===== */
+// Objective: g = Δ(10 × unrounded power level + fundamentals mean), the same score as budget upgrades, on common random numbers
+// (every list is simulated on the same shuffles as the current list, so differences come from the cards).
+//  0. Cut cost: every cuttable nonland card is replaced by one reference add at G1 games; the card whose removal costs least
+//     is the default cut c*, and δ_j = g(c*) − g(c_j) is how much worse cutting c_j is.
+//  1. Screen (G1 games): each candidate add replaces c* (lands replace a basic). Candidates: the best-fitting cards of the
+//     analysis pool (theme links + EDHREC rank), the best for each role and weak power vector, the most played cards, cards
+//     that complete a Spellbook combo with the deck (one card missing) and pairs that complete one together (two missing).
+//  2. Confirm (G2 games): the best screened candidates are measured again.
+//  3. Package: swaps are added one at a time; each round re-measures the leading candidates (with the next cheapest cut, and
+//     the top few with other cuts) on the deck as changed so far, so synergy between added cards and with the cut is counted.
+//     It stops when no swap adds MIN_GAIN or the bracket floor would rise above the chosen bracket.
+// The person accepts or denies every swap; nothing is applied by the search.
+const Deep = (function () {
+  'use strict';
+  const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
+  const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
+  const A = c => E.analyze(c);
+  const G1 = 1500, G2 = 5000, MIN_GAIN = 0.5;
+  const DEF = { g1: G1, g2: G2, cuts: 24, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3 };
+
+  /* ---------- evaluator: the part that runs in each worker ---------- */
+  // init: { cards: [card], deck: [{ n, qty, locked }], cmds: [name], opts, combos: [variant] | null, comp: { addName: [variant] } }
+  // task: { id, games, swaps: [{ cut, add }] } (names) → { id, g, d, after }
+  function evaluator(init) {
+    const by = new Map(init.cards.map(c => [c.n, c]));
+    const deck = init.deck.map(e => ({ c: by.get(e.n), qty: e.qty, locked: !!e.locked }));
+    const cmds = init.cmds.map(n => by.get(n)), base = init.combos, comp = init.comp || {};
+    const names = new Set(init.deck.map(e => e.n).concat(init.cmds));
+    const preps = new Map();
+    const prep = g => { if (!preps.has(g)) preps.set(g, An.impactPrep(null, deck, cmds, Object.assign({}, init.opts, { combos: base, impactGames: g }))); return preps.get(g); };
+    return t => {
+      const P = prep(t.games), swaps = t.swaps.map(s => ({ cut: by.get(s.cut), add: by.get(s.add) }));
+      let combos = null;
+      if (base) {
+        const cut = new Set(t.swaps.map(s => s.cut)), now = new Set(names); for (const s of t.swaps) { now.delete(s.cut); now.add(s.add); }
+        combos = base.filter(v => !v.c.some(n => cut.has(n))); const seen = new Set(combos.map(v => v.id));
+        for (const s of t.swaps) for (const v of comp[s.add] || []) if (!seen.has(v.id) && v.c.every(n => now.has(n))) { seen.add(v.id); combos.push(v); }
+      }
+      const r = An.impactSwaps(P, swaps, combos);
+      return { id: t.id, g: r.g, d: r.d, after: r.after };
+    };
+  }
+
+  /* ---------- executors ---------- */
+  // in-process (tests, or a browser without Workers): yields between tasks so the page can repaint and cancel
+  function localExec(init) {
+    const ev = evaluator(init); let stop = false;
+    return {
+      n: 1,
+      async run(tasks, onOne) { const out = []; for (const t of tasks) { if (stop) throw new Error('cancelled'); out.push(ev(t)); if (onOne) await onOne(); } return out; },
+      cancel() { stop = true; }, close() { }
+    };
+  }
+  // Web Worker pool; src: the source of engine.js + analysis.js + deep.js
+  function workerExec(init, src, n) {
+    const code = src + '\n;(function(){ let ev = null; self.onmessage = m => { const d = m.data; try { if (d.init) { ev = Deep.evaluator(d.init); self.postMessage({ ready: 1 }); } else self.postMessage(ev(d)); } catch (e) { self.postMessage({ id: d.id, err: String(e && e.message || e) }); } }; })();';
+    const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+    const ws = Array.from({ length: n }, () => { const w = new Worker(url); w.postMessage({ init }); return w; });
+    let dead = null;
+    const kill = why => { if (dead) return; dead = why; for (const w of ws) w.terminate(); URL.revokeObjectURL(url); };
+    return {
+      n,
+      run(tasks, onOne) {
+        if (dead) return Promise.reject(new Error(dead));
+        return new Promise((res, rej) => {
+          const out = new Array(tasks.length); let next = 0, done = 0;
+          if (!tasks.length) return res(out);
+          const pos = new Map(tasks.map((t, i) => [t.id, i]));
+          const feed = w => { if (next < tasks.length) w.postMessage(tasks[next++]); };
+          for (const w of ws) {
+            w.onmessage = m => {
+              const d = m.data; if (d.ready) return;
+              if (d.err) { kill('worker: ' + d.err); return rej(new Error(d.err)); }
+              out[pos.get(d.id)] = d; done++; if (onOne) onOne();
+              if (done === tasks.length) res(out); else feed(w);
+            };
+            w.onerror = e => { kill('worker error'); rej(new Error(e.message || 'worker error')); };
+            feed(w);
+          }
+          const iv = setInterval(() => { if (dead) { clearInterval(iv); rej(new Error(dead)); } else if (done === tasks.length) clearInterval(iv); }, 100);
+        });
+      },
+      cancel() { kill('cancelled'); }, close() { kill('closed'); }
+    };
+  }
+
+  /* ---------- candidates ---------- */
+  // X: Analysis.run result (with planner and pool). ctx: { deck, cmds, combos, prov, keep: Set(names) }
+  function candidates(X, ctx, o) {
+    const P = X.planner, pool = P.pool, seen = new Set(), adds = [], why = new Map();
+    const take = (list, tag) => { for (const c of list) { if (!why.has(c.n)) why.set(c.n, tag); if (!seen.has(c.n)) { seen.add(c.n); adds.push(c); } } };
+    const non = pool.filter(c => !A(c).isLand);
+    const gap = c => Object.keys(A(c).roles).reduce((s, r) => s + (r in P.have && P.have[r] < P.targets[r] ? 2 : 0), 0);
+    take(non.map(c => ({ c, v: P.value(c) + gap(c) })).sort((a, b) => b.v - a.v || (a.c.n < b.c.n ? -1 : 1)).slice(0, o.nonland).map(x => x.c), 'theme fit');
+    for (const r of Object.keys(P.targets)) take(P.pick(c => !A(c).isLand && A(c).roles[r], o.perRole), E.SLOT_LABEL[r] || r);
+    for (const k of Object.keys(P.upg)) take(P.pick(c => !A(c).isLand && P.upg[k][0](c), o.perVector), P.upg[k][1]);
+    take(non.filter(c => c.rank).sort((a, b) => a.rank - b.rank).slice(0, o.popular), 'most played');
+    const lands = P.multi ? pool.filter(c => A(c).isLand && P.landOn(c) >= 2).sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9)).slice(0, o.lands) : [];
+    return { adds, lands, why };
+  }
+  async function comboCands(X, ctx, o) {
+    const prov = ctx.prov; if (!prov || !prov.almost) return { single: [], pairs: [] };
+    const P = X.planner, inPool = new Map(P.pool.map(c => [c.n, c]));
+    const names = ctx.cmds.map(c => c.n).concat(ctx.deck.map(e => e.c.n));
+    const S = ctx.settings || {}, lim = Object.assign(E.bracketDefaults(+S.bracket || 3), S.bl || {});
+    const lim2 = lim.combo2 <= 0; // two-card infinite combos barred in this bracket
+    const al = (await prov.almost(names, n => inPool.has(n), 2)).filter(x => x.v.r === 0 && !(lim2 && x.v.inf && x.v.c.length <= 2));
+    const rankOf = x => -(x.v.pop || 0);
+    const single = [], pairs = [], s1 = new Set(), s2 = new Set();
+    for (const x of al.slice().sort((a, b) => rankOf(a) - rankOf(b))) {
+      const m = x.missing.map(n => inPool.get(n));
+      if (m.length === 1 && !s1.has(m[0].n) && single.length < o.single) { s1.add(m[0].n); single.push({ add: m[0], v: x.v }); }
+      if (m.length === 2 && pairs.length < o.pairs) { const k = m.map(c => c.n).sort().join('|'); if (!s2.has(k)) { s2.add(k); pairs.push({ adds: m, v: x.v }); } }
+    }
+    return { single, pairs };
+  }
+
+  /* ---------- the search ---------- */
+  // exec: from localExec / workerExec, built with init(X, ctx, cand). progress(done, total, label). Returns { singles, pkg, stats }.
+  function makeInit(X, ctx, adds, opts) {
+    const cards = new Map();
+    for (const e of ctx.deck) cards.set(e.c.n, e.c); for (const c of ctx.cmds) cards.set(c.n, c); for (const c of adds) cards.set(c.n, c);
+    const all = new Set(cards.keys()), comp = {};
+    if (ctx.prov && ctx.prov.completes) for (const c of adds) { const v = ctx.prov.completes(c.n, all, ctx.cmds.map(x => x.n)).filter(v => v.r === 0); if (v.length) comp[c.n] = v; }
+    return { cards: [...cards.values()], deck: ctx.deck.map(e => ({ n: e.c.n, qty: e.qty || 1, locked: !!e.locked })), cmds: ctx.cmds.map(c => c.n), opts, combos: ctx.combos || null, comp };
+  }
+  async function search(X, ctx, execFor, progress, o) {
+    o = Object.assign({}, DEF, o || {});
+    const P = X.planner, keep = ctx.keep || new Set(), bracket = +((ctx.settings && ctx.settings.bracket) || 3);
+    const C = candidates(X, ctx, o), K = await comboCands(X, ctx, o);
+    for (const s of K.single) { if (!C.adds.includes(s.add)) C.adds.push(s.add); C.why.set(s.add.n, 'completes ' + s.v.c.join(' + ')); }
+    const pairCards = [].concat(...K.pairs.map(p => p.adds));
+    const allAdds = [...new Set(C.adds.concat(C.lands, pairCards))];
+    const exec = execFor(makeInit(X, ctx, allAdds, { settings: ctx.settings }));
+    // cuts: the lowest-value nonland cards (synergy links, roles, popularity), role-safe ones first; the simulation then orders them
+    const safe = c => Object.keys(A(c).roles).every(r => !(r in P.have) || P.have[r] - 1 >= P.targets[r]);
+    const cuts = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c)
+      .sort((a, b) => safe(b) - safe(a) || P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, o.cuts);
+    const basics = ctx.deck.filter(e => E.isBasic(e.c) && !e.locked).sort((a, b) => P.landValue(a.c) - P.landValue(b.c));
+    const est = cuts.length + C.adds.length + C.lands.length + K.pairs.length + o.confirm + o.rounds * (o.lead + o.altFor * (o.altCuts - 1));
+    let done = 0, total = est, id = 0, evals = 0;
+    const tick = async () => { done++; evals++; if (progress) await progress(Math.min(done, total - 1), total); };
+    const run = (tasks) => exec.run(tasks.map(t => Object.assign({ id: ++id }, t)), tick);
+    const sw = (cut, add) => ({ cut: cut.n, add: add.n });
+    try {
+      if (!cuts.length || !C.adds.length) return { singles: [], pkg: [], stats: { evals: 0, cands: allAdds.length, cuts: cuts.length } };
+      // 0. cut cost with a reference add (the best-fitting candidate)
+      const ref = C.adds[0];
+      const r0 = await run(cuts.map(c => ({ games: o.g1, swaps: [sw(c, ref)] })));
+      const cutG = cuts.map((c, j) => ({ c, g: r0[j].g })).sort((a, b) => b.g - a.g), gMax = cutG[0].g;
+      const order = cutG.map(x => ({ c: x.c, delta: gMax - x.g })), cStar = order[0].c;
+      // 1. screen
+      const sAdds = C.adds.filter(c => c !== cStar), b0 = basics[0] && basics[0].c;
+      const items = sAdds.map(c => ({ kind: 'add', adds: [c] })).concat(b0 ? C.lands.map(c => ({ kind: 'land', adds: [c] })) : [], order.length > 1 ? K.pairs.map(p => ({ kind: 'pair', adds: p.adds, v: p.v })) : []);
+      const cutsFor = (it, used) => { const out = []; const nb = new Map(basics.map(e => [e.c, e.qty])); for (const u of used) if (nb.has(u)) nb.set(u, nb.get(u) - 1);
+        for (const a of it.adds) { if (A(a).isLand) { const e = basics.find(b => nb.get(b.c) > 0); if (!e) return null; nb.set(e.c, nb.get(e.c) - 1); out.push(e.c); } else { const x = order.find(y => !used.has(y.c) && !out.includes(y.c)); if (!x) return null; out.push(x.c); } }
+        return out; };
+      const swapsOf = (it, cs) => it.adds.map((a, i) => sw(cs[i], a));
+      const rA = await run(items.map(it => ({ games: o.g1, swaps: swapsOf(it, cutsFor(it, new Set())) })));
+      items.forEach((it, i) => { it.g1 = rA[i].g; it.minB = rA[i].after.minB; });
+      // 2. confirm the best at G2 (lands and pairs get a share so they are not crowded out)
+      const okB = it => it.minB <= Math.max(bracket, X.power.minBracket);
+      const best = (kind, k) => items.filter(it => it.kind === kind && okB(it)).sort((a, b) => b.g1 - a.g1).slice(0, k);
+      const conf = [...new Set(best('add', o.confirm - 12).concat(best('land', 6), best('pair', 6)))];
+      const rB = await run(conf.map(it => ({ games: o.g2, swaps: swapsOf(it, cutsFor(it, new Set())) })));
+      conf.forEach((it, i) => { it.g2 = rB[i].g; it.r = rB[i]; it.cuts = cutsFor(it, new Set()); });
+      const ranked = conf.filter(it => okB({ minB: it.r.after.minB })).sort((a, b) => b.g2 - a.g2);
+      // 3. package
+      const pkg = []; let gPrev = 0; const used = new Set(), added = new Set();
+      for (let k = 0; k < o.rounds; k++) {
+        const open = ranked.filter(it => it.g2 > 0 && !it.adds.some(a => added.has(a)));
+        const left = [...new Set(open.slice(0, o.lead / 2).concat(open.filter(it => it.kind !== 'pair').slice(0, o.lead / 2)))]; // combo pairs score high; keep single cards in the race
+        if (!left.length) break;
+        const tries = [];
+        let na = 0;
+        left.forEach(it => {
+          const cs = cutsFor(it, used); if (!cs) return; tries.push({ it, cs });
+          if (it.kind === 'add' && na++ < o.altFor) for (const x of order.filter(y => !used.has(y.c) && y.c !== cs[0]).slice(0, o.altCuts - 1)) tries.push({ it, cs: [x.c] });
+        });
+        if (!tries.length) break;
+        const pre = pkg.map(p => sw(p.cut, p.add));
+        const rC = await run(tries.map(t => ({ games: o.g2, swaps: pre.concat(swapsOf(t.it, t.cs)) })));
+        let bi = -1;
+        rC.forEach((r, i) => { if (r.after.minB > Math.max(bracket, X.power.minBracket)) return; if (bi < 0 || r.g > rC[bi].g) bi = i; });
+        if (bi < 0 || rC[bi].g - gPrev < MIN_GAIN * tries[bi].it.adds.length) break;
+        const t = tries[bi], r = rC[bi];
+        t.it.adds.forEach((a, i) => { pkg.push({ add: a, cut: t.cs[i], step: k + 1, m: (r.g - gPrev) / t.it.adds.length, total: r.g, r, kind: t.it.kind, v: t.it.v }); used.add(t.cs[i]); added.add(a); });
+        gPrev = r.g;
+      }
+      total = done; if (progress) await progress(done, total);
+      // best single swaps: one row per added card, at most o.pairsShown pairs
+      const shown = new Set(); let np = 0;
+      const singles = ranked.filter(it => it.g2 >= MIN_GAIN && !it.adds.some(a => shown.has(a.n)) && (it.kind !== 'pair' || np++ < o.pairsShown) && (it.adds.forEach(a => shown.add(a.n)), true)).slice(0, o.shown);
+      return { singles, pkg, why: C.why, order: order.map(x => x.c), stats: { evals, cands: items.length, adds: allAdds.length, cuts: cuts.length, confirmed: conf.length, ref: ref.n, workers: exec.n } };
+    } finally { exec.close(); }
+  }
+
+  /* ---------- results as swap rows for the Improve list ---------- */
+  function rows(X, res) {
+    const P = X.planner, price = c => P.price(c), r1 = v => Math.round(v * 10) / 10;
+    const row = (group, reason, cut, add, r, tag) => ({ group, reason, cut, add, tag: tag || '', d: r.d, after: r.after, g: r.g, dPrice: (price(add) || 0) - (price(cut) || 0), priceKnown: price(add) != null && price(cut) != null });
+    const out = [];
+    for (const it of res.singles) it.adds.forEach((a, i) => out.push(row('Deep search', (it.kind === 'pair' ? 'Pair: completes ' + it.v.c.join(' + ') + ' with ' + it.adds.filter(x => x !== a).map(x => x.n).join(', ') : (res.why.get(a.n) || 'screened')) + ' · gain ' + r1(it.g2) + (it.kind === 'pair' ? ' for both' : ''), it.cuts[i], a, it.r)));
+    const nSteps = res.pkg.length ? res.pkg[res.pkg.length - 1].step : 0;
+    for (const p of res.pkg) out.push(row('Package', 'Step ' + p.step + ' of ' + nSteps + ' · marginal gain ' + r1(p.m) + ' · package total ' + r1(p.total) + (p.kind === 'pair' ? ' · completes ' + p.v.c.join(' + ') : res.why.get(p.add.n) ? ' · ' + res.why.get(p.add.n) : ''), p.cut, p.add, p.r));
+    return out;
+  }
+
+  return { search, rows, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, DEF };
+})();
+if (typeof module !== 'undefined') module.exports = Deep;
 </script>
 <script>
 /* ===== App: data loading, UI, exports ===== */
@@ -3306,7 +3872,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     X.impact = []; X.impactDone = !X.plans.length;
     X.held = !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
     renderAnView();
-    if (!X.plans.length || X.held) return;
+    if (!X.plans.length || X.held) { if (!X.held && App.DEEP) { deepMerge(X); renderSwaps(); } return; }
     // swap impact: one plan per tick so the page stays responsive
     const names = inp.cmds.map(c => c.n).concat(inp.deck.map(e => e.c.n));
     const combosFor = (cut, add) => {
@@ -3322,7 +3888,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       setStatus('Evaluating changes ' + X.impact.length + '/' + X.plans.length + '…');
       if (App.tab === 'analysis' || App.tab === 'changes') renderSwaps();
     }
-    X.impactDone = true; setStatus('Analysis done; ' + X.plans.length + ' changes evaluated.');
+    X.impactDone = true; setStatus('Analysis done; ' + X.plans.length + ' changes evaluated.'); deepMerge(X);
     if (App.tab === 'analysis' || App.tab === 'changes') renderSwaps();
   }
   // apply one swap to the analysed list: the generated deck (validated, locked) or the pasted text
@@ -3350,6 +3916,53 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     if (done && App.anSource !== 'paste' && App.R) histPush('edit', 'Accepted ' + done + ' change' + (done === 1 ? '' : 's'));
     App.acceptNote = 'Accepted ' + done + ' change' + (done === 1 ? '' : 's') + (skipped ? '; skipped ' + skipped + ' whose card was already cut or added by an earlier change' : '') + '. The list below is re-scored against the new deck.';
   }
+  /* ---------- deep search (Improve page): Deep.search in Web Workers, results join the swap list ---------- */
+  const deepWorkers = () => Math.max(1, Math.min(8, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4) - 1));
+  function deepBarHTML(X) {
+    const D = App.DEEP, busy = D && D.busy;
+    const res = D && !busy && D.res ? D.res.stats : null;
+    return '<div class="an-card wide deep" id="deepBox"><div class="row" style="gap:8px;align-items:center">' +
+      (busy ? '<button type="button" class="small" data-deep="cancel">Cancel</button>' : '<button type="button" class="small primary" data-deep="run">Deep search</button>') +
+      '<progress id="deepBar" max="1" value="' + (busy ? D.frac || 0 : res ? 1 : 0) + '"' + (busy || res ? '' : ' hidden') + '></progress><span class="note" id="deepNote">' + esc(D && D.note || 'Measures ~700 candidate swaps and builds a package of swaps that work together (about 10–30 s).') + '</span></div>' +
+      (res ? '<p class="note">' + res.evals.toLocaleString() + ' measured lists: ' + res.cands + ' candidate swaps screened at ' + Deep.G1.toLocaleString() + ' games, ' + res.confirmed + ' confirmed at ' + Deep.G2.toLocaleString() + ', ' + res.cuts + ' cut candidates, ' + res.workers + ' worker' + (res.workers === 1 ? '' : 's') + ', ' + D.secs.toFixed(1) + ' s.' + (D.X !== X ? ' Measured before your last accepted change' + (D.repaired ? '; ' + D.repaired + ' swap' + (D.repaired === 1 ? '' : 's') + ' re-paired with the next cut because the measured cut is gone' : '') + '. Run again to re-measure.' : '') + '</p>' : '') + '</div>';
+  }
+  const deepSay = (t, frac) => { const D = App.DEEP; if (D) { D.note = t; if (frac != null) D.frac = frac; } const n = $('deepNote'), b = $('deepBar'); if (n) n.textContent = t; if (b && frac != null) { b.hidden = false; b.value = frac; } };
+  async function deepRun() {
+    const X = App.AN; if (!X || !X.planner || (App.DEEP && App.DEEP.busy)) return;
+    const inp = X.inp, cp = comboProvider(), t0 = performance.now();
+    const keep = new Set(inp.cmds.map(c => c.n).concat(App.anSource !== 'paste' && App.R ? App.R.deck.filter(e => e.inc).map(e => e.c.n) : []));
+    const src = ['src-engine', 'src-mech', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
+    const useW = typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && src.every(Boolean);
+    let ex = null;
+    const D = App.DEEP = { busy: true, frac: 0, note: 'Preparing candidates…', X, cancel: () => { if (ex) ex.cancel(); } };
+    renderView();
+    try {
+      const res = await Deep.search(X, { deck: inp.deck, cmds: inp.cmds, combos: X.combos || null, prov: cp, keep, settings: App.S },
+        init => (ex = useW ? Deep.workerExec(init, src.join('\n'), deepWorkers()) : Deep.localExec(init)),
+        (d, t) => { const el = (performance.now() - t0) / 1000, eta = d > 20 ? el / d * (t - d) : null; deepSay('Measured ' + d + '/' + t + (eta != null ? ' · about ' + Math.max(1, Math.round(eta)) + ' s left' : '') + '…', d / t); return useW ? null : new Promise(r => setTimeout(r, 0)); });
+      D.res = res; D.secs = (performance.now() - t0) / 1000; D.rows = Deep.rows(X, res); D.note = res.pkg.length ? 'Package of ' + res.pkg.length + ' swap' + (res.pkg.length === 1 ? '' : 's') + ', ' + res.singles.length + ' best single swaps.' : res.singles.length ? res.singles.length + ' single swaps gain ' + Deep.MIN_GAIN + ' or more; none combine into a package.' : 'No swap measured a gain of ' + Deep.MIN_GAIN + ' or more.';
+      if (App.AN && App.AN.impactDone) deepMerge(App.AN);
+    } catch (e) {
+      D.note = /cancel/.test(String(e && e.message)) ? 'Cancelled.' : 'Deep search failed: ' + (e && e.message || e); D.res = null;
+    } finally { D.busy = false; if (App.tab === 'changes') renderView(); }
+  }
+  // put the deep rows that still apply (cut in the list, add not in it) into the analysis' swap list
+  function deepMerge(X) {
+    const D = App.DEEP; if (!X || !D || !D.rows || X.deepIn) return;
+    const deck = X.inp ? X.inp.deck : [], has = c => deck.some(e => e.c === c || e.c.n === c.n);
+    const den = App.denied || new Set();
+    // a row whose measured cut was taken by an accepted swap gets the next cut of the search's cut order that is still in the list
+    const order = (D.res.order || []).filter(has), taken = new Set();
+    const live = []; D.repaired = 0;
+    for (const p of D.rows) {
+      if (has(p.add) || den.has(p.add.n)) continue;
+      if (has(p.cut) && !(p.group === 'Package' && taken.has(p.cut))) { if (p.group === 'Package') taken.add(p.cut); live.push(p); continue; }
+      const c = order.find(x => !taken.has(x)); if (!c) continue;
+      live.push(Object.assign({}, p, { cut: c, reason: p.reason + ' · measured with ' + p.cut.n + ' as the cut' })); D.repaired++;
+    }
+    X.plans = live.concat(X.plans); X.impact = live.concat(X.impact); X.deepIn = true;
+    const box = $('deepBox'); if (box && App.AN === X) box.outerHTML = deepBarHTML(X);
+  }
   function renderSwaps() {
     const el = $('anSwaps'), X = App.AN; if (!el || !X) return;
     el.innerHTML = swapsHTML(X);
@@ -3361,7 +3974,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
     const VL = { speed: 'Speed', consistency: 'Consistency', interaction: 'Interaction', manabase: 'Mana base', threats: 'Threats' };
     const AL = Object.fromEntries(X.axes.map(a => [a.key, a.label]));
-    const groups = ['Fix gaps', 'Upgrades', 'Budget'];
+    const groups = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'];
+    const GSUB = { Upgrades: ' (weakest power vectors)', Budget: ' (cheaper card, same role or theme)', Package: ' (deep search: swaps chosen one after another, each measured on the list as changed so far)', 'Deep search': ' (best single swaps of the wide search)' };
     const all = X.impactDone && X.impact.length ? '<button type="button" class="small primary" data-sw="accept-all">Accept all (' + X.impact.length + ')</button>' : '';
     const head = '<div class="an-top"><h3>Recommended changes</h3><span class="note">' + (X.impactDone ? X.impact.length + ' evaluated' : 'evaluating ' + X.impact.length + '/' + X.plans.length + '…') + '</span>' + all + '</div>' + (App.acceptNote ? '<p class="note">' + esc(App.acceptNote) + '</p>' : '');
     const log = (App.accepted || []).filter(a => a.src === App.anSource);
@@ -3386,7 +4000,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       const acts = '<div class="sw-acts"><button type="button" class="small primary" data-sw="accept" data-i="' + i + '">Accept</button><button type="button" class="small" data-sw="deny" data-i="' + i + '">Deny</button></div>';
       return '<tr><td><div class="sw"><span class="out">− ' + esc(p.cut.n) + '</span><span class="in">+ ' + (p.add.uri ? '<a href="' + esc(p.add.uri) + '" target="_blank" rel="noopener">' + esc(p.add.n) + '</a>' : esc(p.add.n)) + '</span></div><div class="note">' + esc(p.reason) + (p.tag ? ' · ' + esc(p.tag) : '') + '</div></td><td class="n nw">' + price + '</td><td><div class="eff">' + (eff.length ? eff.join(' ') : '<span class="note">no measurable change</span>') + '</div>' + acts + '</td></tr>';
     }).join('');
-    return head + logHTML + denN + groups.filter(g => X.plans.some(p => p.group === g)).map(g => '<h4 class="an-sub">' + g + (g === 'Upgrades' ? ' (weakest power vectors)' : g === 'Budget' ? ' (cheaper card, same role or theme)' : '') + (X.impactDone && X.impact.some(p => p.group === g) ? ' <button type="button" class="small" data-sw="accept-group" data-g="' + g + '">Accept ' + X.impact.filter(p => p.group === g).length + '</button>' : '') + '</h4><div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th>Projected effect</th></tr></thead><tbody>' + (rows(g) || '<tr><td colspan="3" class="note">evaluating…</td></tr>') + '</tbody></table></div>').join('') +
+    return head + logHTML + denN + groups.filter(g => X.plans.some(p => p.group === g)).map(g => '<h4 class="an-sub">' + g + (GSUB[g] || '') + (X.impactDone && X.impact.some(p => p.group === g) ? ' <button type="button" class="small" data-sw="accept-group" data-g="' + g + '">Accept ' + X.impact.filter(p => p.group === g).length + '</button>' : '') + '</h4><div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th>Projected effect</th></tr></thead><tbody>' + (rows(g) || '<tr><td colspan="3" class="note">evaluating…</td></tr>') + '</tbody></table></div>').join('') +
       '<p class="note">Each change is applied alone and the whole analysis is re-run with 5,000 simulated games on the same shuffles as the current list, so differences come from the swap, not from random variation. Cuts are the lowest-value cards whose removal keeps every role at or above target (value = synergy links + 2×roles + Game Changer/fast/tutor bonus + EDHREC popularity). Adds come from the loaded card data within your color identity, bracket limits and per-card budget cap. Price is the difference in ' + cur.toUpperCase() + ' between the added and removed card.</p>';
   }
   // header-sized radar: no labels, the scores are in the tooltip
@@ -3510,7 +4124,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     if (X.error) { $('view').innerHTML = '<div class="msg err">' + esc(X.error) + '</div>'; return; }
     const who = X.label + ': ' + X.cmds.map(c => esc(c.n)).join(' + ') + ' · power ' + X.power.pl.toFixed(1) + ' · fundamentals ' + X.overall + '/100';
     $('view').innerHTML = '<p class="note">' + who + '. Each change is scored alone against the current list. Accept applies it; Deny hides that card.</p>' +
-      '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + (X.recs.length ? '<details class="an-more"><summary class="note">More candidate cards for each problem (' + X.recs.length + ')</summary>' + findingsHTML(X, true) + '</details>' : '');
+      deepBarHTML(X) + '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + (X.recs.length ? '<details class="an-more"><summary class="note">More candidate cards for each problem (' + X.recs.length + ')</summary>' + findingsHTML(X, true) + '</details>' : '');
   }
   function renderAnalysis() {
     const X = App.AN;
@@ -4667,6 +5281,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     $('view').addEventListener('click', e => { if (e.target.closest('#impBtn')) importDeck();
       const ic = e.target.closest('[data-impcmd]'); if (ic) { App.impPick = ic.dataset.impcmd; importDeck(); } const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
     $('view').addEventListener('click', async e => {
+      const dp = e.target.closest('button[data-deep]');
+      if (dp) { if (dp.dataset.deep === 'run') deepRun(); else if (App.DEEP && App.DEEP.cancel) App.DEEP.cancel(); return; }
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
       const X = App.AN, a = b.dataset.sw;
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }

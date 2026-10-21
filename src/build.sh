@@ -1,1 +1,1 @@
-{ cat shell.html; echo '<script>'; cat engine.js; echo '</script>'; echo '<script>'; cat analysis.js; echo '</script>'; echo '<script>'; cat app.js; echo '</script>'; } > edh-deck-generator.html
+{ cat shell.html; echo '<script id="src-engine">'; cat engine.js; echo '</script>'; echo '<script id="src-mech">'; cat mech.js; echo '</script>'; echo '<script id="src-analysis">'; cat analysis.js; echo '</script>'; echo '<script id="src-deep">'; cat deep.js; echo '</script>'; echo '<script>'; cat app.js; echo '</script>'; } > edh-deck-generator.html
