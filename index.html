@@ -2907,15 +2907,29 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     if (App.tab === 'analysis' || App.tab === 'changes') renderSwaps();
   }
   // apply one swap to the analysed list: the generated deck (validated, locked) or the pasted text
-  async function applyChange(cut, add) {
+  async function applyChange(cut, add, quiet) {
     if (App.anSource !== 'paste' && App.R) {
       const entry = App.R.deck.find(e => e.c === cut); if (!entry) { setStatus(cut.n + ' is no longer in the deck.'); return; }
-      await App.R.swapOne(entry, add); histOp({ op: 'swap', cut: cut.n, add: add.n }); App.QS = null; histPush('edit', cut.n + ' → ' + add.n); setStatus('Swapped ' + cut.n + ' → ' + add.n + ' (locked).'); return;
+      await App.R.swapOne(entry, add); histOp({ op: 'swap', cut: cut.n, add: add.n }); App.QS = null; if (!quiet) histPush('edit', cut.n + ' → ' + add.n); setStatus('Swapped ' + cut.n + ' → ' + add.n + ' (locked).'); return;
     }
     const inp = App.AN && App.AN.inp; if (!inp) return;
-    const deck = Analysis.applySwap(inp.deck, cut, add);
+    const deck = inp.deck = Analysis.applySwap(inp.deck, cut, add); // kept on inp so several accepts in a row build on each other
     App.anText = 'Commander\n' + inp.cmds.map(c => '1 ' + c.n).join('\n') + '\n\nDeck\n' + deck.map(e => (e.qty || 1) + ' ' + e.c.n).join('\n');
     setStatus('Swapped ' + cut.n + ' → ' + add.n + ' in the pasted list.');
+  }
+  // Accept all / Accept group: applies each change in order; a change whose cut is already gone or whose add is
+  // already in the list (from an earlier change in the batch) is skipped. One history entry for the batch.
+  async function acceptMany(list) {
+    const cur = () => App.anSource !== 'paste' && App.R ? App.R.deck : (App.AN && App.AN.inp ? App.AN.inp.deck : []);
+    let done = 0, skipped = 0;
+    for (const p of list) {
+      const d = cur(), has = c => d.some(e => e.c === c && (e.qty || 1) > 0);
+      if (!has(p.cut) || (has(p.add) && !Engine.isBasic(p.add))) { skipped++; continue; }
+      await applyChange(p.cut, p.add, true);
+      (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); done++;
+    }
+    if (done && App.anSource !== 'paste' && App.R) histPush('edit', 'Accepted ' + done + ' change' + (done === 1 ? '' : 's'));
+    App.acceptNote = 'Accepted ' + done + ' change' + (done === 1 ? '' : 's') + (skipped ? '; skipped ' + skipped + ' whose card was already cut or added by an earlier change' : '') + '. The list below is re-scored against the new deck.';
   }
   function renderSwaps() {
     const el = $('anSwaps'), X = App.AN; if (!el || !X) return;
@@ -2929,7 +2943,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
     const VL = { speed: 'Speed', consistency: 'Consistency', interaction: 'Interaction', manabase: 'Mana base', threats: 'Threats' };
     const AL = Object.fromEntries(X.axes.map(a => [a.key, a.label]));
     const groups = ['Fix gaps', 'Upgrades', 'Budget'];
-    const head = '<div class="an-top"><h3>Recommended changes</h3><span class="note">' + (X.impactDone ? X.impact.length + ' evaluated' : 'evaluating ' + X.impact.length + '/' + X.plans.length + '…') + '</span></div>';
+    const all = X.impactDone && X.impact.length ? '<button type="button" class="small primary" data-sw="accept-all">Accept all (' + X.impact.length + ')</button>' : '';
+    const head = '<div class="an-top"><h3>Recommended changes</h3><span class="note">' + (X.impactDone ? X.impact.length + ' evaluated' : 'evaluating ' + X.impact.length + '/' + X.plans.length + '…') + '</span>' + all + '</div>' + (App.acceptNote ? '<p class="note">' + esc(App.acceptNote) + '</p>' : '');
     const log = (App.accepted || []).filter(a => a.src === App.anSource);
     const logHTML = log.length ? '<div class="accepted"><span class="note">Accepted:</span> ' + log.map((a, j) => '<span class="chip">− ' + esc(a.cut.n) + ' + ' + esc(a.add.n) + ' <button type="button" class="link" data-sw="undo" data-i="' + (App.accepted.indexOf(a)) + '" aria-label="Undo">undo</button></span>').join(' ') + '</div>' : '';
     const denN = App.denied && App.denied.size ? '<span class="note"> · ' + App.denied.size + ' denied <button type="button" class="link" data-sw="clear-deny">reset</button></span>' : '';
@@ -2951,7 +2966,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       const acts = '<div class="sw-acts"><button type="button" class="small primary" data-sw="accept" data-i="' + i + '">Accept</button><button type="button" class="small" data-sw="deny" data-i="' + i + '">Deny</button></div>';
       return '<tr><td><div class="sw"><span class="out">− ' + esc(p.cut.n) + '</span><span class="in">+ ' + (p.add.uri ? '<a href="' + esc(p.add.uri) + '" target="_blank" rel="noopener">' + esc(p.add.n) + '</a>' : esc(p.add.n)) + '</span></div><div class="note">' + esc(p.reason) + (p.tag ? ' · ' + esc(p.tag) : '') + '</div></td><td class="n nw">' + price + '</td><td><div class="eff">' + (eff.length ? eff.join(' ') : '<span class="note">no measurable change</span>') + '</div>' + acts + '</td></tr>';
     }).join('');
-    return head + logHTML + denN + groups.filter(g => X.plans.some(p => p.group === g)).map(g => '<h4 class="an-sub">' + g + (g === 'Upgrades' ? ' (weakest power vectors)' : g === 'Budget' ? ' (cheaper card, same role or theme)' : '') + '</h4><div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th>Projected effect</th></tr></thead><tbody>' + (rows(g) || '<tr><td colspan="3" class="note">evaluating…</td></tr>') + '</tbody></table></div>').join('') +
+    return head + logHTML + denN + groups.filter(g => X.plans.some(p => p.group === g)).map(g => '<h4 class="an-sub">' + g + (g === 'Upgrades' ? ' (weakest power vectors)' : g === 'Budget' ? ' (cheaper card, same role or theme)' : '') + (X.impactDone && X.impact.some(p => p.group === g) ? ' <button type="button" class="small" data-sw="accept-group" data-g="' + g + '">Accept ' + X.impact.filter(p => p.group === g).length + '</button>' : '') + '</h4><div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th>Projected effect</th></tr></thead><tbody>' + (rows(g) || '<tr><td colspan="3" class="note">evaluating…</td></tr>') + '</tbody></table></div>').join('') +
       '<p class="note">Each change is applied alone and the whole analysis is re-run with 5,000 simulated games on the same shuffles as the current list, so differences come from the swap, not from random variation. Cuts are the lowest-value cards whose removal keeps every role at or above target (value = synergy links + 2×roles + Game Changer/fast/tutor bonus + EDHREC popularity). Adds come from the loaded card data within your color identity, bracket limits and per-card budget cap. Price is the difference in ' + cur.toUpperCase() + ' between the added and removed card.</p>';
   }
   // header-sized radar: no labels, the scores are in the tooltip
@@ -3665,7 +3680,7 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
       (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total !== 100 ? ' Not 100 cards; Validation lists it.' : '');
     say(msg); setStatus(msg);
-    App.recsShown = false; App.accepted = []; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
+    App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
     runAnalysis();
   }
 
@@ -4102,7 +4117,8 @@ if (typeof module !== 'undefined') module.exports = Analysis;
       const X = App.AN, a = b.dataset.sw;
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }
       if (a === 'clear-deny') { App.denied.clear(); App.AN = null; runAnalysis(); return; }
-      if (a === 'accept') { const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
+      if (a === 'accept-all' || a === 'accept-group') { const list = X.impact.filter(p => a === 'accept-all' || p.group === b.dataset.g); if (!list.length) return; document.querySelectorAll('#anSwaps button').forEach(x => { x.disabled = true; }); await acceptMany(list); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
+      if (a === 'accept') { App.acceptNote = ''; const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
       if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); }
     });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
