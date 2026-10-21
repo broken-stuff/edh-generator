@@ -108,6 +108,12 @@ const Analysis = (function () {
   const BIT = { W: 1, U: 2, B: 4, R: 8, G: 16 };
   const NUMW = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, x: 2 };
   const popc = m => { let n = 0; while (m) { n += m & 1; m >>= 1; } return n; };
+  /* trigger economy (Mech): event ids the goldfish fires, and effect bits a triggered ability resolves into */
+  const EVN = ['spell.any', 'spell.noncreature', 'spell.creature', 'creature.enters', 'token.enters', 'artifact.enters', 'enchantment.enters', 'land.enters', 'card.draw', 'life.gain', 'life.loss', 'counter.placed', 'creature.dies', 'sacrifice', 'attack', 'damage.player', 'upkeep', 'end', 'combat', 'gy.enter'];
+  const EVI = Object.fromEntries(EVN.map((k, i) => [k, i])), EV = EVI;
+  const EF = { card: 1, mana: 2, 'token.creature': 4, 'token.treasure': 8, 'token.artifact': 512, drain: 16, life: 32, damage: 64, counter: 128, 'gy.fill': 256 };
+  const TRIG_TARGET = 7; // trigger output by T6 of themed generated decks: 4.8–8.5 (Atraxa, Krenko, Meren, Edgar, Talrand, Omnath)
+  const effBits = list => list.reduce((b, k) => b | (EF[k] || 0), 0);
   const SMC = new WeakMap();
   function simModel(c, CI) {
     let byCI = SMC.get(c); if (!byCI) SMC.set(c, byCI = {}); if (byCI[CI]) return byCI[CI];
@@ -141,6 +147,18 @@ const Analysis = (function () {
     const dr = c.low.match(/each opponent loses (\d+|x) life|deals? (\d+|x) damage to each opponent/);
     if (dr) { const v = dr[1] || dr[2]; s.drain = { n: v === 'x' ? 3 : +v, per: /whenever (?:a|another|one or more)[^.]*(?:enters|attacks|dies)/.test(c.low) ? 'enter' : /at the beginning of/.test(c.low) ? 'turn' : 'once' }; }
     s.evasive = ['flying', 'trample', 'menace', 'shadow', 'horsemanship', 'fear', 'intimidate', 'skulk'].some(k => c.kw.includes(k)) || /can't be blocked/.test(c.low);
+    // triggered abilities of permanents as (events → effect bits); "when ~ enters" effects; a sacrifice outlet
+    s.trig = null; s.etb = 0; s.outlet = false; s.artifact = /\bArtifact\b/.test(c.ft); s.isCre = !!a.creature; s.ench = /\bEnchantment\b/.test(c.ft);
+    if (M && isPerm(c)) {
+      const P = M.parse(c), tr = [];
+      for (const ab of P.abil) {
+        if (ab.kind !== 'trigger') continue; const ef = effBits(ab.makes); if (!ef) continue;
+        if (ab.needs.includes('self.enters')) s.etb |= ef;
+        const ev = [...new Set(ab.needs.map(k => EVI[k]).filter(x => x != null))]; if (ev.length) tr.push({ ev, ef });
+      }
+      if (tr.length) s.trig = tr;
+      s.outlet = P.abil.some(a => a.kind === 'activated' && a.needs.includes('fodder.creature'));
+    }
     byCI[CI] = s; return s;
   }
   // pay cost from sources (array of masks, mutated on success): pips first, scarcest colour first, from the least flexible source
@@ -177,7 +195,7 @@ const Analysis = (function () {
     const lines = (sopt.lines || []).map(l => ({ keys: l.cards.map(n => E.nameKey(n)), cost: l.cost || 0, byT: new Array(T + 2).fill(0), turns: [] }));
     const pieceKeys = new Set(lines.flatMap(l => l.keys));
     let mulls = 0, mulls2 = 0, keep7 = 0, missT4 = 0, spent6 = 0, avail6 = 0, spells6 = 0, cmdOnCurve = 0; const cmdTurns = [], killTurns = [], winTurns = [], comboTurns = [];
-    let flood = 0, screw = 0;
+    let flood = 0, screw = 0; const tgT = { fires: 0, cards: 0, mana: 0, dmg: 0, tok: 0, ctr: 0 };
     const isL = c => M(c).land;
     const keepable = h => { const l = h.filter(isL).length; return l >= 2 && l <= 5 && h.some(c => !isL(c) && M(c).cmc <= 3); };
     for (let g = 0; g < games; g++) {
@@ -197,7 +215,8 @@ const Analysis = (function () {
         }
       }
       const seen = new Set(); if (pieceKeys.size) for (const c of hand) if (pieceKeys.has(keys[c])) seen.add(keys[c]);
-      const draw = n => { for (let i = 0; i < n && pos < lib.length; i++) { const c = lib[pos++]; hand.push(c); if (pieceKeys.size && pieceKeys.has(keys[c])) seen.add(keys[c]); } };
+      const draw = n => { let k = 0; for (let i = 0; i < n && pos < lib.length; i++) { const c = lib[pos++]; hand.push(c); k++; if (pieceKeys.size && pieceKeys.has(keys[c])) seen.add(keys[c]); } if (k && started) fire(EV['card.draw'], k); };
+      let started = false; const tg = { fires: 0, cards: 0, mana: 0, dmg: 0, tok: 0, ctr: 0 };
       const tutor = () => {
         // a missing piece of the line closest to done, else the best card left: a land if short of lands, else a draw card
         let want = null, bestMiss = 99;
@@ -211,10 +230,31 @@ const Analysis = (function () {
       let landsPlayed = 0, cmdCast = false, extraDrops = 0, engines = 0, gDrawn = 0;
       let gSpent = 0, gAvail = 0, gSpells = 0, rampLandsNext = 0;
       const board = [], tokenEngines = []; let dmg = 0, killT = 0, prevAvail = 0, anthem = 0, pump = 0, trample = false, drainTurn = 0, drainEnter = 0; const lineT = lines.map(() => 0);
-      const enter = b => { board.push(b); dmg += drainEnter; };
+      // trigger economy: listeners per event; each firing resolves its effect bits (a card, a mana, a 1/1 token, a Treasure,
+      // a drain of 1 per opponent, life, 1 damage, a +1/+1 counter, a card to the graveyard). At most TB firings per turn.
+      const lis = EVN.map(() => []); let tb = 0, curSrc = null, outlets = 0;
+      const fire = (ev, n) => { const L = lis[ev]; if (!L.length) return; for (let r = 0; r < (n || 1); r++) for (let q = 0; q < L.length; q++) { if (tb <= 0) return; tb--; resolve(L[q]); } };
+      const resolve = ef => {
+        if (tCur <= 6) tg.fires++;
+        if (ef & 1) { if (tCur <= 6) tg.cards++; draw(1); }
+        if (ef & 2) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); }
+        if (ef & 4) { if (tCur <= 6) tg.tok++; enter({ pow: 1, ev: false, t: tCur + 1, tok: true }); }
+        if (ef & 8) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); fire(EV['artifact.enters']); fire(EV['token.enters']); }
+        if (ef & 16) { if (tCur <= 6) tg.dmg += 3; fire(EV['life.loss']); }
+        if (ef & 32) fire(EV['life.gain']);
+        if (ef & 64) { if (tCur <= 6) tg.dmg += 1; fire(EV['life.loss']); }
+        if (ef & 128) { if (board.length) board[board.length - 1].pow++; if (tCur <= 6) tg.ctr++; fire(EV['counter.placed']); }
+        if (ef & 256) fire(EV['gy.enter']);
+        if (ef & 512 && !(ef & 12)) { fire(EV['artifact.enters']); fire(EV['token.enters']); }
+      };
+      const listen = m => { if (m.trig) for (const tr of m.trig) for (const e of tr.ev) lis[e].push(tr.ef); if (m.outlet) outlets++; };
+      let tCur = 0;
+      const enter = b => { board.push(b); dmg += drainEnter; fire(EV['creature.enters']); if (b.tok) fire(EV['token.enters']); };
+      started = true;
       for (let t = 1; t <= T; t++) {
-        const h0 = pos;
+        const h0 = pos; tCur = t; tb = t <= 6 ? 30 : 0; curSrc = null; // triggers are counted to turn 6, so the economy runs only that far
         if (t > 1) draw(1 + engines);
+        fire(EV.upkeep);
         for (const m of landsNext) lands.push(m); landsNext.length = 0;
         for (let k = 0; k < rampLandsNext; k++) lands.push(ciMask); rampLandsNext = 0; // fetched basics: any colour of the identity
         for (const m of dorksNext) dorksReady.push(m); dorksNext.length = 0;
@@ -224,14 +264,16 @@ const Analysis = (function () {
           if (i < 0) break;
           const c = hand.splice(i, 1)[0]; landsPlayed++; drops--;
           if (M(c).tapped) landsNext.push(M(c).mask); else lands.push(M(c).mask);
+          fire(EV['land.enters']);
         }
         if (landsPlayed > before) dropT[t]++;
-        const src = lands.concat(rocks, dorksReady); const avail = src.length;
+        const src = lands.concat(rocks, dorksReady); const avail = src.length; curSrc = src;
         mana[t] += avail; landsT[t] += lands.length + landsNext.length;
         let spentN = avail;
         const cast = c => {
           const m = M(c); if (!pay(src, m.cmc, m.pips)) return false;
           hand.splice(hand.indexOf(c), 1); spellsT[t]++; if (t <= 6) gSpells++;
+          fire(EV['spell.any']); fire(m.isCre ? EV['spell.creature'] : EV['spell.noncreature']);
           if (m.rampPerm) { const mk = m.mask || 0; for (let k = 0; k < m.rampPerm; k++) { if (m.dork) dorksNext.push(mk); else { rocks.push(mk); src.push(mk); } } }
           if (m.rampLand) rampLandsNext += m.rampLand;
           if (m.extraDrop) extraDrops = Math.max(extraDrops, m.extraDrop);
@@ -243,6 +285,7 @@ const Analysis = (function () {
           if (m.anthem) anthem += m.anthem;
           if (m.overrun) { pump += m.overrun < 0 ? board.length : m.overrun; if (m.overrunTrample) trample = true; }
           if (m.drain) { if (m.drain.per === 'once') dmg += 3 * m.drain.n; else if (m.drain.per === 'turn') drainTurn += 3 * m.drain.n; else drainEnter += 3 * m.drain.n; }
+          listen(m); if (m.artifact) fire(EV['artifact.enters']); if (m.ench) fire(EV['enchantment.enters']); if (m.etb) resolve(m.etb);
           return true;
         };
         // 1) ramp, cheapest first; 2) tutors; 3) commander; 4) other spells, largest that fits first (repeat while something is cast)
@@ -253,12 +296,15 @@ const Analysis = (function () {
           if (cmdM.creature) enter({ pow: cmdM.pow, ev: cmdM.evasive, t: cmdM.haste ? t : t + 1 });
           if (cmdM.tokens) tokenEngines.push(cmdM.tokens);
           if (cmdM.anthem) anthem += cmdM.anthem;
+          listen(cmdM); if (cmdM.etb) resolve(cmdM.etb);
         }
         // re-sort only when a cast drew or tutored cards
         for (let again = true; again && src.length;) { again = false; const h1 = hand.length, list = hand.filter(c => !isL(c)).sort((a, b) => M(b).cmc - M(a).cmc); for (const c of list) { if (!src.length) break; if (M(c).cmc <= src.length && cast(c) && hand.length >= h1) { again = true; break; } } }
         spentN -= src.length;
         // token engines make their tokens; then combat (anthems, this turn's overrun) and drains
         for (const e of tokenEngines) for (let k = 0; k < e.n; k++) enter({ pow: e.pow, ev: e.ev, t: t + 1 });
+        fire(EV.combat);
+        { let na = 0, ne = 0; for (const b of board) if (b.t <= t) { na++; if (b.ev) ne++; } if (na) fire(EV.attack, Math.min(na, 5)); if (ne) fire(EV['damage.player'], Math.min(ne, 3)); }
         for (const b of board) if (b.t <= t) { const p = b.pow + anthem + pump; if (p > 0) dmg += b.ev || trample ? p : p / 2; }
         dmg += drainTurn; pump = 0; trample = false;
         if (!killT && dmg >= KILL) killT = t;
@@ -266,6 +312,9 @@ const Analysis = (function () {
         // combo lines
         const two = prevAvail + avail; prevAvail = avail;
         lines.forEach((l, i) => { if (!lineT[i] && l.keys.every(k => seen.has(k) || (cmdNames.has(k) && cmdCast)) && two >= l.cost) lineT[i] = t; });
+        // end step: with a sacrifice outlet and a death payoff, tokens are sacrificed (up to 6); then end-step triggers
+        if (outlets && lis[EV['creature.dies']].length) { let k = 0; for (let i = board.length - 1; i >= 0 && k < 6; i--) if (board[i].tok) { board.splice(i, 1); k++; fire(EV['creature.dies']); fire(EV.sacrifice); } }
+        fire(EV.end); curSrc = null;
         spentT[t] += spentN; handT[t] += hand.length; drawnT[t] += pos - h0; if (cmdCast) cmdByT[t]++;
         if (t <= 6) { gSpent += spentN; gAvail += avail; }
         if (t === 4 && landsPlayed < 4) missT4++;
@@ -277,6 +326,7 @@ const Analysis = (function () {
       const ct = lineT.reduce((m, x) => x ? Math.min(m, x) : m, T + 1); comboTurns.push(ct);
       winTurns.push(Math.min(killT || T + 1, ct));
       spent6 += gSpent; avail6 += gAvail; spells6 += gSpells;
+      for (const k in tg) tgT[k] += tg[k];
     }
     const srt = a => a.sort((x, y) => x - y);
     srt(cmdTurns); srt(killTurns); srt(winTurns); srt(comboTurns);
@@ -286,6 +336,8 @@ const Analysis = (function () {
       perTurn: Array.from({ length: TR }, (_, i) => { const t = i + 1; return { t, lands: landsT[t] / games, mana: mana[t] / games, spent: spentT[t] / games, spells: spellsT[t] / games, hand: handT[t] / games, drawn: drawnT[t] / games, dmg: dmgT[t] / games, pDrop: dropT[t] / games, pCmd: cmdByT[t] / games }; }),
       keep7: keep7 / games, mulligan: mulls / games, mulligan2: mulls2 / games, missLandDropT4: missT4 / games, flood6: flood / games, screw6: screw / games,
       efficiency6: avail6 ? spent6 / avail6 : 0, spellsBy6: spells6 / games,
+      // triggered-ability output by turn 6 per game; value = cards + mana + damage / 3 + (tokens + counters) / 2
+      trig: Object.assign(Object.fromEntries(Object.entries(tgT).map(([k, v]) => [k, v / games])), { value: (tgT.cards + tgT.mana + tgT.dmg / 3 + (tgT.tok + tgT.ctr) / 2) / games }),
       cmdCmc, cmdMedianTurn: cmdTurns.length ? quant(cmdTurns, 0.5) : null, cmdOnCurve: cmds.length ? cmdOnCurve / games : null,
       kill: Object.assign(dist(killTurns), { life: KILL }), combo: lines.length ? dist(comboTurns) : null, win: dist(winTurns),
       lines: lines.map(l => ({ median: quant(srt(l.turns), 0.5), byT: l.byT.map(x => x / games) }))
@@ -445,7 +497,7 @@ const Analysis = (function () {
     const covKeys = ['creature', 'artifact', 'enchantment', 'planeswalker'];
     axes.push({ key: 'interaction', label: 'Interaction', factors: [F('Targeted removal / counters', role('removal'), P(targets.removal, 'removal'), ratio(role('removal'), targets.removal)), F('Board wipes', role('wipes'), P(targets.wipes, 'wipes'), ratio(role('wipes'), targets.wipes)), F('Instant-speed interaction', instantInteraction.length, '≥ 50% of interaction', removalCards.length ? instantInteraction.length / removalCards.length / 0.5 : 0), F('Permanent types answerable', covKeys.filter(k => coverage[k].length).length + '/4', '4/4', covKeys.filter(k => coverage[k].length).length / 4), F('Graveyard hate', gyHate.length, '≥ 1', gyHate.length ? 1 : 0.4)] });
     axes.push({ key: 'resilience', label: 'Protection & resilience', factors: [F('Protection pieces', protection.length, targets.protection, ratio(protection.length, targets.protection)), F('Recursion', recursion.length, targets.recursion, ratio(recursion.length, targets.recursion)), F('Commander protection effects', cmdProtect.length, '≥ 2', ratio(cmdProtect.length, 2)), F('Self-protected permanents (hexproof/indestructible/ward)', indestructibleSelf.length, '≥ 3', ratio(indestructibleSelf.length, 3))] });
-    axes.push({ key: 'synergy', label: 'Synergy', factors: [F('Nonland cards with ≥1 synergy link', Math.round(synShare * 100) + '%', '≥ 60%', synShare / 0.6), F('Median links per card', medianLinks, '≥ 3', medianLinks / 3), F('Active themes balanced', active.filter(p => p.status === 'balanced').length + '/' + active.length, 'all', active.length ? active.filter(p => p.status === 'balanced').length / active.length : 0.5), F('Commander-linked themes', pairStats.filter(p => p.cmdEn || p.cmdPay).length + (tribal && tribal.cmdMentions ? 1 : 0), '≥ 1', (pairStats.some(p => p.cmdEn || p.cmdPay) || (tribal && tribal.cmdMentions)) ? 1 : 0.3)] });
+    axes.push({ key: 'synergy', label: 'Synergy', factors: [F('Nonland cards with ≥1 synergy link', Math.round(synShare * 100) + '%', '≥ 60%', synShare / 0.6), F('Median links per card', medianLinks, '≥ 3', medianLinks / 3), F('Active themes balanced', active.filter(p => p.status === 'balanced').length + '/' + active.length, 'all', active.length ? active.filter(p => p.status === 'balanced').length / active.length : 0.5), F('Commander-linked themes', pairStats.filter(p => p.cmdEn || p.cmdPay).length + (tribal && tribal.cmdMentions ? 1 : 0), '≥ 1', (pairStats.some(p => p.cmdEn || p.cmdPay) || (tribal && tribal.cmdMentions)) ? 1 : 0.3), F('Simulated trigger output by turn 6', sim.trig.value.toFixed(1), '≥ ' + TRIG_TARGET, sim.trig.value / TRIG_TARGET, 'Goldfish average of cards + mana + damage ÷ 3 + (tokens + counters) ÷ 2 from triggered abilities (mechanics graph)')] });
     axes.push({ key: 'consistency', label: 'Consistency', factors: [F('Opening 7 with 2–5 lands', Math.round(openingLands.p2to5 * 100) + '%', '≥ 85%', openingLands.p2to5 / 0.85), F('Keepable 7 (sim, before mulligan)', Math.round(sim.keep7 * 100) + '%', '≥ 85%', sim.keep7 / 0.85), F('Mana spent / available, turns 1–6 (sim)', Math.round(sim.efficiency6 * 100) + '%', '≥ 70%', sim.efficiency6 / 0.7), F('Draw + tutors (redundancy)', role('draw') + tutors.length, '≥ 12', (role('draw') + tutors.length) / 12)] });
     axes.push({ key: 'threat', label: 'Win pressure', factors: [F('Win conditions', wincons.length, targets.wincon, ratio(wincons.length, targets.wincon)), F('Evasive creatures', evasive.length, '≥ ' + targets.evasive, ratio(evasive.length, targets.evasive)), F('Creatures', creatures, 'context', creatures >= 12 || wincons.length >= 5 ? 1 : 0.6), F('Complete combos (Spellbook)', combos ? combos.length : '—', 'context', combos && combos.length ? 1 : 0.7)] });
     for (const ax of axes) ax.score = Math.round(wmean(ax.factors) * 100);

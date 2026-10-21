@@ -240,6 +240,15 @@ function legalCheck(R, label) {
     assert(offColour.perTurn.every(r => r.spells === 0) && onColour.perTurn[5].spells > 0, 'simulate: Islands cannot cast a white spell, Plains can');
     const cb = An.simulate([{ c: L('Plains'), qty: 39 }, { c: Wsp[0], qty: 30 }, { c: Wsp[1], qty: 30 }], [], 300, 7, { CI: 'W', lines: [{ cards: [Wsp[0].n, Wsp[1].n], cost: 2 }] });
     assert(cb.combo && cb.combo.byT[4] > 0.9 && cb.lines[0].median <= 3, 'simulate: a 2-card line with 30 copies of each piece assembles by turn 3');
+    // trigger economy: events fire triggered abilities (mechanics graph); sacrificed tokens feed death triggers
+    const nc = (name, text, ty) => E.norm(card({ name, mana_cost: '{W}', cmc: 1, type_line: ty || 'Enchantment', oracle_text: text, color_identity: ['W'], colors: ['W'] }));
+    const seer = nc('Synth Land Seer', 'Whenever a land you control enters, draw a card.'), pebble = nc('Synth Pebble', 'Flash');
+    const tSeer = An.simulate([{ c: L('Plains'), qty: 40 }, { c: seer, qty: 59 }], [], 300, 7, { CI: 'W' }).trig, tPeb = An.simulate([{ c: L('Plains'), qty: 40 }, { c: pebble, qty: 59 }], [], 300, 7, { CI: 'W' }).trig;
+    assert(tSeer.cards > 1 && tPeb.cards === 0 && tPeb.fires === 0, 'simulate: a landfall draw trigger draws cards (' + tSeer.cards.toFixed(2) + ' by T6); a card without triggers fires none');
+    const upMaker = nc('Synth Upkeep Maker', 'At the beginning of your upkeep, create a 1/1 white Soldier creature token.'), outlet2 = nc('Synth Outlet', 'Sacrifice a creature: Scry 1.', 'Artifact'), payoff = nc('Synth Mourner', 'Whenever a creature you control dies, each opponent loses 1 life.');
+    const aris = k => An.simulate([{ c: L('Plains'), qty: 40 }, { c: upMaker, qty: 20 }, { c: k, qty: 20 }, { c: payoff, qty: 19 }], [], 300, 7, { CI: 'W' }).trig;
+    const withO = aris(outlet2), noO = aris(pebble);
+    assert(withO.dmg > 0 && noO.dmg === 0 && withO.tok > 0, 'simulate: tokens + sacrifice outlet + death trigger drain (' + withO.dmg.toFixed(2) + ' damage by T6); without the outlet nothing dies');
     assert(onColour.keep7 > 0 && onColour.keep7 + onColour.mulligan <= 1.0001, 'simulate: keep and mulligan rates are shares of games');
   }
 })();
