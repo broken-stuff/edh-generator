@@ -177,5 +177,13 @@ function legalCheck(R, label) {
     const ck = An.castCheck([{ c: { n: 'X', mc: '{X}{W}{W}', cmc: 2 } }, { c: { n: 'Y', mc: '{W}', cmc: 1 } }], 99, 37, { W: 20 });
     assert(ck.length === 2 && ck.find(r => r.n === 'X').t === 4 && ck[0].p <= ck[1].p, 'castCheck: X spells judged at X = 2, rows sorted worst first');
     assert(Math.abs(An.karstenLands(3, 10) - 36.66) < 0.01, 'karstenLands: 31.42 + 3.13 × 3 − 0.28 × 10 − 1.35 = 36.66');
+    // goldfish: lands pay coloured pips; combo lines assemble from drawn pieces
+    const L = n => E.lookup(db, n), Wsp = db.all.filter(c => c.ci === 'W' && !E.analyze(c).isLand && /\{W\}/.test(c.mc) && !E.analyze(c).roles.ramp).slice(0, 2);
+    const offColour = An.simulate([{ c: L('Island'), qty: 40 }, { c: Wsp[0], qty: 59 }], [], 300, 7, { CI: 'W' });
+    const onColour = An.simulate([{ c: L('Plains'), qty: 40 }, { c: Wsp[0], qty: 59 }], [], 300, 7, { CI: 'W' });
+    assert(offColour.perTurn.every(r => r.spells === 0) && onColour.perTurn[5].spells > 0, 'simulate: Islands cannot cast a white spell, Plains can');
+    const cb = An.simulate([{ c: L('Plains'), qty: 39 }, { c: Wsp[0], qty: 30 }, { c: Wsp[1], qty: 30 }], [], 300, 7, { CI: 'W', lines: [{ cards: [Wsp[0].n, Wsp[1].n], cost: 2 }] });
+    assert(cb.combo && cb.combo.byT[4] > 0.9 && cb.lines[0].median <= 3, 'simulate: a 2-card line with 30 copies of each piece assembles by turn 3');
+    assert(onColour.keep7 > 0 && onColour.keep7 + onColour.mulligan <= 1.0001, 'simulate: keep and mulligan rates are shares of games');
   }
 })();
