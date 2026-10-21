@@ -1,0 +1,44 @@
+# Downloads bracket-labelled reference decklists (EDHREC average decks, Archidekt public decks) for the most-played
+# commanders into data/reference/, for calibrating the power-level and bracket estimates. Manual runs only, plus a push
+# that changes the downloader.
+name: Reference decks
+on:
+  workflow_dispatch:
+    inputs:
+      commanders:
+        description: 'Number of most-played commanders'
+        default: '60'
+      per_bracket:
+        description: 'Archidekt decks per commander and bracket'
+        default: '3'
+  push:
+    paths:
+      - 'tools/ref-decks.js'
+      - '.github/workflows/ref-decks.yml'
+permissions:
+  contents: write
+concurrency:
+  group: ref-decks
+  cancel-in-progress: true
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Download reference decks
+        run: node tools/ref-decks.js data/reference --commanders "${{ github.event.inputs.commanders || '60' }}" --per-bracket "${{ github.event.inputs.per_bracket || '3' }}"
+      - name: Commit changes
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          git add -A data/reference
+          if git diff --cached --quiet; then echo "No changes."; exit 0; fi
+          git commit -m "Update reference decklists"
+          for i in 1 2 3; do git pull --rebase origin "$BRANCH" && git push origin HEAD:"$BRANCH" && exit 0; sleep 5; done
+          exit 1
