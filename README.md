@@ -25,9 +25,9 @@ No account, server or install. Nothing you enter leaves your browser. The only o
 ## Quick start
 
 1. Open the [deck generator](https://broken-stuff.github.io/edh-generator/). Card data loads on its own the first time (a few seconds) and is kept in your browser after that.
-2. Type a commander on **Setup**, or find one with **Commanders**, **Inspire me** or **Surprise me**.
+2. On **Start**, type a commander under **New deck**, or use **Find a commander** (browse, a quiz, or random picks).
 3. Choose a bracket, budget and game plan, then press **Generate deck** (or `G`).
-4. Read the deck on **Deck**, the play guide on **Primer**, and copy the list from **Export**.
+4. Read the deck on **Deck**, check it on **Analysis**, take scored fixes on **Improve**, and read the play guide on **Primer**. Copy the list from **Deck**, **Export**.
 
 The two pages link to each other. In the generator, a card's popup has **Similar cards and combos ↗**, which opens that card in the explorer. In the explorer, a card that can be a commander has **Build a deck with it**, which opens the generator with that commander filled in.
 
@@ -42,43 +42,52 @@ Each card is weighed on:
 - fit to the mana curve
 - price, when you set a budget
 
-The pages are in the left menu (a tab strip on phones), in three groups.
+The five pages are in the left menu (a bar at the bottom on phones): **Start**, **Deck**, **Analysis**, **Improve** and **Primer**. **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title.
 
-### Build
+### Start
 
-- **Setup:** commander (and partner), bracket, budget, game plan, themes and creature types. **Save, load, share** saves settings as a JSON file, loads one back, or gives a share token: add it to the page address as `#token` and anyone who opens that link gets the same settings.
-- **Import deck:** paste your current list (Moxfield, Archidekt, MTGO or plain `1 Name`; set codes, collector numbers and `*F*` are ignored). The commander is read from a `Commander` or `// COMMANDER` header, or a `[Commander]` tag. The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; scored cuts and adds are on the **Changes** page. Rule problems, such as a deck that isn't 100 cards, show on Validation. Deck, Swap, Combos, Primer and Export work on the imported list too.
-- **Commanders:** every legal commander. Filter by name, text, colour or theme, then send one to Setup with **Build**.
-- **Inspire me:** a seven-question quiz (colours, play style, creature type, themes, power, popularity, commander price). Every legal commander gets a match score and its reasons:
-  - **Play style** (Aggressive, Control, Combo, Value engine, Go big) reads the commander's rules text, such as attack triggers, counterspells, board wipes, untap effects or cost reduction. Combo also counts the commander's Commander Spellbook combos.
-  - **Creature type** checks the commander's type line and rules text, and counts the creatures of that type in its colours. Commanders that are or name the type come first.
-  - **Themes** use the same synergy tags as Setup. **Power** looks at Game Changer status, infinite combos and the card-power estimate. **Popularity** is EDHREC rank among commanders.
-  - Match is the weighted share of your answers it meets: play style 3, creature type 3, themes 2, power 1, popularity 1.
-- **Surprise me:** three random commanders, filtered by colours, popularity (top 500, or outside the top 1,000) and price. Each shows its rules text and the play styles and themes it leans toward. Reroll any one, or send it to Setup with **Build**.
-- **Deck:** the list grouped by type. Lock cards you want to keep. **Swap** shows the five best alternatives for a card. **Rebuild around locks** rebuilds while keeping locked cards (if they can't fit the budget, the current deck stays). **Undo** reverts your last edit.
-- **Primer:** a play guide built from the deck's own numbers: table talk for the pre-game conversation, mulligan odds and a turn-by-turn plan, interaction to hold, combos, and tokens and counters to bring. It can print the list and primer, or nine text proxies per page.
-- **History:** your last 25 decks and edits. Tick two to compare them.
+- **New deck:** commander (and partner), bracket, budget, game plan, themes and creature types. **Save, load, share** saves settings as a JSON file, loads one back, or gives a share token: add it to the page address as `#token` and anyone who opens that link gets the same settings.
+- **Import a list:** paste your current list (Moxfield, Archidekt, MTGO or plain `1 Name`; set codes, collector numbers and `*F*` are ignored). The commander is read from a `Commander` or `// COMMANDER` header, or a `[Commander]` tag. The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; scored cuts and adds are on **Improve**. Rule problems, such as a deck that isn't 100 cards, show under **Rules** on Deck. Deck, Swap, Combos, Primer and Export work on the imported list too.
+- **Find a commander**, three ways. Each sends a pick to New deck with **Build**.
+  - **Browse:** every legal commander. Filter by name, text, colour or theme.
+  - **Quiz:** a seven-question quiz (colours, play style, creature type, themes, power, popularity, commander price). Every legal commander gets a match score and its reasons:
+    - **Play style** (Aggressive, Control, Combo, Value engine, Go big) reads the commander's rules text, such as attack triggers, counterspells, board wipes, untap effects or cost reduction. Combo also counts the commander's Commander Spellbook combos.
+    - **Creature type** checks the commander's type line and rules text, and counts the creatures of that type in its colours. Commanders that are or name the type come first.
+    - **Themes** use the same synergy tags as New deck. **Power** looks at Game Changer status, infinite combos and the card-power estimate. **Popularity** is EDHREC rank among commanders.
+    - Match is the weighted share of your answers it meets: play style 3, creature type 3, themes 2, power 1, popularity 1.
+  - **Random:** three random commanders, filtered by colours, popularity (top 500, or outside the top 1,000) and price. Each shows its rules text and the play styles and themes it leans toward. Reroll any one.
 
-### Evaluate
+### Deck
 
-- **Analysis:** scores any deck, generated, imported or pasted, or compares two. You get a power level from 1 to 10 with eight fundamentals, likely win turns, the bracket the cards imply, a goldfish simulation (1,500 to 100,000 games), and turn-by-turn odds of drawing ramp, draw, removal and win conditions.
-- **Changes:** recommended cuts and adds for the analyzed list, each scored with simulated games, to accept or deny, plus candidate cards for every gap the analysis found.
+- **Cards:** the list, grouped by type or by role (ramp, draw, removal and so on). Tap a card for its text, price, roles, why it is in the deck, and its actions: **Lock** keeps it on rebuild, **Swap** shows the five best alternatives, **Remove** takes it out. **Rebuild around locks** rebuilds while keeping locked cards (if they can't fit the budget, the current deck stays). **Undo** reverts your last edit. **Rules** in the summary opens the legality and budget checks.
 - **Sample hand:** draw 7, take London mulligans, draw more.
+- **Export:** copy or download the list.
+
+### Analysis
+
+Scores any deck, generated, imported or pasted, or compares two. The top of the page shows fundamentals, balance, lands against the curve estimate, cards that are hard to cast on curve, the commander turn, the simulated combo turn, and where the win turn comes from. Below that are the deck's problems, most serious first, and a link to the scored fixes on Improve.
+
+**Show detail** opens turn-by-turn odds and the goldfish simulation (1,500 to 100,000 games), the power level from 1 to 10 with its five vectors and combos, the eight fundamentals, mana base and interaction, synergy themes, deck stats (mana curve, colour pips against sources, roles against targets, price, Game Changers) and the method.
+
+### Improve
+
+- **Suggested swaps:** recommended cuts and adds for the analyzed list, each scored with simulated games. Accept or deny them one at a time, by group or all at once. Candidate cards for each problem are under the list.
 - **Combos:** combos already in the deck, and combos one card away with that card's price. **+ Add** shows what to cut and checks the swap first: it won't add a card that breaks your bracket or budget, and says which rule. Two-card infinites your bracket doesn't allow are marked "not allowed" and listed last.
-- **Stats:** mana curve, colour pips against sources, roles against targets, price, Game Changers, and the odds of casting your most colour-hungry card on curve.
-- **By role:** the deck grouped by role (ramp, draw, removal and so on) instead of card type.
 
-### Output and checks
+### Primer
 
-- **Export:** copy the list.
-- **Validation:** the legality and budget checks.
-- **Log:** why cards were left out. (The rules the generator uses to tag cards are on Setup, under **Tag and flag rules**.)
+A play guide built from the deck's own numbers: table talk for the pre-game conversation, mulligan odds and a turn-by-turn plan, interaction to hold, combos, and tokens and counters to bring. It can print the list and primer, or nine text proxies per page.
+
+### More
+
+- **History:** your last 25 decks and edits. Tick two to compare them.
+- **Build log:** the seed, the optimiser's score, and each step the generator took, including why cards were left out.
 - **Tests:** runs acceptance tests against the loaded card data (1-colour, 5-colour and partner commanders, budget cap, impossible budget, determinism, Bracket 2 Game Changer count).
 
 ### Anywhere in the generator
 
 - **Hover or tap a card name** for its cost, text, price, roles and why it is in the deck.
-- **Keys:** `1`–`9` and `0` open the first ten pages, `G` generates, `/` jumps to search, `U` or `Ctrl/Cmd+Z` undoes, `Esc` closes popups, `?` lists the keys.
+- **Keys:** `1`–`5` open Start, Deck, Analysis, Improve and Primer, `G` generates, `/` jumps to search, `U` or `Ctrl/Cmd+Z` undoes, `Esc` closes popups, `?` lists the keys.
 - **Clear** (top right) starts over. History, card data and appearance are kept.
 
 ## Card explorer
@@ -113,7 +122,7 @@ The gear button (top right, on both pages) sets light, dark or system mode, acce
 
 The site refreshes Scryfall card data and Commander Spellbook combos every Monday. Your browser keeps a copy (IndexedDB) and downloads again only when the data changes. Settings, history and appearance are kept in `localStorage`.
 
-To use other card data, open the generator's Setup page and, under **Card data**, load a Scryfall bulk file (`.json`, `.jsonl` or `.gz`) from [scryfall.com/docs/api/bulk-data](https://scryfall.com/docs/api/bulk-data).
+To use other card data, open the generator's Start page and, under **Card data**, load a Scryfall bulk file (`.json`, `.jsonl` or `.gz`) from [scryfall.com/docs/api/bulk-data](https://scryfall.com/docs/api/bulk-data).
 
 ## How it works
 
@@ -121,7 +130,7 @@ Each page is one self-contained HTML file with no frameworks, libraries or build
 
 | File | Role |
 |---|---|
-| `src/engine.js` | Card normalisation, role and theme tagging, brackets, deck generation and the swap optimiser, Inspire me scoring |
+| `src/engine.js` | Card normalisation, role and theme tagging, brackets, deck generation and the swap optimiser, commander quiz scoring |
 | `src/analysis.js` | Power level, bracket estimate, goldfish simulation, draw odds, recommendations |
 | `src/app.js` | Deck generator interface |
 | `src/similar.js` | Card explorer similarity index and ranking |
@@ -157,7 +166,7 @@ node atest.js    # prints analysis output for a generated deck
 node sens.js     # prints a table of how decks respond to bracket, budget and game plan
 ```
 
-**Run locally:** serve the repository root over HTTP, for example `python3 -m http.server` and open `http://localhost:8000/`. Opened straight from disk (`file://`), the pages can't fetch `data/`, so load a Scryfall bulk file on Setup instead.
+**Run locally:** serve the repository root over HTTP, for example `python3 -m http.server` and open `http://localhost:8000/`. Opened straight from disk (`file://`), the pages can't fetch `data/`, so load a Scryfall bulk file on Start instead.
 
 **Data files:** `.github/workflows/data.yml` runs every Monday at 06:23 UTC and on demand (Actions → Data files → Run workflow, with options to skip either source or force a Scryfall re-download). It:
 - slims Scryfall's Oracle Cards file into `data/oracle-cards-*.jsonl.gz` with `tools/scryfall-slim.js`

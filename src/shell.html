@@ -94,11 +94,20 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 .rail button svg{width:18px;height:18px;flex:none}
 .rail button:hover{background:var(--card-2);color:var(--ink)}
 .rail button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
-.rail .datacard{margin-top:16px;padding:10px 12px;border-radius:12px;background:var(--card-2);font-size:calc(12px*var(--fz));color:var(--muted);display:flex;flex-direction:column;gap:2px}
-.rail .datacard b{color:var(--ink);font-weight:600}
+.rail .morewrap{position:relative;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.rail .morebtn.on{color:var(--ink);font-weight:600}
+.rail .morelist{display:flex;flex-direction:column;gap:2px;margin-top:2px}
+.rail .morelist.hidden{display:none}
+.rail .morelist button{padding-left:22px}
+.pgnav{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:8px}
+.pgnav .subtabs{margin:0}
+.pgseg button{padding:5px 12px;font-size:calc(12.5px*var(--fz))}
+.st.stbtn{cursor:pointer;border:0;font:inherit;font-size:calc(11.5px*var(--fz))}
+body[data-page="start"] #kpis,body[data-page="start"] #scorebar,body[data-page="more"] #kpis,body[data-page="more"] #scorebar{display:none}
+body[data-view="setup"] #genBtn{display:none}
 .results{min-width:0;display:flex;flex-direction:column;gap:14px}
 /* KPI cards */
-.kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .kpi{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:var(--r);padding:14px 14px 13px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .kpi .kh{display:flex;align-items:center;gap:9px;margin-bottom:10px;min-width:0}
 .kpi .ki{width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;color:#fff;flex:none;box-shadow:inset 0 -2px 0 rgba(0,0,0,.12)}
@@ -114,7 +123,6 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 .kpi .kbal{display:flex;align-items:center;gap:10px;min-width:0;margin-top:-4px}.kpi .kbal .ks{white-space:normal;line-height:1.3}.kpi .kbal .ks b{color:var(--ink);font-weight:600}.kradar{flex:none}
 .mini{position:sticky;top:62px;z-index:30;display:flex;flex-wrap:wrap;gap:4px 18px;align-items:center;padding:8px 14px;border-radius:999px;background:var(--card);border:1px solid var(--line);box-shadow:var(--pop-shadow);font-size:calc(12.5px*var(--fz))}
 .mini span{color:var(--muted)}.mini b{font-variant-numeric:tabular-nums;margin-left:4px}.mini .bad b{color:var(--bad)}.mini .warn b{color:var(--warn)}
-@media (max-width:1500px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.kpi.bal{grid-column:span 2}}
 /* forms */
 .settings{display:flex;flex-direction:column;gap:14px;min-width:0}
 .page-h{display:flex;flex-direction:column;gap:4px;padding:4px 2px 0}
@@ -209,8 +217,13 @@ td.nm a{color:var(--ink);font-weight:500}
 tr.locked td.nm a{color:var(--accent)}
 :root:not([data-accent]) tr.locked td.nm a{color:var(--focus)}
 tr.alt td{background:var(--card-2)}
-.lockbtn{width:26px;height:26px;padding:0;text-align:center;border-radius:8px;font-size:calc(11px*var(--fz))}
-.lockbtn[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.lockmk{color:var(--accent);font-size:calc(10px*var(--fz));vertical-align:1px}
+.cp-acts{margin-top:8px;gap:6px}
+.an-head .kbal{display:inline-flex;align-items:center;gap:8px;font-weight:400}.an-head .kbal .note{line-height:1.25}
+.an-win{margin:-4px 0 12px}
+.an-go{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.an-go p{margin:0}
+.an-adv{margin:14px 0 0}
+details.an-more{margin-top:12px}details.an-more>summary{cursor:pointer;padding:6px 2px}
 .meter{display:grid;grid-template-columns:130px minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:calc(13px*var(--fz))}
 .meter .track{height:8px;background:var(--card-2);border-radius:999px;position:relative;overflow:hidden}
 .meter .fill{position:absolute;inset:0 auto 0 0;background:var(--bar);border-radius:999px}
@@ -299,21 +312,24 @@ table.swaps td{vertical-align:top}
 /* phone and tablet */
 @media (max-width:900px){
   .wrap{grid-template-columns:minmax(0,1fr)}
-  .rail{position:sticky;top:62px;z-index:35;flex-direction:row;overflow-x:auto;max-height:none;padding:6px;border-radius:999px;gap:2px;scrollbar-width:none}
-  .rail::-webkit-scrollbar{display:none}
-  .rail .hello,.rail .grp-h,.rail .datacard{display:none}
-  .rail button{width:auto;flex:0 0 auto;padding:8px 13px;border-radius:999px}
-  .rail button svg{display:none}
-  .mini{top:116px;border-radius:14px}
+  /* the rail becomes a bottom tab bar: five pages and More */
+  body[data-page]{padding-bottom:calc(68px + env(safe-area-inset-bottom))}
+  .rail{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:40;flex-direction:row;justify-content:space-around;max-height:none;overflow:visible;padding:4px 4px calc(4px + env(safe-area-inset-bottom));border-radius:0;border-width:1px 0 0;gap:0}
+  .rail .hello{display:none}
+  .rail>button,.rail .morebtn{flex:1 1 0;flex-direction:column;gap:2px;padding:7px 2px;border-radius:10px;font-size:calc(11px*var(--fz));justify-content:center}
+  .rail .morewrap{flex:1 1 0;display:flex;margin:0;padding:0;border:0}
+  .rail .morelist{position:absolute;right:4px;bottom:calc(100% + 6px);min-width:180px;padding:6px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--pop-shadow)}
+  .rail .morelist button{padding-left:10px}
+  .rail>button[aria-selected="true"]{background:transparent;color:var(--ink);font-weight:700;box-shadow:inset 0 2px 0 var(--accent)}
+  .rail>button[aria-selected="true"] svg{color:var(--accent)}
+  .mini{top:62px;border-radius:14px}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  .kpi.bal{grid-column:1/-1}
 }
 @media (max-width:640px){
   .brand h1 small,.bar .sources{display:none}
-  .kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .kpis{gap:8px}
   .kpi{padding:10px 10px 9px;border-radius:12px}.kpi .ki,.kpi .ks,.kpi .kbar{display:none}.kpi .kh{margin-bottom:2px}.kpi .kl{font-size:calc(11px*var(--fz));color:var(--muted);font-weight:500}
   .kpi .kv2 small{display:none}
-  .kpi.bal .ks{display:block}.kpi .kbal{margin-top:0}
   .bar{gap:8px}
   .kpi .kv2{font-size:calc(19px*var(--fz))}
   .panel{padding:14px}
@@ -456,7 +472,7 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
       <div><h3>Text size</h3><div class="seg" id="apSize"><button type="button" data-v="0.93">S</button><button type="button" data-v="1">M</button><button type="button" data-v="1.12">L</button><button type="button" data-v="1.25">XL</button></div></div>
       <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
       <div><h3>Card images</h3><div class="seg" id="apImg"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div><p class="note" style="margin-top:4px">On loads pictures from cards.scryfall.io when a card is shown. Everything else stays on this site.</p></div>
-      <p class="note">Keys: 1–9, 0 pages · G generate · / search · U undo · ? help</p>
+      <p class="note">Keys: 1–5 pages · G generate · / search · U undo · ? help</p>
     </div>
   </div>
   <button type="button" id="clearBtn" title="Clear the deck and settings and start over">Clear</button>
@@ -466,28 +482,19 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
 <div class="wrap">
 <nav class="tabs rail" role="tablist" aria-label="Pages" aria-orientation="vertical">
   <div class="hello">Commander<br>deck builder</div>
-  <div class="grp-h">Build</div>
-  <button role="tab" aria-selected="true" data-tab="setup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Setup</span></button>
-  <button role="tab" aria-selected="false" data-tab="import"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 10l5 5 5-5M5 21h14"/></svg><span>Import deck</span></button>
-  <button role="tab" aria-selected="false" data-tab="commanders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4 4 5-7 5 7 4-4-2 11H5z"/></svg><span>Commanders</span></button>
-  <button role="tab" aria-selected="false" data-tab="inspire"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1.1 1.3 1.1 2.2h5c0-.9.5-1.7 1.1-2.2A6 6 0 0 0 12 3z"/></svg><span>Inspire me</span></button>
-  <button role="tab" aria-selected="false" data-tab="surprise"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="16" cy="16" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="16" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="16" r="1.2" fill="currentColor"/></svg><span>Surprise me</span></button>
-  <button role="tab" aria-selected="false" data-tab="deck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg><span>Deck</span></button>
-  <button role="tab" aria-selected="false" data-tab="primer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
-  <button role="tab" aria-selected="false" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg><span>History</span></button>
-  <div class="grp-h">Evaluate</div>
-  <button role="tab" aria-selected="false" data-tab="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analysis</span></button>
-  <button role="tab" aria-selected="false" data-tab="changes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg><span>Changes</span></button>
-  <button role="tab" aria-selected="false" data-tab="hand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="9" height="13" rx="1.5" transform="rotate(-10 7.5 12.5)"/><rect x="11" y="5" width="9" height="13" rx="1.5" transform="rotate(8 15.5 11.5)"/></svg><span>Sample hand</span></button>
-  <button role="tab" aria-selected="false" data-tab="combos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7.5a4.5 4.5 0 1 0 0 9M15 7.5a4.5 4.5 0 1 1 0 9"/><path d="M9 7.5h6M9 16.5h6"/></svg><span>Combos</span></button>
-  <button role="tab" aria-selected="false" data-tab="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg><span>Stats</span></button>
-  <button role="tab" aria-selected="false" data-tab="role"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>By role</span></button>
-  <div class="grp-h">Output and checks</div>
-  <button role="tab" aria-selected="false" data-tab="export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>Export</span></button>
-  <button role="tab" aria-selected="false" data-tab="valid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span>Validation</span></button>
-  <button role="tab" aria-selected="false" data-tab="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>Log</span></button>
-  <button role="tab" aria-selected="false" data-tab="tests"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7 15h10"/></svg><span>Tests</span></button>
-  <div class="datacard" id="railData"></div>
+  <button role="tab" aria-selected="true" data-page="start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Start</span></button>
+  <button role="tab" aria-selected="false" data-page="deck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg><span>Deck</span></button>
+  <button role="tab" aria-selected="false" data-page="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analysis</span></button>
+  <button role="tab" aria-selected="false" data-page="improve"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg><span>Improve</span></button>
+  <button role="tab" aria-selected="false" data-page="primer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
+  <div class="morewrap">
+    <button type="button" id="moreBtn" class="morebtn" aria-expanded="false" aria-controls="moreList"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/></svg><span>More</span></button>
+    <div class="morelist hidden" id="moreList">
+      <button type="button" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg><span>History</span></button>
+      <button type="button" data-tab="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>Build log</span></button>
+      <button type="button" data-tab="tests"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7 15h10"/></svg><span>Tests</span></button>
+    </div>
+  </div>
 </nav>
 
 <main class="results">
@@ -502,8 +509,9 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
   <div class="prog hidden" id="genProg"><i></i></div>
   <div id="msgs"></div>
 
+  <div id="pageHead" class="page-h hidden"></div>
+
   <section class="settings" id="setupView" aria-label="Deck settings">
-    <div class="page-h"><h2>Build a deck</h2><p class="note">Choose a commander, a budget and a plan. Generate scores every legal card in the data and optimises the list inside your bracket and budget.</p></div>
     <div class="setup-grid">
       <div class="col">
 <details class="sec" open><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4 4 5-7 5 7 4-4-2 11H5z"/></svg></span>Commander<span class="hint"></span></summary><div class="body">
@@ -649,7 +657,6 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
 
   </section>
 
-  <div id="pageHead" class="page-h hidden"></div>
   <div id="summary" class="panel summary hidden"></div>
   <section class="panel" id="view"></section>
 </main>
