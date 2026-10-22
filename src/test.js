@@ -219,6 +219,10 @@ function legalCheck(R, label) {
     const DR = Dp.rows(PX, DS);
     const pkgAdds = new Set(DS.pkg.map(p => p.add.n));
     assert(DR.length === DS.pkg.length + DS.singles.filter(it => !it.adds.some(a => pkgAdds.has(a.n))).reduce((s, it) => s + it.adds.length, 0) && !DR.some(r => r.group === 'Deep search' && pkgAdds.has(r.add.n)) && DR.every(r => r.d && r.after && r.cut && r.add && /^(Package|Deep search)$/.test(r.group)), 'deep rows: one accept/deny row per swap, with the measured effect; no single repeats a package card');
+    // by card: up to one measured option per price band, each a new legal card gaining at least MIN_GAIN / 2, an add for at most 2 cards
+    const PCr = await Dp.perCard(PX, dctx, Dp.localExec, null, { g: 300 });
+    const useN = new Map(); for (const r of PCr.rows) for (const o of r.opts) useN.set(o.add.n, (useN.get(o.add.n) || 0) + 1);
+    assert(PCr.evals > 0 && PCr.rows.every(r => inDeckN.has(r.cut.n) && !keepN.has(r.cut.n) && r.opts.length <= 3 && new Set(r.opts.map(o => o.band)).size === r.opts.length && r.opts.every(o => !inDeckN.has(o.add.n) && o.add.leg === 'legal' && o.g >= Dp.MIN_GAIN / 2)) && [...useN.values()].every(k => k <= 2), 'by card: ' + PCr.rows.length + ' cards with options from ' + PCr.evals + ' measured swaps; one per band, new legal adds, each add for at most 2 cards');
     // mechanics graph: Oracle text → needs/makes; linked pairs
     const Mh = require('./mech.js'), mk = (n, low, ft, cmc, kw) => ({ n, low, ft: ft || 'Creature — Test', cmc: cmc == null ? 2 : cmc, kw: kw || [] });
     const outlet = mk('Synth Altar', 'sacrifice a creature: add {c}{c}.', 'Artifact', 3), drain = mk('Synth Artist', 'whenever this creature or another creature dies, target player loses 1 life and you gain 1 life.');

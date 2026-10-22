@@ -42,7 +42,8 @@ const Analysis = (function () {
           // a rock that doesn't untap (Mana Vault, Grim Monolith) is one-shot too
           if (/sacrifice (?:this|~|an?|another) /.test(cost) || /doesn't untap during your untap step/.test(low)) m.burst = net; else m.rampPerm = net;
           // mana with a condition: metalcraft, legendary creatures or planeswalkers; or an extra card as its cost
-          if (/metalcraft|three or more artifacts/.test(low)) m.cond = 'metal';
+          if (/tap an untapped creature you control/.test(cost)) m.cond = 'creature'; // Springleaf Drum
+          else if (/metalcraft|three or more artifacts/.test(low)) m.cond = 'metal';
           else if (/among legendary creatures and planeswalkers|legendary creature or planeswalker/.test(low)) m.cond = 'legend';
           if (/imprint — when [^.]* enters, you may exile a nonartifact, nonland card from your hand/.test(low)) m.pitch = 'spell';
           else if (/you may discard a land card instead/.test(low)) m.pitch = 'land';
@@ -297,7 +298,7 @@ const Analysis = (function () {
       };
       const lands = [], landsNext = [], rocks = [], dorksReady = [], dorksNext = [], condRocks = [];
       let nArt = 0, nLeg = 0; // artifacts cast (metalcraft) and legendary creatures or planeswalkers on the battlefield besides the commander
-      const condOk = k => k === 'metal' ? nArt >= 3 : k === 'legend' ? cmdCast || nLeg > 0 : true;
+      const condOk = k => k === 'metal' ? nArt >= 3 : k === 'legend' ? cmdCast || nLeg > 0 : k === 'creature' ? board.length > 0 : true;
       let landsPlayed = 0, cmdCast = false, extraDrops = 0, engines = 0, gDrawn = 0;
       let gSpent = 0, gAvail = 0, gSpells = 0, rampLandsNext = 0;
       const board = [], tokenEngines = []; let dmgPrev = 0, dmg = 0, killT = 0, prevAvail = 0, anthem = 0, pump = 0, trample = false, drainTurn = 0, drainEnter = 0; const lineT = lines.map(() => 0);
@@ -642,14 +643,22 @@ const Analysis = (function () {
     const uniq = new Set();
     const take = (pred) => { const out = []; for (const e of nonland) { if (uniq.has(e.c)) continue; if (pred(e.c)) { uniq.add(e.c); out.push(e.c); } } return out; };
     // Speed: fast mana weighted most, then rocks, dorks, land ramp, treasure, cost reducers (one bucket per card)
-    const sFast = take(c => A(c).flags.fast);
+    // fast mana by what it makes in the simulation's mana model: lasting mana from the turn it is cast counts fully; conditional
+    // moxen (Mox Opal unless the deck has 15+ artifacts, Mox Amber) and one-shot mana (rituals, Lotus Petal, Mana Vault) less;
+    // a multikicker rock (Everflowing Chalice) is a 2-MV rock; fast-flagged cards that make no net mana (Lion's Eye Diamond) none
+    const nArtifacts = nonland.filter(e => /\bArtifact\b/.test(e.c.ft)).reduce((s, e) => s + e.qty, 0);
+    const fastMM = c => { const m = manaModel(c); return A(c).flags.fast && !/\bmultikicker\b/.test(c.low) ? m : null; };
+    const sFast = take(c => { const m = fastMM(c); return !!m && m.rampPerm > 0 && (!m.cond || (m.cond === 'metal' && nArtifacts >= 15)); });
+    const sFastC = take(c => { const m = fastMM(c); return !!m && m.rampPerm > 0 && !!m.cond; });
+    const sBurst2 = take(c => { const m = fastMM(c); return !!m && m.burst - Math.round(c.cmc || 0) >= 2; });
+    const sBurst1 = take(c => { const m = fastMM(c); return !!m && m.burst - Math.round(c.cmc || 0) >= 1; });
     const sRock2 = take(c => manaModel(c).rampPerm > 0 && !manaModel(c).dork && c.cmc <= 2);
     const sDork = take(c => manaModel(c).dork);
     const sRock3 = take(c => manaModel(c).rampPerm > 0 && c.cmc >= 3);
     const sLand = take(c => manaModel(c).rampLand > 0 || manaModel(c).extraDrop > 0);
     const sTreas = take(c => A(c).rules.ramp && A(c).rules.ramp.includes('ramp-treasure'));
     const sRed = take(c => /\bspells? (?:you cast )?(?:[^.]{0,40})?cost \{\d\} less|costs? \{\d\} less to cast/.test(c.low) && !A(c).flags.stax);
-    const vSpeed = vec('speed', 'Speed', 18, [comp('Fast mana (≤1 MV)', sFast.length, 3, sFast), comp('Mana rocks ≤2 MV', sRock2.length, 1.5, sRock2), comp('Mana dorks', sDork.length, 1.2, sDork), comp('Land ramp / extra drops', sLand.length, 1, sLand), comp('Cost reducers', sRed.length, 1, sRed), comp('Rocks ≥3 MV', sRock3.length, 0.8, sRock3), comp('Treasure makers', sTreas.length, 0.6, sTreas)]);
+    const vSpeed = vec('speed', 'Speed', 18, [comp('Fast mana (≤1 MV)', sFast.length, 3, sFast), comp('Conditional fast mana', sFastC.length, 1.5, sFastC), comp('One-shot mana, net 2+', sBurst2.length, 1.2, sBurst2), comp('One-shot mana, net 1', sBurst1.length, 0.6, sBurst1), comp('Mana rocks ≤2 MV', sRock2.length, 1.5, sRock2), comp('Mana dorks', sDork.length, 1.2, sDork), comp('Land ramp / extra drops', sLand.length, 1, sLand), comp('Cost reducers', sRed.length, 1, sRed), comp('Rocks ≥3 MV', sRock3.length, 0.8, sRock3), comp('Treasure makers', sTreas.length, 0.6, sTreas)]);
     // Consistency: tutors ≈ repeatable draw engines > wheels > burst draw > cantrips
     uniq.clear();
     const cTutE = take(c => A(c).flags.tutor && c.cmc <= 2), cTut = take(c => A(c).flags.tutor);
