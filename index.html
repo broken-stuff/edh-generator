@@ -2415,8 +2415,26 @@ const Analysis = (function () {
   const EVN = ['spell.any', 'spell.noncreature', 'spell.creature', 'creature.enters', 'token.enters', 'artifact.enters', 'enchantment.enters', 'land.enters', 'card.draw', 'life.gain', 'life.loss', 'counter.placed', 'creature.dies', 'sacrifice', 'attack', 'damage.player', 'upkeep', 'end', 'combat', 'gy.enter'];
   const EVI = Object.fromEntries(EVN.map((k, i) => [k, i])), EV = EVI;
   const EF = { card: 1, mana: 2, 'token.creature': 4, 'token.treasure': 8, 'token.artifact': 512, drain: 16, life: 32, damage: 64, counter: 128, 'gy.fill': 256 };
-  const TRIG_TARGET = 8; // trigger output by T6 of themed generated decks: 5.7–10.3 (Atraxa, Krenko, Meren, Edgar, Talrand, Omnath)
+  // trigger output by T6 of themed generated decks: 5.7–10.3 (Atraxa, Krenko, Meren, Edgar, Talrand, Omnath). Running the economy to
+  // T8 (target 22) made no measurable difference on the recovery benchmark (filler cut −0.7 points, paired SE 1.6) at +11% CPU.
+  const TRIG_T = 6, TRIG_TARGET = 8;
   const CEDH_SCORE = 17; // Bracket 5 cut on game changers + (tutors + fast mana) / 2; see minBracket
+  // Opponent profiles per bracket (tools/opp-profile.js on the EDHREC average decks in data/reference/, 60 per bracket): mean
+  // spot removal, counterspells and board wipes per deck, and quantiles (0, 5%, …, 100%) of their projected goldfish win turn.
+  // shift (tools/opp-shift.js, 20 decks per bracket) is added to the opponents' win turn so that an average deck of the bracket
+  // wins 1 game in 4 against three of the same bracket; it stands for interaction the model leaves out.
+  const OPP = {
+    1: { shift: 1.09, removal: 7.3, counter: 1.2, wipes: 1.3, q: [6.27, 9.09, 10.25, 11.21, 11.84, 12.52, 13.34, 14.14, 14.83, 15.61, 16.45, 17.45, 18.44, 19.56, 21.05, 22.69, 24.58, 27.15, 30.16, 34.39, 40] },
+    2: { shift: 0.78, removal: 7.5, counter: 1.3, wipes: 1.4, q: [5.8, 8.78, 10.04, 10.97, 11.67, 12.42, 13.22, 13.98, 14.69, 15.53, 16.35, 17.24, 18.34, 19.48, 20.82, 22.48, 24.44, 26.87, 29.83, 34.21, 40] },
+    3: { shift: -0.66, removal: 7.2, counter: 1.7, wipes: 1.4, q: [5.05, 7.72, 8.91, 9.87, 10.8, 11.54, 12.33, 13.01, 13.89, 14.82, 15.69, 16.68, 17.88, 19.22, 20.6, 22.19, 24.14, 26.42, 29.28, 33.82, 40] },
+    4: { shift: -1.72, removal: 6.1, counter: 2.4, wipes: 1.4, q: [3.62, 5.29, 6.18, 6.82, 7.45, 8.08, 8.69, 9.2, 10.1, 10.76, 11.47, 12.13, 12.89, 13.76, 15.29, 17.31, 19.39, 22.17, 25.8, 31.15, 40] },
+    5: { shift: -2.03, removal: 5, counter: 4.5, wipes: 0.6, q: [2.33, 3.25, 3.7, 4.13, 4.58, 4.95, 5.3, 5.63, 6.15, 6.48, 6.92, 7.29, 8.18, 9.26, 10.25, 11.39, 12.37, 13.87, 16.27, 23.17, 40] }
+  };
+  const OPP_HELD = 2, OPP_DRAW = 1.2, ANSWER_DELAY = 2; // cards each opponent holds up; cards seen a turn; turns an answer buys
+  // Swap objective: + TABLE_W × table win % (see snap); table games = games / TABLE_DIV. On the recovery benchmark a weight of 1 or
+  // 0.4 halved the removal and protection cards cut by mistake, but lowered filler cut by 1.8–2.8 points and the objective's
+  // filler-vs-original AUC from 0.722 to 0.682 (0.712 with 4× the table games), at +36–67% CPU; so the table win is shown, not scored.
+  const TABLE_W = 0, TABLE_DIV = 4;
   const effBits = list => list.reduce((b, k) => b | (EF[k] || 0), 0);
   const SMC = new WeakMap();
   function simModel(c, CI) {
@@ -2434,6 +2452,9 @@ const Analysis = (function () {
     s.engine = a.roles.draw && isPerm(c) && /whenever|at the beginning of/.test(c.low) ? 1 : 0;
     s.draw = s.engine ? 0 : Math.min(draw, 7);
     s.tutor = !!a.flags.tutor;
+    s.inter = a.rules.removal && a.rules.removal.includes('rm-counter') ? 'ctr' : a.roles.wipes ? 'wipe' : a.roles.removal ? 'rm' : null;
+    s.prot = a.roles.protection ? (isInstantSpeed(c) && !isPerm(c) ? 'held' : 'perm') : null;
+    s.oneSided = s.inter === 'wipe' && /creatures? (?:your opponents|an opponent|you don't) control|nontoken creatures? (?:your opponents|you don't)/.test(c.low);
     s.creature = a.creature && !m.dork; s.pow = a.creature && c.pow != null ? Math.max(0, c.pow) : 0;
     s.haste = c.kw.includes('haste');
     // damage sources: token makers (on entry, each turn, or a tap ability), static anthems, one-turn overruns, drains to each opponent
@@ -2514,7 +2535,19 @@ const Analysis = (function () {
     const cmdNames = new Set(cmds.map(c => E.nameKey(c.n)));
     const lines = (sopt.lines || []).map(l => ({ keys: l.cards.map(n => E.nameKey(n)), cost: l.cost || 0, byT: new Array(T + 2).fill(0), turns: [] }));
     const pieceKeys = new Set(lines.flatMap(l => l.keys));
+    const projTurns = [];
     let mulls = 0, mulls2 = 0, keep7 = 0, missT4 = 0, spent6 = 0, avail6 = 0, spells6 = 0, cmdOnCurve = 0; const cmdTurns = [], killTurns = [], winTurns = [], comboTurns = [];
+    // table mode (sopt.opp: a profile from OPP): three opponents with their own clock (win turn drawn from the profile), spot
+    // removal, wipes and counters; our removal and counters are held and spent when an opponent is a turn from winning, which
+    // delays that opponent by ANSWER_DELAY turns (a wipe: every opponent within two turns by one). Opponent events come from a
+    // second random stream with a fixed number of draws per turn, so every list meets the same opponents (common random numbers).
+    const OP = sopt.opp || null, rng2 = mulberry32((seed ^ 0x9e3779b9) >>> 0);
+    const held = k => 1 - Math.pow(1 - k / 99, OPP_HELD * 3);
+    const pRm = OP ? OP.removal * OPP_DRAW / 99 : 0, pWipe = OP ? 1 - Math.pow(1 - OP.wipes * OPP_DRAW / 99, 3) : 0;
+    const pCtr = OP ? held(OP.counter) / 2 : 0, pAns = OP ? (OP.removal + OP.counter) / 99 : 0;
+    // an opponent's win turn: their profile's quantile function at a uniform draw, interpolated (fractional turns)
+    const oppTurn = () => { const u = rng2() * (OP.q.length - 1), i = Math.floor(u); return (OP.shift || 0) + OP.q[i] + (OP.q[Math.min(i + 1, OP.q.length - 1)] - OP.q[i]) * (u - i); };
+    let tableWins = 0, tableAns = 0, tableOppAns = 0;
     let flood = 0, screw = 0; const tgT = { fires: 0, cards: 0, mana: 0, dmg: 0, tok: 0, ctr: 0 };
     const isL = c => M(c).land;
     const keepable = h => { const l = h.filter(isL).length; return l >= 2 && l <= 5 && h.some(c => !isL(c) && M(c).cmc <= 3); };
@@ -2549,21 +2582,27 @@ const Analysis = (function () {
       const lands = [], landsNext = [], rocks = [], dorksReady = [], dorksNext = [];
       let landsPlayed = 0, cmdCast = false, extraDrops = 0, engines = 0, gDrawn = 0;
       let gSpent = 0, gAvail = 0, gSpells = 0, rampLandsNext = 0;
-      const board = [], tokenEngines = []; let dmg = 0, killT = 0, prevAvail = 0, anthem = 0, pump = 0, trample = false, drainTurn = 0, drainEnter = 0; const lineT = lines.map(() => 0);
+      const board = [], tokenEngines = []; let dmgPrev = 0, dmg = 0, killT = 0, prevAvail = 0, anthem = 0, pump = 0, trample = false, drainTurn = 0, drainEnter = 0; const lineT = lines.map(() => 0);
+      const oppW = OP ? [oppTurn(), oppTurn(), oppTurn()] : null, lineBlock = lines.map(() => 0); let leftSrc = [], tax = 0, cmdHeard = false, rRm = 1, rWipe = 1, rCtr = 1, ctrUsed = false, protPerm = 0;
+      // each opponent holds at most one answer for us (spot removal or a counter); it starts with one with the chance of one in 7 cards
+      const oppHold = OP ? [0, 1, 2].map(() => { let k = 0; for (let i = 0; i < 7; i++) if (rng2() < pAns) k = 1; return k; }) : null;
+      // an opponent's answer to our win this turn: our held protection stops it, else it costs us ANSWER_DELAY turns
+      const oppAnswer = () => { const i = oppHold.indexOf(1); if (i < 0) return false; oppHold[i] = 0; tableOppAns++; const p = protect(); return !p; };
+      const protect = () => { if (protPerm) return true; const h = hand.find(c => M(c).prot === 'held' && pay(leftSrc, M(c).cmc, M(c).pips)); if (!h) return false; hand.splice(hand.indexOf(h), 1); return true; };
       // trigger economy: listeners per event; each firing resolves its effect bits (a card, a mana, a 1/1 token, a Treasure,
       // a drain of 1 per opponent, life, 1 damage, a +1/+1 counter, a card to the graveyard). At most TB firings per turn.
       const lis = EVN.map(() => []); let tb = 0, curSrc = null, outlets = 0;
       const fire = (ev, n) => { const L = lis[ev]; if (!L.length) return; for (let r = 0; r < (n || 1); r++) for (let q = 0; q < L.length; q++) { if (tb <= 0) return; tb--; resolve(L[q]); } };
       const resolve = ef => {
-        if (tCur <= 6) tg.fires++;
-        if (ef & 1) { if (tCur <= 6) tg.cards++; draw(1); }
-        if (ef & 2) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); }
-        if (ef & 4) for (let k = 0; k <= ampTok; k++) { if (tCur <= 6) tg.tok++; enter({ pow: 1, ev: false, t: tCur + 1, tok: true }); }
-        if (ef & 8) { if (tCur <= 6) tg.mana++; if (curSrc) curSrc.push(ciMask); fire(EV['artifact.enters']); fire(EV['token.enters']); }
-        if (ef & 16) { if (tCur <= 6) tg.dmg += 3; fire(EV['life.loss']); }
+        if (tCur <= TRIG_T) tg.fires++;
+        if (ef & 1) { if (tCur <= TRIG_T) tg.cards++; draw(1); }
+        if (ef & 2) { if (tCur <= TRIG_T) tg.mana++; if (curSrc) curSrc.push(ciMask); }
+        if (ef & 4) for (let k = 0; k <= ampTok; k++) { if (tCur <= TRIG_T) tg.tok++; enter({ pow: 1, ev: false, t: tCur + 1, tok: true }); }
+        if (ef & 8) { if (tCur <= TRIG_T) tg.mana++; if (curSrc) curSrc.push(ciMask); fire(EV['artifact.enters']); fire(EV['token.enters']); }
+        if (ef & 16) { if (tCur <= TRIG_T) tg.dmg += 3; fire(EV['life.loss']); }
         if (ef & 32) fire(EV['life.gain']);
-        if (ef & 64) { if (tCur <= 6) tg.dmg += 1; fire(EV['life.loss']); }
-        if (ef & 128) { const n = 1 + ampCtr; if (board.length) board[board.length - 1].pow += n; if (tCur <= 6) tg.ctr += n; fire(EV['counter.placed']); }
+        if (ef & 64) { if (tCur <= TRIG_T) tg.dmg += 1; fire(EV['life.loss']); }
+        if (ef & 128) { const n = 1 + ampCtr; if (board.length) board[board.length - 1].pow += n; if (tCur <= TRIG_T) tg.ctr += n; fire(EV['counter.placed']); }
         if (ef & 256) fire(EV['gy.enter']);
         if (ef & 512 && !(ef & 12)) { fire(EV['artifact.enters']); fire(EV['token.enters']); }
       };
@@ -2578,7 +2617,8 @@ const Analysis = (function () {
       const enter = b => { board.push(b); dmg += drainEnter; fire(EV['creature.enters']); if (b.tok) fire(EV['token.enters']); };
       started = true;
       for (let t = 1; t <= T; t++) {
-        const h0 = pos; tCur = t; tb = t <= 6 ? 30 : 0; curSrc = null; // triggers are counted to turn 6, so the economy runs only that far
+        const h0 = pos; tCur = t; tb = t <= TRIG_T ? 30 : 0; curSrc = null; // triggers are counted to turn TRIG_T, so the economy runs only that far
+        if (OP) { rRm = rng2(); rWipe = rng2(); rCtr = rng2(); ctrUsed = false; for (let i = 0; i < 3; i++) if (rng2() < pAns * OPP_DRAW) oppHold[i] = 1; }
         if (t > 1) draw(1 + engines);
         fire(EV.upkeep);
         for (const m of landsNext) lands.push(m); landsNext.length = 0;
@@ -2593,13 +2633,14 @@ const Analysis = (function () {
           fire(EV['land.enters']);
         }
         if (landsPlayed > before) dropT[t]++;
-        const src = lands.concat(rocks, dorksReady); for (let k = 0; k < Math.min(reduce, 3); k++) src.push(ciMask); const avail = src.length; curSrc = src;
+        const src = lands.concat(rocks, dorksReady); for (let k = 0; k < Math.min(reduce, 3); k++) src.push(ciMask); const avail = src.length; curSrc = src; leftSrc = src;
         mana[t] += avail; landsT[t] += lands.length + landsNext.length;
         let spentN = avail;
         const cast = c => {
           const m = M(c); if (!pay(src, m.cmc, m.pips)) return false;
           hand.splice(hand.indexOf(c), 1); spellsT[t]++; if (t <= 6) gSpells++;
           fire(EV['spell.any']); fire(m.isCre ? EV['spell.creature'] : EV['spell.noncreature']);
+          if (OP && !ctrUsed && m.cmc >= 4) { ctrUsed = true; if (rCtr < pCtr) return true; } // the first big spell of the turn can be countered
           if (m.rampPerm) { const mk = m.mask || 0; for (let k = 0; k < m.rampPerm; k++) { if (m.dork) dorksNext.push(mk); else { rocks.push(mk); src.push(mk); } } }
           if (m.rampLand) { rampLandsNext += m.rampLand; fire(EV['land.enters'], m.rampLand); } // fetched lands enter now (tapped): landfall
           if (m.extraDrop) extraDrops = Math.max(extraDrops, m.extraDrop);
@@ -2611,23 +2652,35 @@ const Analysis = (function () {
           if (m.anthem) anthem += m.anthem;
           if (m.overrun) { pump += m.overrun < 0 ? board.length : m.overrun; if (m.overrunTrample) trample = true; }
           if (m.drain) { if (m.drain.per === 'once') dmg += 3 * m.drain.n; else if (m.drain.per === 'turn') drainTurn += 3 * m.drain.n; else drainEnter += 3 * m.drain.n; }
+          if (m.prot === 'perm') protPerm++;
           listen(m); if (m.artifact) fire(EV['artifact.enters']); if (m.ench) fire(EV['enchantment.enters']); if (m.etb) resolve(m.etb);
           return true;
         };
         // 1) ramp, cheapest first; 2) tutors; 3) commander; 4) other spells, largest that fits first (repeat while something is cast)
         for (const c of hand.filter(c => !isL(c) && M(c).ramp).sort((a, b) => M(a).cmc - M(b).cmc)) cast(c);
         for (const c of hand.filter(c => !isL(c) && M(c).tutor).sort((a, b) => M(a).cmc - M(b).cmc)) cast(c);
-        if (cmd && !cmdCast && pay(src, cmdM.cmc, cmdM.pips)) {
-          cmdCast = true; cmdTurns.push(t); if (t <= Math.max(1, cmdCmc)) cmdOnCurve++;
-          if (cmdM.creature) enter({ pow: cmdM.pow, ev: cmdM.evasive, t: cmdM.haste ? t : t + 1 });
-          if (cmdM.tokens) tokenEngines.push(cmdM.tokens);
-          if (cmdM.anthem) anthem += cmdM.anthem;
-          listen(cmdM); if (cmdM.etb) resolve(cmdM.etb);
+        if (cmd && !cmdCast && pay(src, cmdM.cmc + tax, cmdM.pips)) {
+          cmdCast = true; if (!cmdHeard) { cmdTurns.push(t); if (t <= Math.max(1, cmdCmc)) cmdOnCurve++; }
+          if (cmdM.creature) enter({ pow: cmdM.pow, ev: cmdM.evasive, t: cmdM.haste ? t : t + 1, cmd: true });
+          if (!cmdHeard) { if (cmdM.tokens) tokenEngines.push(cmdM.tokens); if (cmdM.anthem) anthem += cmdM.anthem; listen(cmdM); cmdHeard = true; }
+          if (cmdM.etb) resolve(cmdM.etb);
         }
         // re-sort only when a cast drew or tutored cards
-        for (let again = true; again && src.length;) { again = false; const h1 = hand.length, list = hand.filter(c => !isL(c)).sort((a, b) => M(b).cmc - M(a).cmc); for (const c of list) { if (!src.length) break; if (M(c).cmc <= src.length && cast(c) && hand.length >= h1) { again = true; break; } } }
+        for (let again = true; again && src.length;) { again = false; const h1 = hand.length, list = hand.filter(c => !isL(c) && !(OP && (M(c).inter || M(c).prot === 'held'))).sort((a, b) => M(b).cmc - M(a).cmc); for (const c of list) { if (!src.length) break; if (M(c).cmc <= src.length && cast(c) && hand.length >= h1) { again = true; break; } } }
         // activated abilities with mana left: one loyalty ability per planeswalker, tap abilities once, others up to twice
         if (tb > 0) for (const a of acts) { if (a.sac) continue; const times = a.loy || a.tap ? 1 : 2; for (let r = 0; r < times; r++) { if (a.mana && !pay(src, a.mana, [])) break; resolve(a.ef); } }
+        // table mode: answer an opponent who would win next turn (counter or spot removal, cheapest first; else a wipe)
+        if (OP) for (let k = 0; k < 2; k++) {
+          let j = 0; for (let i = 1; i < 3; i++) if (oppW[i] < oppW[j]) j = i;
+          if (oppW[j] > t + 1) break;
+          const ans = hand.filter(c => M(c).inter === 'ctr' || M(c).inter === 'rm').sort((a, b) => M(a).cmc - M(b).cmc).find(c => pay(src, M(c).cmc, M(c).pips));
+          if (ans) { hand.splice(hand.indexOf(ans), 1); fire(EV['spell.any']); fire(EV['spell.noncreature']); oppW[j] += ANSWER_DELAY; tableAns++; continue; }
+          const wp = hand.filter(c => M(c).inter === 'wipe').sort((a, b) => M(a).cmc - M(b).cmc).find(c => pay(src, M(c).cmc, M(c).pips));
+          if (!wp) break;
+          hand.splice(hand.indexOf(wp), 1); fire(EV['spell.any']); fire(EV['spell.noncreature']); tableAns++;
+          for (let i = 0; i < 3; i++) if (oppW[i] <= t + 2) oppW[i] += 1;
+          if (!M(wp).oneSided) { for (const b of board) if (b.cmd) { cmdCast = false; tax += 2; } for (let i = 0; i < board.length; i++) fire(EV['creature.dies']); board.length = 0; }
+        }
         spentN -= src.length;
         // token engines make their tokens; then combat (anthems, this turn's overrun) and drains
         for (const e of tokenEngines) for (let k = 0; k < e.n; k++) enter({ pow: e.pow, ev: e.ev, t: t + 1 });
@@ -2635,15 +2688,22 @@ const Analysis = (function () {
         { let na = 0, ne = 0; for (const b of board) if (b.t <= t) { na++; if (b.ev) ne++; } if (na) fire(EV.attack, Math.min(na, 5)); if (ne) fire(EV['damage.player'], Math.min(ne, 3)); }
         for (const b of board) if (b.t <= t) { const p = b.pow + anthem + pump; if (p > 0) dmg += b.ev || trample ? p : p / 2; }
         dmg += drainTurn; pump = 0; trample = false;
-        if (!killT && dmg >= KILL) killT = t;
+        if (!killT && dmg >= KILL) { if (OP && oppAnswer()) dmg -= ANSWER_DELAY * Math.max(1, dmg - dmgPrev); else killT = t; }
+        dmgPrev = dmg;
         if (t <= TR) dmgT[t] += dmg;
         // combo lines
         const two = prevAvail + avail; prevAvail = avail;
-        lines.forEach((l, i) => { if (!lineT[i] && l.keys.every(k => seen.has(k) || (cmdNames.has(k) && cmdCast)) && two >= l.cost) lineT[i] = t; });
+        lines.forEach((l, i) => { if (!lineT[i] && t >= lineBlock[i] && l.keys.every(k => seen.has(k) || (cmdNames.has(k) && cmdCast)) && two >= l.cost) { if (OP && oppAnswer()) lineBlock[i] = t + ANSWER_DELAY; else lineT[i] = t; } });
         // end step: with a sacrifice outlet and a death payoff, tokens are sacrificed (up to 6); then end-step triggers
         const sacEf = acts.find(a => a.sac && !a.mana);
         if (outlets && (lis[EV['creature.dies']].length || sacEf)) { let k = 0; for (let i = board.length - 1; i >= 0 && k < 6; i--) if (board[i].tok) { board.splice(i, 1); k++; fire(EV['creature.dies']); fire(EV.sacrifice); if (sacEf && tb > 0) { tb--; resolve(sacEf.ef); } } }
         fire(EV.end); curSrc = null;
+        // table mode: opponents' turns. Spot removal takes our biggest creature (the commander returns with +2 tax); a wipe takes all
+        if (OP && board.length) {
+          const gone = b => { if (b.cmd) { cmdCast = false; tax += 2; } fire(EV['creature.dies']); };
+          if (t >= 4 && rWipe < pWipe) { if (!protect()) { for (const b of board) gone(b); board.length = 0; } }
+          else if (t >= 2 && rRm < pRm && !protPerm) { let bi = -1, bp = -1; board.forEach((b, i) => { const v = b.pow + (b.cmd ? 3 : 0); if (!b.tok && v > bp) { bp = v; bi = i; } }); if (bi >= 0) gone(board.splice(bi, 1)[0]); }
+        }
         spentT[t] += spentN; handT[t] += hand.length; drawnT[t] += pos - h0; if (cmdCast) cmdByT[t]++;
         if (t <= 6) { gSpent += spentN; gAvail += avail; }
         if (t === 4 && landsPlayed < 4) missT4++;
@@ -2654,6 +2714,9 @@ const Analysis = (function () {
       lines.forEach((l, i) => { const x = lineT[i] || T + 1; l.turns.push(x); for (let t = x; t <= T; t++) l.byT[t]++; });
       const ct = lineT.reduce((m, x) => x ? Math.min(m, x) : m, T + 1); comboTurns.push(ct);
       winTurns.push(Math.min(killT || T + 1, ct));
+      // projected win turn: the turn we won, else the damage clock extended at its average rate (at most 40)
+      const proj = Math.min(killT || 99, ct <= T ? ct : 99, dmg > 0 ? Math.max(T + 1, T * KILL / dmg) : 40, 40); projTurns.push(proj);
+      if (OP && proj <= Math.min(...oppW)) tableWins++; // on the play: our turn t comes before the opponents' turn t
       spent6 += gSpent; avail6 += gAvail; spells6 += gSpells;
       for (const k in tg) tgT[k] += tg[k];
     }
@@ -2665,11 +2728,13 @@ const Analysis = (function () {
       perTurn: Array.from({ length: TR }, (_, i) => { const t = i + 1; return { t, lands: landsT[t] / games, mana: mana[t] / games, spent: spentT[t] / games, spells: spellsT[t] / games, hand: handT[t] / games, drawn: drawnT[t] / games, dmg: dmgT[t] / games, pDrop: dropT[t] / games, pCmd: cmdByT[t] / games }; }),
       keep7: keep7 / games, mulligan: mulls / games, mulligan2: mulls2 / games, missLandDropT4: missT4 / games, flood6: flood / games, screw6: screw / games,
       efficiency6: avail6 ? spent6 / avail6 : 0, spellsBy6: spells6 / games,
-      // triggered-ability output by turn 6 per game; value = cards + mana + damage / 3 + (tokens + counters) / 2
+      // triggered-ability output by turn TRIG_T per game; value = cards + mana + damage / 3 + (tokens + counters) / 2
       trig: Object.assign(Object.fromEntries(Object.entries(tgT).map(([k, v]) => [k, v / games])), { value: (tgT.cards + tgT.mana + tgT.dmg / 3 + (tgT.tok + tgT.ctr) / 2) / games }),
       cmdCmc, cmdMedianTurn: cmdTurns.length ? quant(cmdTurns, 0.5) : null, cmdOnCurve: cmds.length ? cmdOnCurve / games : null,
       kill: Object.assign(dist(killTurns), { life: KILL }), combo: lines.length ? dist(comboTurns) : null, win: dist(winTurns),
-      lines: lines.map(l => ({ median: quant(srt(l.turns), 0.5), byT: l.byT.map(x => x / games) }))
+      lines: lines.map(l => ({ median: quant(srt(l.turns), 0.5), byT: l.byT.map(x => x / games) })),
+      proj: Array.from({ length: 21 }, (_, i) => +quant(srt(projTurns), Math.min(0.999, i / 20)).toFixed(2)),
+      table: OP ? { win: tableWins / games, answers: tableAns / games, oppAnswers: tableOppAns / games } : null
     };
   }
 
@@ -2748,6 +2813,8 @@ const Analysis = (function () {
     const seed = E.hashStr(all.map(e => e.c.n).sort().join('|') + '#' + cmds.map(c => c.n).join('|'));
     const sim = simulate(all, cmds, opts.games || 1500, opts.seed != null ? opts.seed : seed, { CI, lines: simLines });
     sim.lineDefs = simLines;
+    // table pass: the same deck against three opponents of the chosen bracket (half the games; same seed)
+    if (opts.table !== false) { const bT = Math.min(5, Math.max(1, +((opts.settings && opts.settings.bracket) || 3))); sim.table = Object.assign(simulate(all, cmds, Math.ceil((opts.games || 1500) / TABLE_DIV), opts.seed != null ? opts.seed : seed, { CI, lines: simLines, opp: opts.oppProfile || OPP[bT] }).table, { bracket: bT }); }
     /* exact odds of having drawn at least one card of a role by turn t (7-card hand + one draw per turn after the first) */
     const roleN = { ramp: count(c => A(c).roles.ramp && !A(c).isLand), draw: role('draw'), removal: role('removal'), wipes: role('wipes'), protection: role('protection'), wincon: role('wincon') };
     for (const row of sim.perTurn) { const seen = Math.min(deckSize, 7 + row.t - 1); row.seen = seen; row.pRole = {}; for (const k in roleN) row.pRole[k] = atLeast(deckSize, roleN[k], seen, 1); row.expLandsSeen = seen * nLands / deckSize; }
@@ -3201,11 +3268,11 @@ const Analysis = (function () {
     }
     return out;
   }
-  const snap = X => ({ exact: 10 * X.power.plExact + X.axes.reduce((s, a) => s + a.score, 0) / X.axes.length, src: Object.fromEntries(X.mana.colors.map(c => [c.color, c.landSources])), warn: X.mana.colors.filter(c => c.warn).length, castLow: X.mana.cast.filter(r => r.p < CAST_OK).length, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, typical: X.power.win.typical, keep: X.sim.keep7, t4: X.sim.manaByTurn[4], v: Object.fromEntries(X.power.vectors.map(v => [v.key, v.score])), axes: Object.fromEntries(X.axes.map(a => [a.key, a.score])) });
+  const snap = X => ({ exact: 10 * X.power.plExact + X.axes.reduce((s, a) => s + a.score, 0) / X.axes.length + (X.sim.table ? TABLE_W * 100 * X.sim.table.win : 0), table: X.sim.table ? X.sim.table.win : null, src: Object.fromEntries(X.mana.colors.map(c => [c.color, c.landSources])), warn: X.mana.colors.filter(c => c.warn).length, castLow: X.mana.cast.filter(r => r.p < CAST_OK).length, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, typical: X.power.win.typical, keep: X.sim.keep7, t4: X.sim.manaByTurn[4], v: Object.fromEntries(X.power.vectors.map(v => [v.key, v.score])), axes: Object.fromEntries(X.axes.map(a => [a.key, a.score])) });
   function impactPrep(db, deck, cmds, opts) {
     const games = opts.impactGames || 5000;
     const seed = E.hashStr('impact#' + cmds.map(c => c.n).join('|'));
-    const o = Object.assign({}, opts, { games, seed, almost: null });
+    const o = Object.assign({ table: TABLE_W > 0 }, opts, { games, seed, almost: null });
     return { db: null, deck, cmds, opts: o, games, base: snap(run(null, deck, cmds, o)) }; // db only feeds the add pool, which snap() doesn't read
   }
   // a set of swaps applied together, scored against prep.base; combos: the deck's combos after the swaps (null = none known)
@@ -3298,7 +3365,7 @@ const Analysis = (function () {
     return { cmds: [], how: null, main, missing: [], candidates: cand };
   }
 
-  return { run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
+  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;
 </script>
@@ -3322,9 +3389,9 @@ const Deep = (function () {
   const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
   const A = c => E.analyze(c);
   const G1 = 1500, G2 = 5000, MIN_GAIN = 0.5, REFINE_GAIN = 0.3;
-  const DEF = { g1: G1, g2: G2, cuts: 24, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1, beam: 1 };
+  const DEF = { g1: G1, g2: G2, cuts: 24, cutsRare: 8, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1, beam: 1 };
   // thorough (~1 min on 4 cores): a wider screen, more cuts, 80 confirmed, a three-wide beam over the package, a wider refinement
-  const WIDE = Object.assign({}, DEF, { cuts: 30, nonland: 500, popular: 60, perRole: 6, perVector: 6, lands: 30, single: 40, pairs: 24, confirm: 80, rounds: 10, lead: 16, altFor: 3, refineAdds: 6, refineCuts: 2, beam: 3 });
+  const WIDE = Object.assign({}, DEF, { cuts: 30, cutsRare: 10, nonland: 500, popular: 60, perRole: 6, perVector: 6, lands: 30, single: 40, pairs: 24, confirm: 80, rounds: 10, lead: 16, altFor: 3, refineAdds: 6, refineCuts: 2, beam: 3 });
 
   /* ---------- evaluator: the part that runs in each worker ---------- */
   // init: { cards: [card], deck: [{ n, qty, locked }], cmds: [name], opts, combos: [variant] | null, comp: { addName: [variant] } }
@@ -3442,8 +3509,12 @@ const Deep = (function () {
     const exec = execFor(makeInit(X, ctx, allAdds, { settings: ctx.settings }));
     // cuts: the lowest-value nonland cards (synergy links, roles, popularity), role-safe ones first; the simulation then orders them
     const safe = c => Object.keys(A(c).roles).every(r => !(r in P.have) || P.have[r] - 1 >= P.targets[r]);
-    const cuts = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c)
-      .sort((a, b) => safe(b) - safe(a) || P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, o.cuts);
+    // plus the least-played cards not already listed (popularity only nominates a cut; the simulation decides): synergy
+    // links can rate an obscure card highly, and role-unsafe cards sort last, so on the recovery benchmark (tools/bench-recover.js)
+    // the value order alone listed 61% of the planted weak cards
+    const cuttable = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c);
+    const byValue = cuttable.slice().sort((a, b) => safe(b) - safe(a) || P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, o.cuts);
+    const cuts = byValue.concat(cuttable.filter(c => !byValue.includes(c)).sort((a, b) => (b.rank || 1e9) - (a.rank || 1e9) || (a.n < b.n ? -1 : 1)).slice(0, o.cutsRare));
     const basics = ctx.deck.filter(e => E.isBasic(e.c) && !e.locked).sort((a, b) => P.landValue(a.c) - P.landValue(b.c));
     const est = cuts.length + C.adds.length + C.lands.length + K.pairs.length + o.confirm + o.rounds * (o.beam || 1) * (o.lead + o.altFor * (o.altCuts - 1));
     let done = 0, total = est, id = 0, evals = 0;
@@ -4230,6 +4301,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
       '<tr><td>Mana base multiplier</td><td class="n">×' + P.manaMult.toFixed(2) + '</td><td></td></tr>' +
       '<tr><td>Strategy ceiling</td><td class="n">' + P.ceiling.toFixed(1) + '</td><td class="why">' + (P.ceilingBinding ? 'binding. ' : '') + P.signals.map(sg => (sg.on ? '✓ ' : '✗ ') + esc(sg.label)).join('<br>') + '</td></tr>' +
       '<tr><td>Win turn</td><td class="n">T' + P.win.best + ' / T' + P.win.typical + ' / T' + P.win.contested + '</td><td class="why">best / typical / contested; typical from ' + (P.win.source === 'simulated combo' ? 'the simulated combo turn (middle half of games T' + P.win.range[0] + '–T' + P.win.range[1] + ')' : 'the power level') + (P.win.combo ? '; a win combo is assembled by T6 in ' + pct(P.win.combo.by6) + ' of games, by T8 in ' + pct(P.win.combo.by8) : '') + '; goldfish damage reaches ' + P.win.goldfish.life + ' by ' + (P.win.goldfish.median > P.win.goldfish.horizon ? 'no turn up to T' + P.win.goldfish.horizon : 'T' + P.win.goldfish.median) + ' (median)</td></tr>' +
+      (X.sim.table ? '<tr><td>Table win rate</td><td class="n">' + pct(X.sim.table.win) + '</td><td class="why">against three Bracket ' + X.sim.table.bracket + ' opponents (an average deck of that bracket wins 25%): ' + Math.ceil(X.sim.games / 4).toLocaleString() + ' games with their win turns, removal, wipes and counters drawn from EDHREC average decks of the bracket; you spend ' + X.sim.table.answers.toFixed(1) + ' answers a game on an opponent about to win, and they spend ' + X.sim.table.oppAnswers.toFixed(1) + ' on yours</td></tr>' : '') +
       '<tr><td>Recommended minimum bracket</td><td class="n">' + P.minBracket + '</td><td class="why">' + esc(P.minBracketWhy.join('; ')) + '</td></tr>' +
       '<tr><td>Uncertainty from</td><td></td><td class="why">' + esc(P.ciParts.join(', ')) + '</td></tr>' +
       '<tr><td>EDHREC rank of nonland cards</td><td></td><td class="why">' + P.quality.map(q => esc(q.label) + ': ' + q.n).join(' · ') + ' (popularity, not power)</td></tr>' +

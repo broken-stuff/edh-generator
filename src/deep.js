@@ -17,9 +17,9 @@ const Deep = (function () {
   const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
   const A = c => E.analyze(c);
   const G1 = 1500, G2 = 5000, MIN_GAIN = 0.5, REFINE_GAIN = 0.3;
-  const DEF = { g1: G1, g2: G2, cuts: 24, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1, beam: 1 };
+  const DEF = { g1: G1, g2: G2, cuts: 24, cutsRare: 8, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1, beam: 1 };
   // thorough (~1 min on 4 cores): a wider screen, more cuts, 80 confirmed, a three-wide beam over the package, a wider refinement
-  const WIDE = Object.assign({}, DEF, { cuts: 30, nonland: 500, popular: 60, perRole: 6, perVector: 6, lands: 30, single: 40, pairs: 24, confirm: 80, rounds: 10, lead: 16, altFor: 3, refineAdds: 6, refineCuts: 2, beam: 3 });
+  const WIDE = Object.assign({}, DEF, { cuts: 30, cutsRare: 10, nonland: 500, popular: 60, perRole: 6, perVector: 6, lands: 30, single: 40, pairs: 24, confirm: 80, rounds: 10, lead: 16, altFor: 3, refineAdds: 6, refineCuts: 2, beam: 3 });
 
   /* ---------- evaluator: the part that runs in each worker ---------- */
   // init: { cards: [card], deck: [{ n, qty, locked }], cmds: [name], opts, combos: [variant] | null, comp: { addName: [variant] } }
@@ -137,8 +137,12 @@ const Deep = (function () {
     const exec = execFor(makeInit(X, ctx, allAdds, { settings: ctx.settings }));
     // cuts: the lowest-value nonland cards (synergy links, roles, popularity), role-safe ones first; the simulation then orders them
     const safe = c => Object.keys(A(c).roles).every(r => !(r in P.have) || P.have[r] - 1 >= P.targets[r]);
-    const cuts = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c)
-      .sort((a, b) => safe(b) - safe(a) || P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, o.cuts);
+    // plus the least-played cards not already listed (popularity only nominates a cut; the simulation decides): synergy
+    // links can rate an obscure card highly, and role-unsafe cards sort last, so on the recovery benchmark (tools/bench-recover.js)
+    // the value order alone listed 61% of the planted weak cards
+    const cuttable = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c);
+    const byValue = cuttable.slice().sort((a, b) => safe(b) - safe(a) || P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, o.cuts);
+    const cuts = byValue.concat(cuttable.filter(c => !byValue.includes(c)).sort((a, b) => (b.rank || 1e9) - (a.rank || 1e9) || (a.n < b.n ? -1 : 1)).slice(0, o.cutsRare));
     const basics = ctx.deck.filter(e => E.isBasic(e.c) && !e.locked).sort((a, b) => P.landValue(a.c) - P.landValue(b.c));
     const est = cuts.length + C.adds.length + C.lands.length + K.pairs.length + o.confirm + o.rounds * (o.beam || 1) * (o.lead + o.altFor * (o.altCuts - 1));
     let done = 0, total = est, id = 0, evals = 0;
