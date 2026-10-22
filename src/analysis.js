@@ -113,6 +113,7 @@ const Analysis = (function () {
   const EVI = Object.fromEntries(EVN.map((k, i) => [k, i])), EV = EVI;
   const EF = { card: 1, mana: 2, 'token.creature': 4, 'token.treasure': 8, 'token.artifact': 512, drain: 16, life: 32, damage: 64, counter: 128, 'gy.fill': 256 };
   const TRIG_TARGET = 8; // trigger output by T6 of themed generated decks: 5.7–10.3 (Atraxa, Krenko, Meren, Edgar, Talrand, Omnath)
+  const CEDH_SCORE = 17; // Bracket 5 cut on game changers + (tutors + fast mana) / 2; see minBracket
   const effBits = list => list.reduce((b, k) => b | (EF[k] || 0), 0);
   const SMC = new WeakMap();
   function simModel(c, CI) {
@@ -665,7 +666,11 @@ const Analysis = (function () {
     if (est === 4 && twoInf > 0 && cnt.gc <= 3 && cnt.mld === 0 && cnt.xturn <= 2 && earlyTwo === 0 && combos) { minB = 3; why.push('2-card infinites all assemble after turn 5 → Bracket 3 allowed'); }
     if (typical <= 5 && minB < 4) { minB = 4; why.push('typical win turn ' + typical + ' is faster than Bracket 3 (6+)'); }
     else if (typical <= 7 && minB < 3) { minB = 3; why.push('typical win turn ' + typical + ' is faster than Bracket 2 (8+)'); }
-    if (minB === 4 && cedhSignals.length >= 3 && ceiling >= 9.5 && pl >= 9) { minB = 5; why.push('cEDH indicators + strategy ceiling ' + ceiling.toFixed(1)); }
+    // Bracket 5: game changers + (tutors + fast mana) / 2 ≥ 17. Fitted on 388 Bracket 4 and 5 reference decks (EDHREC
+    // average decks and Archidekt decks for the 60 most-played commanders, tools/ref-calibrate.js): 81% agreement on
+    // 4 vs 5, cross-validated by commander. The previous rule (power level ≥ 9) never fired: cEDH lists median 7.1.
+    const cedhScore = cnt.gc + (cnt.tutor + cnt.fast) / 2;
+    if (minB === 4 && cedhScore >= CEDH_SCORE) { minB = 5; why.push('game changers ' + cnt.gc + ' + (tutors ' + cnt.tutor + ' + fast mana ' + cnt.fast + ') / 2 = ' + cedhScore + ' ≥ ' + CEDH_SCORE + ' → Bracket 5'); }
     const band = s => s >= 85 ? 'Exceptional' : s >= 65 ? 'Strong' : s >= 45 ? 'Moderate' : s >= 25 ? 'Weak' : 'Critical gap';
     const vectors = [vSpeed, vCons, vInt, vMana, vThreat].map(v => Object.assign(v, { band: band(v.score) }));
     // Card popularity distribution (EDHREC rank; popularity, not power)

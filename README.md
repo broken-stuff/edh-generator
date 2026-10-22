@@ -177,10 +177,12 @@ node sens.js     # prints a table of how decks respond to bracket, budget and ga
 - writes `data/aliases.json` (alternate printed names, such as Universes Beyond flavour names, mapped to Oracle names) from Scryfall's Default Cards file with `tools/scryfall-aliases.js`
 - rewrites `data/index.json` with `tools/data-index.js`, then commits to `main`
 
+**Reference decks (calibration):** `.github/workflows/ref-decks.yml` (manual, or a push that changes the downloader) runs `tools/ref-decks.js`, which saves bracket-labelled decklists for the 60 most-played commanders to `data/reference/decks.jsonl.gz`: EDHREC's average deck for each bracket (exhibition, core, upgraded, optimized, cEDH) and up to 3 of the most-viewed Archidekt decks per bracket (the bracket the owner set), one request every 1.2 s. `node tools/ref-calibrate.js data --json out.json` runs the analysis on every reference deck and prints agreement between its bracket and power level and the decks' brackets (exact, within one, confusion matrix, rank correlation), with power-level cut points fitted by leave-one-commander-out cross-validation. The page does not load these files.
+
 **Publishing:** GitHub Pages, Settings → Pages → Deploy from a branch → `main`, `/ (root)`. Every push to `main` is live.
 
 ## Credits and legal
 
-- Card data and images: [Scryfall](https://scryfall.com). Combo data: [Commander Spellbook](https://commanderspellbook.com). Popularity ranks: [EDHREC](https://edhrec.com), through Scryfall's data.
+- Card data and images: [Scryfall](https://scryfall.com). Combo data: [Commander Spellbook](https://commanderspellbook.com). Popularity ranks: [EDHREC](https://edhrec.com), through Scryfall's data. Calibration decklists: [EDHREC](https://edhrec.com) average decks and public [Archidekt](https://archidekt.com) decks.
 - broken-stuff EDH generator is unofficial Fan Content permitted under the [Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
 - Code: [MIT License](LICENSE). Anyone may use, copy, change and share it. The license covers this repository's code, not the card data, card images or combo data, which stay under their owners' terms.
