@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-22T00:26:31.506Z",
+ "generated": "2026-10-22T01:33:46.218Z",
  "commanders": 60,
  "decks": 1121,
  "bySource": {
@@ -13,6 +13,6 @@
   "4": 225,
   "5": 224
  },
- "requests": 1435,
+ "requests": 1433,
  "failed": 0
 }
