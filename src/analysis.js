@@ -25,18 +25,35 @@ const Analysis = (function () {
   function manaModel(c) {
     let m = MM.get(c); if (m) return m;
     const a = A(c), low = c.low;
-    m = { land: a.isLand, tapped: false, rampPerm: 0, dork: false, rampLand: 0, extraDrop: 0, perm: isPerm(c) };
+    m = { land: a.isLand, tapped: false, rampPerm: 0, dork: false, rampLand: 0, extraDrop: 0, perm: isPerm(c), burst: 0, cond: null, pitch: null };
     if (a.isLand) {
       m.tapped = /(?:~|this land) enters (?:the battlefield )?tapped/.test(low) && !/unless|you may pay|if you control|if you don't/.test(low);
     } else {
       if (m.perm && a.roles.ramp) {
-        const mm = low.match(/\{t\}[^:]*: add ((?:\{[wubrgc]\})+)/);
-        if (mm) m.rampPerm = (mm[1].match(/\{/g) || []).length;
-        else if (/\{t\}[^:]*: add (?:one|x) mana|\{t\}[^:]*: add [^.]{0,30}mana of any/.test(low)) m.rampPerm = 1;
-        else if (/\{t\}[^:]*: add two mana/.test(low)) m.rampPerm = 2;
-        if (!m.rampPerm && a.rules.ramp.includes('ramp-aura')) m.rampPerm = 1;
+        // the first tap mana ability of the card itself (abilities it grants in quotes, such as a Treasure's, are not its own):
+        // its output less the mana its activation costs; a sacrifice cost makes it one-shot mana (burst) on the turn it is cast
+        const ab = low.replace(/"[^"]*"/g, '').split('\n').map(l => l.match(/^(?:[a-z ]+— )?([^:]*\{t\}[^:]*): (add [^.]*)/)).find(Boolean);
+        if (ab) {
+          const cost = ab[1], add = ab[2], sym = add.match(/^add ((?:\{[wubrgc]\})+)/);
+          const w = add.match(/^add (one|two|three|four|five|x) mana/);
+          const out = sym ? (sym[1].match(/\{/g) || []).length : w ? (w[1] === 'x' ? 2 : WORDNUM[w[1]]) : /^add [^.]{0,30}mana of any/.test(add) ? 1 : 0;
+          const paid = (cost.match(/\{(\d+)\}/g) || []).reduce((n, x) => n + +x.slice(1, -1), 0) + (cost.match(/\{[wubrgc](?:\/[wubrgp])?\}/g) || []).length;
+          const net = /discard your hand/.test(cost) ? 0 : Math.max(0, out - paid);
+          // a rock that doesn't untap (Mana Vault, Grim Monolith) is one-shot too
+          if (/sacrifice (?:this|~|an?|another) /.test(cost) || /doesn't untap during your untap step/.test(low)) m.burst = net; else m.rampPerm = net;
+          // mana with a condition: metalcraft, legendary creatures or planeswalkers; or an extra card as its cost
+          if (/metalcraft|three or more artifacts/.test(low)) m.cond = 'metal';
+          else if (/among legendary creatures and planeswalkers|legendary creature or planeswalker/.test(low)) m.cond = 'legend';
+          if (/imprint — when [^.]* enters, you may exile a nonartifact, nonland card from your hand/.test(low)) m.pitch = 'spell';
+          else if (/you may discard a land card instead/.test(low)) m.pitch = 'land';
+        }
+        // no tap mana ability of its own: one for a mana ability it grants to creatures or lands (not to Treasures), or a ramp aura
+        else if (/\b(?:have|has|gains?) [^".]{0,40}"[^"]*\{t\}[^"]*: add/.test(low) && !/treasures? you control (?:have|has)|create[^.]*treasure/.test(low)) m.rampPerm = 1;
+        if (!m.rampPerm && !m.burst && a.rules.ramp.includes('ramp-aura')) m.rampPerm = 1;
         m.dork = m.rampPerm > 0 && a.creature;
       }
+      // rituals: an instant or sorcery that adds mana (gross; the spell's own cost is paid in the simulation)
+      if (!m.perm && /\b(?:Instant|Sorcery)\b/.test(c.ft)) { const r = low.match(/(?:^|\n|\. )add ((?:\{[wubrgc]\})+)/); if (r) m.burst = (r[1].match(/\{/g) || []).length; }
       if (a.rules.ramp && a.rules.ramp.includes('ramp-land')) {
         const k = low.match(/search your library for (?:up to )?(a|an|one|two|three)\b[^.]*(?:land|plains|island|swamp|mountain|forest|wastes)/);
         m.rampLand = k ? (WORDNUM[k[1]] || 1) : 1;
@@ -141,9 +158,11 @@ const Analysis = (function () {
     const pips = []; for (const x of 'WUBRG') { const k = (mc.match(new RegExp('\\{' + x + '\\}', 'g')) || []).length; for (let i = 0; i < k; i++) pips.push(BIT[x]); }
     const s = { land: m.land, tapped: m.tapped, cmc: Math.round(c.cmc || 0) + (/\{X\}/.test(mc) ? 2 : 0), pips, rampPerm: m.rampPerm, dork: m.dork, rampLand: m.rampLand, extraDrop: m.extraDrop };
     s.ramp = !m.land && (m.rampPerm || m.rampLand || m.extraDrop) ? 1 : 0;
+    s.burst = m.burst; s.cond = m.cond; s.pitch = m.pitch;
+    s.legend = /\bLegendary\b/.test(c.ft) && /\b(?:Creature|Planeswalker)\b/.test(c.ft);
     // colours this card produces as a land or a mana permanent; "any colour" and wildcards (fetched basics) → the whole identity
     if (m.land) { const cols = colourSources(c, CI); s.mask = maskOf(cols) || 0; }
-    else if (m.rampPerm) s.mask = /mana of any (?:one )?colou?r|any colou?r/.test(c.low) ? ciMask : (maskOf(c.pm) || 0);
+    else if (m.rampPerm || m.burst) s.mask = /mana of any (?:one )?colou?r|any colou?r/.test(c.low) ? ciMask : (maskOf(c.pm) || 0);
     let draw = 0;
     if (a.roles.draw) { const k = c.low.match(/\bdraws? (a|an|one|two|three|four|five|six|seven|x|\d+) cards?/); draw = k ? (NUMW[k[1]] || parseInt(k[1], 10) || 1) : 1; }
     s.engine = a.roles.draw && isPerm(c) && /whenever|at the beginning of/.test(c.low) ? 1 : 0;
@@ -276,7 +295,9 @@ const Analysis = (function () {
         if (i < 0) return draw(1);
         const c = lib.splice(i, 1)[0]; hand.push(c); if (pieceKeys.has(keys[c])) seen.add(keys[c]);
       };
-      const lands = [], landsNext = [], rocks = [], dorksReady = [], dorksNext = [];
+      const lands = [], landsNext = [], rocks = [], dorksReady = [], dorksNext = [], condRocks = [];
+      let nArt = 0, nLeg = 0; // artifacts cast (metalcraft) and legendary creatures or planeswalkers on the battlefield besides the commander
+      const condOk = k => k === 'metal' ? nArt >= 3 : k === 'legend' ? cmdCast || nLeg > 0 : true;
       let landsPlayed = 0, cmdCast = false, extraDrops = 0, engines = 0, gDrawn = 0;
       let gSpent = 0, gAvail = 0, gSpells = 0, rampLandsNext = 0;
       const board = [], tokenEngines = []; let dmgPrev = 0, dmg = 0, killT = 0, prevAvail = 0, anthem = 0, pump = 0, trample = false, drainTurn = 0, drainEnter = 0; const lineT = lines.map(() => 0);
@@ -330,15 +351,24 @@ const Analysis = (function () {
           fire(EV['land.enters']);
         }
         if (landsPlayed > before) dropT[t]++;
-        const src = lands.concat(rocks, dorksReady); for (let k = 0; k < Math.min(reduce, 3); k++) src.push(ciMask); const avail = src.length; curSrc = src; leftSrc = src;
+        const src = lands.concat(rocks, dorksReady); for (const r of condRocks) if (condOk(r.cond)) src.push(r.mk); for (let k = 0; k < Math.min(reduce, 3); k++) src.push(ciMask); const avail = src.length; curSrc = src; leftSrc = src;
         mana[t] += avail; landsT[t] += lands.length + landsNext.length;
         let spentN = avail;
         const cast = c => {
-          const m = M(c); if (!pay(src, m.cmc, m.pips)) return false;
-          hand.splice(hand.indexOf(c), 1); spellsT[t]++; if (t <= 6) gSpells++;
+          const m = M(c);
+          // Chrome Mox exiles a coloured nonartifact, nonland card from hand (the most expensive), Mox Diamond discards a land;
+          // without one in hand it is not cast
+          let pitched = -1, pMask = 0;
+          if (m.pitch === 'land') { pitched = hand.findIndex(isL); if (pitched < 0) return false; }
+          else if (m.pitch === 'spell') { let mx = -1; hand.forEach((x, i) => { const mx2 = M(x); if (x !== c && !mx2.land && !mx2.artifact && mx2.pips.length && mx2.cmc > mx) { mx = mx2.cmc; pitched = i; } }); if (pitched < 0) return false; pMask = M(hand[pitched]).pips.reduce((a, b) => a | b, 0) & ciMask; }
+          if (!pay(src, m.cmc, m.pips)) return false;
+          const pc = pitched >= 0 ? hand[pitched] : -1;
+          hand.splice(hand.indexOf(c), 1); if (pc >= 0) hand.splice(hand.indexOf(pc), 1); spellsT[t]++; if (t <= 6) gSpells++;
           fire(EV['spell.any']); fire(m.isCre ? EV['spell.creature'] : EV['spell.noncreature']);
           if (OP && !ctrUsed && m.cmc >= 4) { ctrUsed = true; if (rCtr < pCtr) return true; } // the first big spell of the turn can be countered
-          if (m.rampPerm) { const mk = m.mask || 0; for (let k = 0; k < m.rampPerm; k++) { if (m.dork) dorksNext.push(mk); else { rocks.push(mk); src.push(mk); } } }
+          if (m.artifact) nArt++; if (m.legend) nLeg++;
+          if (m.rampPerm) { const mk = m.pitch === 'spell' ? pMask : m.mask || 0; for (let k = 0; k < m.rampPerm; k++) { if (m.dork) dorksNext.push(mk); else if (m.cond) { condRocks.push({ mk, cond: m.cond }); if (condOk(m.cond)) src.push(mk); } else { rocks.push(mk); src.push(mk); } } }
+          if (m.burst) for (let k = 0; k < m.burst; k++) src.push(m.mask || 0);
           if (m.rampLand) { rampLandsNext += m.rampLand; fire(EV['land.enters'], m.rampLand); } // fetched lands enter now (tapped): landfall
           if (m.extraDrop) extraDrops = Math.max(extraDrops, m.extraDrop);
           if (m.engine) engines++;
@@ -356,6 +386,12 @@ const Analysis = (function () {
         // 1) ramp, cheapest first; 2) tutors; 3) commander; 4) other spells, largest that fits first (repeat while something is cast)
         for (const c of hand.filter(c => !isL(c) && M(c).ramp).sort((a, b) => M(a).cmc - M(b).cmc)) cast(c);
         for (const c of hand.filter(c => !isL(c) && M(c).tutor).sort((a, b) => M(a).cmc - M(b).cmc)) cast(c);
+        // one-shot mana (rituals, Lotus Petal) only when it makes the commander or another spell in hand castable this turn
+        for (const c of hand.filter(c => !isL(c) && M(c).burst).sort((a, b) => (M(b).burst - M(b).cmc) - (M(a).burst - M(a).cmc))) {
+          const m = M(c), after = src.length - m.cmc + m.burst; if (after <= src.length) continue;
+          const need = hand.filter(x => x !== c && !isL(x) && !M(x).burst).map(x => M(x).cmc); if (cmd && !cmdCast) need.push(cmdM.cmc + tax);
+          if (need.some(k => k > src.length && k <= after)) cast(c);
+        }
         if (cmd && !cmdCast && pay(src, cmdM.cmc + tax, cmdM.pips)) {
           cmdCast = true; if (!cmdHeard) { cmdTurns.push(t); if (t <= Math.max(1, cmdCmc)) cmdOnCurve++; }
           if (cmdM.creature) enter({ pow: cmdM.pow, ev: cmdM.evasive, t: cmdM.haste ? t : t + 1, cmd: true });
@@ -363,7 +399,7 @@ const Analysis = (function () {
           if (cmdM.etb) resolve(cmdM.etb);
         }
         // re-sort only when a cast drew or tutored cards
-        for (let again = true; again && src.length;) { again = false; const h1 = hand.length, list = hand.filter(c => !isL(c) && !(OP && (M(c).inter || M(c).prot === 'held'))).sort((a, b) => M(b).cmc - M(a).cmc); for (const c of list) { if (!src.length) break; if (M(c).cmc <= src.length && cast(c) && hand.length >= h1) { again = true; break; } } }
+        for (let again = true; again && src.length;) { again = false; const h1 = hand.length, list = hand.filter(c => !isL(c) && !M(c).burst && !(OP && (M(c).inter || M(c).prot === 'held'))).sort((a, b) => M(b).cmc - M(a).cmc); for (const c of list) { if (!src.length) break; if (M(c).cmc <= src.length && cast(c) && hand.length >= h1) { again = true; break; } } }
         // activated abilities with mana left: one loyalty ability per planeswalker, tap abilities once, others up to twice
         if (tb > 0) for (const a of acts) { if (a.sac) continue; const times = a.loy || a.tap ? 1 : 2; for (let r = 0; r < times; r++) { if (a.mana && !pay(src, a.mana, [])) break; resolve(a.ef); } }
         // table mode: answer an opponent who would win next turn (counter or spot removal, cheapest first; else a wipe)
@@ -376,7 +412,7 @@ const Analysis = (function () {
           if (!wp) break;
           hand.splice(hand.indexOf(wp), 1); fire(EV['spell.any']); fire(EV['spell.noncreature']); tableAns++;
           for (let i = 0; i < 3; i++) if (oppW[i] <= t + 2) oppW[i] += 1;
-          if (!M(wp).oneSided) { for (const b of board) if (b.cmd) { cmdCast = false; tax += 2; } for (let i = 0; i < board.length; i++) fire(EV['creature.dies']); board.length = 0; }
+          if (!M(wp).oneSided) { for (const b of board) if (b.cmd) { cmdCast = false; tax += 2; } for (let i = 0; i < board.length; i++) fire(EV['creature.dies']); board.length = 0; nLeg = 0; }
         }
         spentN -= src.length;
         // token engines make their tokens; then combat (anthems, this turn's overrun) and drains
@@ -398,7 +434,7 @@ const Analysis = (function () {
         // table mode: opponents' turns. Spot removal takes our biggest creature (the commander returns with +2 tax); a wipe takes all
         if (OP && board.length) {
           const gone = b => { if (b.cmd) { cmdCast = false; tax += 2; } fire(EV['creature.dies']); };
-          if (t >= 4 && rWipe < pWipe) { if (!protect()) { for (const b of board) gone(b); board.length = 0; } }
+          if (t >= 4 && rWipe < pWipe) { if (!protect()) { for (const b of board) gone(b); board.length = 0; nLeg = 0; } }
           else if (t >= 2 && rRm < pRm && !protPerm) { let bi = -1, bp = -1; board.forEach((b, i) => { const v = b.pow + (b.cmd ? 3 : 0); if (!b.tok && v > bp) { bp = v; bi = i; } }); if (bi >= 0) gone(board.splice(bi, 1)[0]); }
         }
         spentT[t] += spentN; handT[t] += hand.length; drawnT[t] += pos - h0; if (cmdCast) cmdByT[t]++;
@@ -968,7 +1004,7 @@ const Analysis = (function () {
   const snap = X => ({ exact: 10 * X.power.plExact + X.axes.reduce((s, a) => s + a.score, 0) / X.axes.length + (X.sim.table ? TABLE_W * 100 * X.sim.table.win : 0), table: X.sim.table ? X.sim.table.win : null, src: Object.fromEntries(X.mana.colors.map(c => [c.color, c.landSources])), warn: X.mana.colors.filter(c => c.warn).length, castLow: X.mana.cast.filter(r => r.p < CAST_OK).length, pl: X.power.pl, fund: X.overall, minB: X.power.minBracket, typical: X.power.win.typical, keep: X.sim.keep7, t4: X.sim.manaByTurn[4], v: Object.fromEntries(X.power.vectors.map(v => [v.key, v.score])), axes: Object.fromEntries(X.axes.map(a => [a.key, a.score])) });
   function impactPrep(db, deck, cmds, opts) {
     const games = opts.impactGames || 5000;
-    const seed = E.hashStr('impact#' + cmds.map(c => c.n).join('|'));
+    const seed = E.hashStr('impact#' + cmds.map(c => c.n).join('|') + (opts.seedSalt ? '#' + opts.seedSalt : '')); // seedSalt: an independent stream (holdout)
     const o = Object.assign({ table: TABLE_W > 0 }, opts, { games, seed, almost: null });
     return { db: null, deck, cmds, opts: o, games, base: snap(run(null, deck, cmds, o)) }; // db only feeds the add pool, which snap() doesn't read
   }

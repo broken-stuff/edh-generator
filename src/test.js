@@ -250,5 +250,15 @@ function legalCheck(R, label) {
     const withO = aris(outlet2), noO = aris(pebble);
     assert(withO.dmg > 0 && noO.dmg === 0 && withO.tok > 0, 'simulate: tokens + sacrifice outlet + death trigger drain (' + withO.dmg.toFixed(2) + ' damage by T6); without the outlet nothing dies');
     assert(onColour.keep7 > 0 && onColour.keep7 + onColour.mulligan <= 1.0001, 'simulate: keep and mulligan rates are shares of games');
+    // mana model: activation cost netted, one-shot mana, conditional and card-cost moxen
+    const rock = (name, text, cmc, ty) => E.norm(card({ name, cmc, type_line: ty || 'Artifact', oracle_text: text, produced_mana: ['W'] }));
+    const mm = c => An.manaModel(c);
+    const sig = mm(rock('Synth Signet', '{1}, {T}: Add {W}{W}.', 2)), filt = mm(rock('Synth Filter', '{1}, {T}: Add one mana of any color.', 1)), petal = mm(rock('Synth Petal', '{T}, Sacrifice this artifact: Add one mana of any color.', 0));
+    const opal = mm(rock('Synth Opal', 'Metalcraft — {T}: Add one mana of any color. Activate only if you control three or more artifacts.', 0)), rit = mm(rock('Synth Ritual', 'Add {W}{W}{W}.', 1, 'Instant'));
+    const vault = mm(rock('Synth Vault', "This artifact doesn't untap during your untap step.\n{T}: Add {C}{C}{C}.", 1));
+    assert(sig.rampPerm === 1 && filt.rampPerm === 0 && petal.burst === 1 && !petal.rampPerm && opal.cond === 'metal' && rit.burst === 3 && vault.burst === 3 && !vault.rampPerm, 'mana model: Signet nets 1, a {1} filter 0, Petal, rituals and Mana Vault are one-shot, metalcraft is conditional');
+    const ritDeck = k => An.simulate([{ c: L('Plains'), qty: 36 }, { c: E.norm(card({ name: 'Synth Six', cmc: 6, mana_cost: '{5}{W}', type_line: 'Creature — Test', oracle_text: '', power: '6', toughness: '6', color_identity: ['W'] })), qty: 30 }, { c: k, qty: 33 }], [], 300, 7, { CI: 'W' });
+    const withR = ritDeck(rock('Synth Ritual', 'Add {W}{W}{W}.', 1, 'Instant')), noR = ritDeck(pebble);
+    assert(withR.perTurn[4].dmg > 0.5 && noR.perTurn[4].dmg === 0, 'simulate: a ritual casts a 6-drop early (damage by T5 ' + withR.perTurn[4].dmg.toFixed(2) + ' vs ' + noR.perTurn[4].dmg.toFixed(2) + ' without)');
   }
 })();

@@ -16,10 +16,15 @@ const Deep = (function () {
   const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
   const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
   const A = c => E.analyze(c);
-  const G1 = 1500, G2 = 5000, MIN_GAIN = 0.5, REFINE_GAIN = 0.3;
-  const DEF = { g1: G1, g2: G2, cuts: 24, cutsRare: 8, nonland: 400, popular: 40, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1, beam: 1 };
+  // MIN_GAIN: 1 = 0.1 power level. Seed-to-seed SD of one swap's gain at G2 games is 0.05 (q90 0.09; 4 decks × 16 swaps × 6
+  // seeds), so the threshold is about diminishing returns, not noise: accepting each package and re-running (4 reference decks)
+  // gave round gains of 16–24, 5–15, 1.4–5, 0.6–3.4; at 0.5 the tail of 0.5–1 swaps kept every re-run proposing more
+  // PKG_MIN: 3 = 0.3 power level for the whole package. With MIN_GAIN 1 alone the same loop still ran 4–5 rounds, the last
+  // ones adding 1–2.6 in 1–2 swaps; with PKG_MIN it stops after 2–3 rounds that each added 3.4–23
+  const G1 = 1500, G2 = 5000, MIN_GAIN = 1, PKG_MIN = 3, REFINE_GAIN = 0.3;
+  const DEF = { g1: G1, g2: G2, cuts: 24, cutsRare: 8, nonland: 100, popular: 350, perRole: 4, perVector: 4, lands: 24, single: 30, pairs: 16, confirm: 60, rounds: 10, lead: 12, altCuts: 3, altFor: 3, shown: 15, pairsShown: 3, refine: true, refineAdds: 3, refineCuts: 1, beam: 1 };
   // thorough (~1 min on 4 cores): a wider screen, more cuts, 80 confirmed, a three-wide beam over the package, a wider refinement
-  const WIDE = Object.assign({}, DEF, { cuts: 30, cutsRare: 10, nonland: 500, popular: 60, perRole: 6, perVector: 6, lands: 30, single: 40, pairs: 24, confirm: 80, rounds: 10, lead: 16, altFor: 3, refineAdds: 6, refineCuts: 2, beam: 3 });
+  const WIDE = Object.assign({}, DEF, { cuts: 30, cutsRare: 10, nonland: 150, popular: 450, perRole: 6, perVector: 6, lands: 30, single: 40, pairs: 24, confirm: 80, rounds: 10, lead: 16, altFor: 3, refineAdds: 6, refineCuts: 2, beam: 3 });
 
   /* ---------- evaluator: the part that runs in each worker ---------- */
   // init: { cards: [card], deck: [{ n, qty, locked }], cmds: [name], opts, combos: [variant] | null, comp: { addName: [variant] } }
@@ -30,9 +35,9 @@ const Deep = (function () {
     const cmds = init.cmds.map(n => by.get(n)), base = init.combos, comp = init.comp || {};
     const names = new Set(init.deck.map(e => e.n).concat(init.cmds));
     const preps = new Map();
-    const prep = g => { if (!preps.has(g)) preps.set(g, An.impactPrep(null, deck, cmds, Object.assign({}, init.opts, { combos: base, impactGames: g }))); return preps.get(g); };
+    const prep = (g, salt) => { const k = g + '#' + (salt || ''); if (!preps.has(k)) preps.set(k, An.impactPrep(null, deck, cmds, Object.assign({}, init.opts, { combos: base, impactGames: g, seedSalt: salt || '' }))); return preps.get(k); };
     return t => {
-      const P = prep(t.games), swaps = t.swaps.map(s => ({ cut: by.get(s.cut), add: by.get(s.add) }));
+      const P = prep(t.games, t.salt), swaps = t.swaps.map(s => ({ cut: by.get(s.cut), add: by.get(s.add) }));
       let combos = null;
       if (base) {
         const cut = new Set(t.swaps.map(s => s.cut)), now = new Set(names); for (const s of t.swaps) { now.delete(s.cut); now.add(s.add); }
@@ -94,10 +99,15 @@ const Deep = (function () {
     const take = (list, tag) => { for (const c of list) { if (!why.has(c.n)) why.set(c.n, tag); if (!seen.has(c.n)) { seen.add(c.n); adds.push(c); } } };
     const non = pool.filter(c => !A(c).isLand);
     const gap = c => Object.keys(A(c).roles).reduce((s, r) => s + (r in P.have && P.have[r] < P.targets[r] ? 2 : 0), 0);
-    take(non.map(c => ({ c, v: P.value(c) + gap(c) })).sort((a, b) => b.v - a.v || (a.c.n < b.c.n ? -1 : 1)).slice(0, o.nonland).map(x => x.c), 'theme fit');
+    const fit = c => P.value(c) + gap(c), lr = c => c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0;
+    const top = (score, k) => non.map(c => ({ c, v: score(c) })).sort((a, b) => b.v - a.v || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
+    take(top(fit, o.nonland), 'theme fit');
     for (const r of Object.keys(P.targets)) take(P.pick(c => !A(c).isLand && A(c).roles[r], o.perRole), E.SLOT_LABEL[r] || r);
     for (const k of Object.keys(P.upg)) take(P.pick(c => !A(c).isLand && P.upg[k][0](c), o.perVector), P.upg[k][1]);
-    take(non.filter(c => c.rank).sort((a, b) => a.rank - b.rank).slice(0, o.popular), 'most played');
+    // play rate first, fit as the tiebreak: on the recovery benchmark (60 B4 decks, 10 cards removed each) the fit order put
+    // the removed cards at median rank 4,167 of ~17,700 in the pool and play rate at 141; this order holds 67% of them in its
+    // top 400, the fit order 8%
+    take(top(c => 40 * lr(c) + fit(c) / 4, o.popular), 'most played');
     const lands = P.multi ? pool.filter(c => A(c).isLand && P.landOn(c) >= 2).sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9)).slice(0, o.lands) : [];
     return { adds, lands, why };
   }
@@ -131,6 +141,9 @@ const Deep = (function () {
     o = Object.assign({}, DEF, o || {});
     const P = X.planner, keep = ctx.keep || new Set(), bracket = +((ctx.settings && ctx.settings.bracket) || 3);
     const C = candidates(X, ctx, o), K = await comboCands(X, ctx, o);
+    // no oscillation: a card cut by an accepted swap is not added back, and a card added by one is not cut again
+    const hist = ctx.history || [], noAdd = new Set(hist.map(h => h.cut)), noCut = new Set(hist.map(h => h.add));
+    if (hist.length) { C.adds = C.adds.filter(c => !noAdd.has(c.n)); C.lands = C.lands.filter(c => !noAdd.has(c.n)); K.single = K.single.filter(x => !noAdd.has(x.add.n)); K.pairs = K.pairs.filter(x => !x.adds.some(c => noAdd.has(c.n))); }
     for (const s of K.single) { if (!C.adds.includes(s.add)) C.adds.push(s.add); C.why.set(s.add.n, 'completes ' + s.v.c.join(' + ')); }
     const pairCards = [].concat(...K.pairs.map(p => p.adds));
     const allAdds = [...new Set(C.adds.concat(C.lands, pairCards))];
@@ -140,10 +153,10 @@ const Deep = (function () {
     // plus the least-played cards not already listed (popularity only nominates a cut; the simulation decides): synergy
     // links can rate an obscure card highly, and role-unsafe cards sort last, so on the recovery benchmark (tools/bench-recover.js)
     // the value order alone listed 61% of the planted weak cards
-    const cuttable = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c);
+    const cuttable = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !noCut.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c);
     const byValue = cuttable.slice().sort((a, b) => safe(b) - safe(a) || P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, o.cuts);
     const cuts = byValue.concat(cuttable.filter(c => !byValue.includes(c)).sort((a, b) => (b.rank || 1e9) - (a.rank || 1e9) || (a.n < b.n ? -1 : 1)).slice(0, o.cutsRare));
-    const basics = ctx.deck.filter(e => E.isBasic(e.c) && !e.locked).sort((a, b) => P.landValue(a.c) - P.landValue(b.c));
+    const basics = ctx.deck.filter(e => E.isBasic(e.c) && !e.locked && !noCut.has(e.c.n)).sort((a, b) => P.landValue(a.c) - P.landValue(b.c));
     const est = cuts.length + C.adds.length + C.lands.length + K.pairs.length + o.confirm + o.rounds * (o.beam || 1) * (o.lead + o.altFor * (o.altCuts - 1));
     let done = 0, total = est, id = 0, evals = 0;
     const tick = async () => { done++; evals++; if (progress) await progress(Math.min(done, total - 1), total); };
@@ -222,11 +235,16 @@ const Deep = (function () {
           let prev = 0; pkg.forEach((q, j) => { q.step = j + 1; q.r = rP[j]; q.total = rP[j].g; q.m = rP[j].g - prev; prev = rP[j].g; });
         }
       }
-      total = done; if (progress) await progress(done, total);
       // best single swaps: one row per added card, at most o.pairsShown pairs
       const shown = new Set(); let np = 0;
       const singles = ranked.filter(it => it.g2 >= MIN_GAIN && !it.adds.some(a => shown.has(a.n)) && (it.kind !== 'pair' || np++ < o.pairsShown) && (it.adds.forEach(a => shown.add(a.n)), true)).slice(0, o.shown);
-      return { singles, pkg, why: C.why, order: order.map(x => x.c), stats: { evals, refined, cands: items.length, adds: allAdds.length, cuts: cuts.length, confirmed: conf.length, ref: ref.n, workers: exec.n } };
+      // diminishing returns: when the whole package adds less than PKG_MIN, the list is reported as near optimal and nothing is
+      // proposed (the package is kept as res.small for the note)
+      let small = null;
+      const pTot = pkg.length ? pkg[pkg.length - 1].total : 0, sBest = singles.length ? Math.max(...singles.map(it => it.g2)) : 0;
+      if (Math.max(pTot, sBest) < PKG_MIN) { small = { total: Math.max(pTot, sBest), n: pkg.length || (singles.length ? 1 : 0) }; pkg.length = 0; singles.length = 0; }
+      total = done; if (progress) await progress(done, total);
+      return { singles, pkg, small, why: C.why, order: order.map(x => x.c), nearOptimal: !pkg.length && !singles.length, stats: { evals, refined, cands: items.length, adds: allAdds.length, cuts: cuts.length, confirmed: conf.length, ref: ref.n, workers: exec.n } };
     } finally { exec.close(); }
   }
 
@@ -241,6 +259,6 @@ const Deep = (function () {
     return out;
   }
 
-  return { search, rows, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, DEF, WIDE };
+  return { search, rows, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, PKG_MIN, DEF, WIDE };
 })();
 if (typeof module !== 'undefined') module.exports = Deep;
