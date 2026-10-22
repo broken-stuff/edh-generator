@@ -3661,7 +3661,9 @@ const Deep = (function () {
     const P = X.planner, price = c => P.price(c), r1 = v => Math.round(v * 10) / 10;
     const row = (group, reason, cut, add, r, tag) => ({ group, reason, cut, add, tag: tag || '', d: r.d, after: r.after, g: r.g, dPrice: (price(add) || 0) - (price(cut) || 0), priceKnown: price(add) != null && price(cut) != null });
     const out = [];
-    for (const it of res.singles) it.adds.forEach((a, i) => out.push(row('Deep search', (it.kind === 'pair' ? 'Pair: completes ' + it.v.c.join(' + ') + ' with ' + it.adds.filter(x => x !== a).map(x => x.n).join(', ') : (res.why.get(a.n) || 'screened')) + ' · gain ' + r1(it.g2) + (it.kind === 'pair' ? ' for both' : ''), it.cuts[i], a, it.r)));
+    // a single swap whose add is already in the package is the same change twice; it is left out
+    const inPkg = new Set(res.pkg.map(p => p.add.n));
+    for (const it of res.singles) if (!it.adds.some(a => inPkg.has(a.n))) it.adds.forEach((a, i) => out.push(row('Deep search', (it.kind === 'pair' ? 'Pair: completes ' + it.v.c.join(' + ') + ' with ' + it.adds.filter(x => x !== a).map(x => x.n).join(', ') : (res.why.get(a.n) || 'screened')) + ' · gain ' + r1(it.g2) + (it.kind === 'pair' ? ' for both' : ''), it.cuts[i], a, it.r)));
     const nSteps = res.pkg.length ? res.pkg[res.pkg.length - 1].step : 0;
     for (const p of res.pkg) out.push(row('Package', 'Step ' + p.step + ' of ' + nSteps + ' · marginal gain ' + r1(p.m) + ' · package total ' + r1(p.total) + (p.kind === 'pair' ? ' · completes ' + p.v.c.join(' + ') : res.why.get(p.add.n) ? ' · ' + res.why.get(p.add.n) : ''), p.cut, p.add, p.r));
     return out;
@@ -4152,6 +4154,9 @@ if (typeof module !== 'undefined') module.exports = Deep;
   }
   // gap and upgrade suggestions are heuristic picks; once measured, those below the deep search's minimum gain are hidden
   // (on 4 reference decks, accepting every suggestion and re-running left 13–14 suggestions a round with 0–1 above it)
+  // a set of changes that can all be applied together, in list order: each card cut at most once and added at most once
+  // (alternatives for the same cut, and a single swap repeating a package card, are left out)
+  const compatible = list => { const cut = new Set(), add = new Set(); return list.filter(p => { if (cut.has(p.cut) || (add.has(p.add) && !Engine.isBasic(p.add))) return false; cut.add(p.cut); add.add(p.add); return true; }); };
   const worth = p => App.showWeak || !(p.group === 'Fix gaps' || p.group === 'Upgrades') || p.g == null || p.g >= Deep.MIN_GAIN;
   function renderSwaps() {
     const el = $('anSwaps'), X = App.AN; if (!el || !X) return;
@@ -4164,16 +4169,19 @@ if (typeof module !== 'undefined') module.exports = Deep;
     const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
     const VL = { speed: 'Speed', consistency: 'Consistency', interaction: 'Interaction', manabase: 'Mana base', threats: 'Threats' };
     const AL = Object.fromEntries(X.axes.map(a => [a.key, a.label]));
-    const groups = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'];
     const GSUB = { Upgrades: ' (weakest power vectors)', Budget: ' (cheaper card, same role or theme)', Package: ' (deep search: swaps chosen one after another, each measured on the list as changed so far)', 'Deep search': ' (best single swaps of the wide search)' };
     const shown = X.impact.filter(worth), weak = X.impact.length - shown.length;
-    const all = X.impactDone && shown.length ? '<button type="button" class="small primary" data-sw="accept-all">Accept all (' + shown.length + ')</button>' : '';
+    const groups = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'], inOrder = groups.flatMap(g => shown.filter(p => p.group === g)), allSet = compatible(inOrder);
+    const all = X.impactDone && allSet.length ? '<button type="button" class="small primary" data-sw="accept-all">Accept all (' + allSet.length + ')</button>' : '';
     const head = '<div class="an-top"><h3>Recommended changes</h3><span class="note">' + (X.impactDone ? X.impact.length + ' evaluated' : 'evaluating ' + X.impact.length + '/' + X.plans.length + '…') + '</span>' + all + '</div>' + (App.acceptNote ? '<p class="note">' + esc(App.acceptNote) + '</p>' : '');
     const log = (App.accepted || []).filter(a => a.src === App.anSource);
     const logHTML = log.length ? '<div class="accepted"><span class="note">Accepted:</span> ' + log.map((a, j) => '<span class="chip">− ' + esc(a.cut.n) + ' + ' + esc(a.add.n) + ' <button type="button" class="link" data-sw="undo" data-i="' + (App.accepted.indexOf(a)) + '" aria-label="Undo">undo</button></span>').join(' ') + '</div>' : '';
     const denN = App.denied && App.denied.size ? '<span class="note"> · ' + App.denied.size + ' denied <button type="button" class="link" data-sw="clear-deny">reset</button></span>' : '';
     if (!X.plans.length) return head + logHTML + denN + '<p class="note">No changes suggested: targets are met and no costly card has a cheaper same-role replacement in the loaded data.</p>';
-    const rows = g => shown.filter(p => p.group === g).map(p => {
+    // rows with the same cut sit together; after the first, a row is an alternative ("or + card") for that cut
+    const byCut = list => { const order = [...new Set(list.map(p => p.cut))]; return order.flatMap(c => list.filter(p => p.cut === c)); };
+    const rows = g => { const seenCut = new Set(); return byCut(shown.filter(p => p.group === g)).map(p => {
+      const alt = seenCut.has(p.cut); seenCut.add(p.cut);
       const d = p.d, eff = [];
       for (const [k, v] of d.src || []) eff.push('<span class="' + cls(v) + '">' + k + ' land sources ' + sign(v) + '</span>');
       if (d.warn) eff.push('<span class="' + cls(-d.warn) + '">Colors flagged ' + sign(d.warn) + '</span>');
@@ -4189,11 +4197,11 @@ if (typeof module !== 'undefined') module.exports = Deep;
       const price = p.priceKnown ? '<span class="' + (p.dPrice > 0.005 ? 'pup' : p.dPrice < -0.005 ? 'pdown' : '') + '">' + (p.dPrice > 0.005 ? '▲ ' : p.dPrice < -0.005 ? '▼ ' : '') + money(p.dPrice) + '</span>' : '<span class="note">price n/a</span>';
       const i = X.impact.indexOf(p);
       const acts = '<div class="sw-acts"><button type="button" class="small primary" data-sw="accept" data-i="' + i + '">Accept</button><button type="button" class="small" data-sw="deny" data-i="' + i + '">Deny</button></div>';
-      return '<tr><td><div class="sw"><span class="out">− ' + esc(p.cut.n) + '</span><span class="in">+ ' + (p.add.uri ? '<a href="' + esc(p.add.uri) + '" target="_blank" rel="noopener">' + esc(p.add.n) + '</a>' : esc(p.add.n)) + '</span></div><div class="note">' + esc(p.reason) + (p.tag ? ' · ' + esc(p.tag) : '') + '</div></td><td class="n nw">' + price + '</td><td><div class="eff">' + (eff.length ? eff.join(' ') : '<span class="note">no measurable change</span>') + '</div>' + acts + '</td></tr>';
-    }).join('');
+      return '<tr' + (alt ? ' class="alt"' : '') + '><td><div class="sw">' + (alt ? '<span class="note">or, instead of the swap above:</span>' : '<span class="out">− ' + esc(p.cut.n) + '</span>') + '<span class="in">+ ' + (p.add.uri ? '<a href="' + esc(p.add.uri) + '" target="_blank" rel="noopener">' + esc(p.add.n) + '</a>' : esc(p.add.n)) + '</span></div><div class="note">' + esc(p.reason) + (p.tag ? ' · ' + esc(p.tag) : '') + '</div></td><td class="n nw">' + price + '</td><td><div class="eff">' + (eff.length ? eff.join(' ') : '<span class="note">no measurable change</span>') + '</div>' + acts + '</td></tr>';
+    }).join(''); };
     const weakHTML = weak ? '<p class="note">' + weak + ' gap and upgrade suggestion' + (weak === 1 ? '' : 's') + ' hidden: measured gain below ' + Deep.MIN_GAIN + ' (0.1 power level), the point where repeated runs stop paying off. <button type="button" class="link" data-sw="weak">' + (App.showWeak ? 'Hide' : 'Show') + '</button></p>' : '';
     const nearHTML = X.impactDone && !shown.length ? '<p class="note"><b>Near optimal.</b> No measured change gains ' + Deep.MIN_GAIN + ' or more on this list; Deep search measures several hundred more.</p>' : '';
-    return head + logHTML + denN + nearHTML + weakHTML + groups.filter(g => X.plans.some(p => p.group === g) && (!X.impactDone || shown.some(p => p.group === g))).map(g => '<h4 class="an-sub">' + g + (GSUB[g] || '') + (X.impactDone && shown.some(p => p.group === g) ? ' <button type="button" class="small" data-sw="accept-group" data-g="' + g + '">Accept ' + shown.filter(p => p.group === g).length + '</button>' : '') + '</h4><div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th>Projected effect</th></tr></thead><tbody>' + (rows(g) || '<tr><td colspan="3" class="note">evaluating…</td></tr>') + '</tbody></table></div>').join('') +
+    return head + logHTML + denN + nearHTML + weakHTML + groups.filter(g => X.plans.some(p => p.group === g) && (!X.impactDone || shown.some(p => p.group === g))).map(g => '<h4 class="an-sub">' + g + (GSUB[g] || '') + (X.impactDone && shown.some(p => p.group === g) ? ' <button type="button" class="small" data-sw="accept-group" data-g="' + g + '">Accept ' + compatible(shown.filter(p => p.group === g)).length + '</button>' : '') + '</h4><div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th>Projected effect</th></tr></thead><tbody>' + (rows(g) || '<tr><td colspan="3" class="note">evaluating…</td></tr>') + '</tbody></table></div>').join('') +
       '<p class="note">Each change is applied alone and the whole analysis is re-run with 5,000 simulated games on the same shuffles as the current list, so differences come from the swap, not from random variation. Cuts are the lowest-value cards whose removal keeps every role at or above target (value = synergy links + 2×roles + Game Changer/fast/tutor bonus + EDHREC popularity). Adds come from the loaded card data within your color identity, bracket limits and per-card budget cap. Price is the difference in ' + cur.toUpperCase() + ' between the added and removed card.</p>';
   }
   // header-sized radar: no labels, the scores are in the tooltip
@@ -5482,7 +5490,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }
       if (a === 'clear-deny') { App.denied.clear(); App.AN = null; runAnalysis(); return; }
       if (a === 'weak') { App.showWeak = !App.showWeak; renderSwaps(); return; }
-      if (a === 'accept-all' || a === 'accept-group') { const list = X.impact.filter(worth).filter(p => a === 'accept-all' || p.group === b.dataset.g); if (!list.length) return; document.querySelectorAll('#anSwaps button').forEach(x => { x.disabled = true; }); await acceptMany(list); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
+      if (a === 'accept-all' || a === 'accept-group') { const G = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'], sh = X.impact.filter(worth); const list = compatible(a === 'accept-all' ? G.flatMap(g => sh.filter(p => p.group === g)) : sh.filter(p => p.group === b.dataset.g)); if (!list.length) return; document.querySelectorAll('#anSwaps button').forEach(x => { x.disabled = true; }); await acceptMany(list); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
       if (a === 'accept') { App.acceptNote = ''; const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
       if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); }
     });

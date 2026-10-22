@@ -217,7 +217,8 @@ function legalCheck(R, label) {
     const pc2 = DS.pkg.map(x => x.cut);
     assert(DS.stats.evals > 10 && ticks === DS.stats.evals + 1 && DS.pkg.every(x => !inDeckN.has(x.add.n) && x.add.leg === 'legal' && inDeckN.has(x.cut.n) && !keepN.has(x.cut.n)) && new Set(pc2).size === pc2.length && (!DS.pkg.length || DS.pkg[DS.pkg.length - 1].total >= Dp.MIN_GAIN * DS.pkg.length), 'deep search: ' + DS.stats.evals + ' measured lists; package of ' + DS.pkg.length + ' with new legal adds, distinct cuts, total gain ≥ ' + Dp.MIN_GAIN + ' per swap (' + DS.stats.refined + ' refined)');
     const DR = Dp.rows(PX, DS);
-    assert(DR.length === DS.pkg.length + DS.singles.reduce((s, it) => s + it.adds.length, 0) && DR.every(r => r.d && r.after && r.cut && r.add && /^(Package|Deep search)$/.test(r.group)), 'deep rows: one accept/deny row per swap, with the measured effect');
+    const pkgAdds = new Set(DS.pkg.map(p => p.add.n));
+    assert(DR.length === DS.pkg.length + DS.singles.filter(it => !it.adds.some(a => pkgAdds.has(a.n))).reduce((s, it) => s + it.adds.length, 0) && !DR.some(r => r.group === 'Deep search' && pkgAdds.has(r.add.n)) && DR.every(r => r.d && r.after && r.cut && r.add && /^(Package|Deep search)$/.test(r.group)), 'deep rows: one accept/deny row per swap, with the measured effect; no single repeats a package card');
     // mechanics graph: Oracle text → needs/makes; linked pairs
     const Mh = require('./mech.js'), mk = (n, low, ft, cmc, kw) => ({ n, low, ft: ft || 'Creature — Test', cmc: cmc == null ? 2 : cmc, kw: kw || [] });
     const outlet = mk('Synth Altar', 'sacrifice a creature: add {c}{c}.', 'Artifact', 3), drain = mk('Synth Artist', 'whenever this creature or another creature dies, target player loses 1 life and you gain 1 life.');
