@@ -433,24 +433,24 @@
     const D = App.DEEP, busy = D && D.busy;
     const res = D && !busy && D.res ? D.res.stats : null;
     return '<div class="an-card wide deep" id="deepBox"><div class="row" style="gap:8px;align-items:center">' +
-      (busy ? '<button type="button" class="small" data-deep="cancel">Cancel</button>' : '<button type="button" class="small primary" data-deep="run">Deep search</button>') +
-      '<progress id="deepBar" max="1" value="' + (busy ? D.frac || 0 : res ? 1 : 0) + '"' + (busy || res ? '' : ' hidden') + '></progress><span class="note" id="deepNote">' + esc(D && D.note || 'Measures ~700 candidate swaps and builds a package of swaps that work together (about 10–30 s).') + '</span></div>' +
-      (res ? '<p class="note">' + res.evals.toLocaleString() + ' measured lists: ' + res.cands + ' candidate swaps screened at ' + Deep.G1.toLocaleString() + ' games, ' + res.confirmed + ' confirmed at ' + Deep.G2.toLocaleString() + ', ' + res.cuts + ' cut candidates, ' + res.workers + ' worker' + (res.workers === 1 ? '' : 's') + ', ' + D.secs.toFixed(1) + ' s.' + (D.X !== X ? ' Measured before your last accepted change' + (D.repaired ? '; ' + D.repaired + ' swap' + (D.repaired === 1 ? '' : 's') + ' re-paired with the next cut because the measured cut is gone' : '') + '. Run again to re-measure.' : '') + '</p>' : '') + '</div>';
+      (busy ? '<button type="button" class="small" data-deep="cancel">Cancel</button>' : '<button type="button" class="small primary" data-deep="run">Deep search (~30 s)</button><button type="button" class="small" data-deep="wide">Thorough (~1 min)</button>') +
+      '<progress id="deepBar" max="1" value="' + (busy ? D.frac || 0 : res ? 1 : 0) + '"' + (busy || res ? '' : ' hidden') + '></progress><span class="note" id="deepNote">' + esc(D && D.note || 'Measures several hundred candidate swaps and builds a package of swaps that work together. Thorough screens twice as many cards and refines the package more widely.') + '</span></div>' +
+      (res ? '<p class="note">' + (D.wide ? 'Thorough: ' : '') + res.evals.toLocaleString() + ' measured lists: ' + res.cands + ' candidate swaps screened at ' + Deep.G1.toLocaleString() + ' games, ' + res.confirmed + ' confirmed at ' + Deep.G2.toLocaleString() + ', ' + res.cuts + ' cut candidates, ' + (res.refined ? res.refined + ' package change' + (res.refined === 1 ? '' : 's') + ' from refinement, ' : '') + res.workers + ' worker' + (res.workers === 1 ? '' : 's') + ', ' + D.secs.toFixed(1) + ' s.' + (D.X !== X ? ' Measured before your last accepted change' + (D.repaired ? '; ' + D.repaired + ' swap' + (D.repaired === 1 ? '' : 's') + ' re-paired with the next cut because the measured cut is gone' : '') + '. Run again to re-measure.' : '') + '</p>' : '') + '</div>';
   }
   const deepSay = (t, frac) => { const D = App.DEEP; if (D) { D.note = t; if (frac != null) D.frac = frac; } const n = $('deepNote'), b = $('deepBar'); if (n) n.textContent = t; if (b && frac != null) { b.hidden = false; b.value = frac; } };
-  async function deepRun() {
+  async function deepRun(wide) {
     const X = App.AN; if (!X || !X.planner || (App.DEEP && App.DEEP.busy)) return;
     const inp = X.inp, cp = comboProvider(), t0 = performance.now();
     const keep = new Set(inp.cmds.map(c => c.n).concat(App.anSource !== 'paste' && App.R ? App.R.deck.filter(e => e.inc).map(e => e.c.n) : []));
     const src = ['src-engine', 'src-mech', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
     const useW = typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && src.every(Boolean);
     let ex = null;
-    const D = App.DEEP = { busy: true, frac: 0, note: 'Preparing candidates…', X, cancel: () => { if (ex) ex.cancel(); } };
+    const D = App.DEEP = { busy: true, wide: !!wide, frac: 0, note: 'Preparing candidates…', X, cancel: () => { if (ex) ex.cancel(); } };
     renderView();
     try {
       const res = await Deep.search(X, { deck: inp.deck, cmds: inp.cmds, combos: X.combos || null, prov: cp, keep, settings: App.S },
         init => (ex = useW ? Deep.workerExec(init, src.join('\n'), deepWorkers()) : Deep.localExec(init)),
-        (d, t) => { const el = (performance.now() - t0) / 1000, eta = d > 20 ? el / d * (t - d) : null; deepSay('Measured ' + d + '/' + t + (eta != null ? ' · about ' + Math.max(1, Math.round(eta)) + ' s left' : '') + '…', d / t); return useW ? null : new Promise(r => setTimeout(r, 0)); });
+        (d, t) => { const el = (performance.now() - t0) / 1000, eta = d > 20 ? el / d * (t - d) : null; deepSay('Measured ' + d + '/' + t + (eta != null ? ' · about ' + Math.max(1, Math.round(eta)) + ' s left' : '') + '…', d / t); return useW ? null : new Promise(r => setTimeout(r, 0)); }, wide ? Deep.WIDE : null);
       D.res = res; D.secs = (performance.now() - t0) / 1000; D.rows = Deep.rows(X, res); D.note = res.pkg.length ? 'Package of ' + res.pkg.length + ' swap' + (res.pkg.length === 1 ? '' : 's') + ', ' + res.singles.length + ' best single swaps.' : res.singles.length ? res.singles.length + ' single swaps gain ' + Deep.MIN_GAIN + ' or more; none combine into a package.' : 'No swap measured a gain of ' + Deep.MIN_GAIN + ' or more.';
       if (App.AN && App.AN.impactDone) deepMerge(App.AN);
     } catch (e) {
@@ -1793,7 +1793,7 @@
       const ic = e.target.closest('[data-impcmd]'); if (ic) { App.impPick = ic.dataset.impcmd; importDeck(); } const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
     $('view').addEventListener('click', async e => {
       const dp = e.target.closest('button[data-deep]');
-      if (dp) { if (dp.dataset.deep === 'run') deepRun(); else if (App.DEEP && App.DEEP.cancel) App.DEEP.cancel(); return; }
+      if (dp) { if (dp.dataset.deep === 'run' || dp.dataset.deep === 'wide') deepRun(dp.dataset.deep === 'wide'); else if (App.DEEP && App.DEEP.cancel) App.DEEP.cancel(); return; }
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
       const X = App.AN, a = b.dataset.sw;
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }
