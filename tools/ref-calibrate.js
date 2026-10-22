@@ -8,17 +8,9 @@ const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; };
 const dir = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'data';
 const GAMES = +opt('games', 1000), LIMIT = +opt('limit', 1e9), JSON_OUT = opt('json', null);
-const E = require('../src/engine.js'), An = require('../src/analysis.js');
-
-const cardFile = fs.readdirSync(dir).filter(f => /^oracle-cards-.*\.jsonl\.gz$/.test(f)).sort().pop();
-const raw = zlib.gunzipSync(fs.readFileSync(path.join(dir, cardFile))).toString().split('\n').filter(Boolean).map(l => JSON.parse(l));
-const db = E.buildDB(raw.map(E.norm).filter(Boolean), {});
-const sb = path.join(dir, 'spellbook'), man = JSON.parse(fs.readFileSync(path.join(sb, 'manifest.json'), 'utf8'));
-const tables = JSON.parse(fs.readFileSync(path.join(sb, 'tables.json'), 'utf8'));
-let vrows = [];
-for (const f of fs.readdirSync(sb).filter(f => /^variants-\d+\.json$/.test(f)).sort()) { const j = JSON.parse(fs.readFileSync(path.join(sb, f), 'utf8')); vrows = vrows.concat(j.rows || j); }
-const prov = E.localComboProvider(E.spellbookVariants(tables, vrows, db), {});
-const decks = zlib.gunzipSync(fs.readFileSync(path.join(dir, 'reference', 'decks.jsonl.gz'))).toString().split('\n').filter(Boolean).map(l => JSON.parse(l)).slice(0, LIMIT);
+const { load, deckOf } = require('./ref-load.js');
+const L = load(dir), { E, An, db, prov } = L, cardFile = L.cardFile, man = { timestamp: L.spellbook };
+const decks = L.decks.slice(0, LIMIT);
 
 const spearman = (a, b) => { const rk = v => { const o = v.map((x, i) => [x, i]).sort((p, q) => p[0] - q[0]), r = Array(v.length); for (let i = 0; i < o.length;) { let j = i; while (j + 1 < o.length && o[j + 1][0] === o[i][0]) j++; for (let k = i; k <= j; k++) r[o[k][1]] = (i + j) / 2; i = j + 1; } return r; }; const x = rk(a), y = rk(b), n = a.length, mx = x.reduce((s, v) => s + v, 0) / n, my = y.reduce((s, v) => s + v, 0) / n; let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; } return sxy / Math.sqrt(sxx * syy); };
 const q = (v, p) => { const s = [...v].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
@@ -39,8 +31,7 @@ const score = (rows, f) => { let ok = 0, w1 = 0, ae = 0; for (const r of rows) {
 (async () => {
   const res = [], t0 = Date.now();
   for (const d of decks) {
-    const cmds = d.cmd.map(n => E.lookup(db, n)).filter(Boolean);
-    const deck = d.cards.map(([n, qty]) => ({ c: E.lookup(db, n), qty })).filter(e => e.c);
+    const { cmds, deck } = deckOf(L, d);
     if (!cmds.length || deck.length < 50) continue;
     const names = deck.map(e => e.c.n).concat(cmds.map(c => c.n));
     const combos = await prov.find(names, cmds.map(c => c.n));
