@@ -248,6 +248,51 @@ const Deep = (function () {
     } finally { exec.close(); }
   }
 
+  /* ---------- per card: a few better cards for each card in the list, at different prices ---------- */
+  // For each cuttable nonland card: pool cards that share one of its roles (any card for a card with no role) and rate higher
+  // on the planner's value, PER_BAND per price band (up to the card's price or $1; up to 3× it or $5; above that). Each is
+  // measured as a single swap at o.g games on common random numbers; the best of each band is kept if it gains MIN_GAIN / 2 or more.
+  const BANDS = [['budget', p => Math.max(1, p)], ['mid', p => Math.max(5, 3 * p)], ['premium', () => Infinity]], PER_BAND = 2, MAX_USES = 2;
+  function cardOptions(X, ctx) {
+    const P = X.planner, keep = ctx.keep || new Set(), price = c => P.price(c);
+    const inDeck = new Set(ctx.deck.map(e => e.c.n).concat(ctx.cmds.map(c => c.n)));
+    const pool = P.pool.filter(c => !A(c).isLand && !inDeck.has(c.n)).map(c => ({ c, v: P.value(c), p: price(c) })).filter(x => x.p != null).sort((a, b) => b.v - a.v || (a.c.n < b.c.n ? -1 : 1));
+    const out = [];
+    for (const e of ctx.deck) {
+      const c = e.c; if (e.locked || keep.has(c.n) || P.combo.has(c.n) || A(c).isLand) continue;
+      const rs = Object.keys(A(c).roles), v = P.value(c), pc = price(c) || 0, opts = [];
+      let lo = -1;
+      for (const [band, cap] of BANDS) {
+        const hi = cap(pc); let k = 0;
+        for (const y of pool) { if (k >= PER_BAND) break; if (y.v > v && y.p > lo && y.p <= hi && (!rs.length || rs.some(r => A(y.c).roles[r]))) { opts.push({ band, add: y.c, price: y.p }); k++; } }
+        lo = hi;
+      }
+      if (opts.length) out.push({ cut: c, price: pc, roles: rs, opts });
+    }
+    return out;
+  }
+  async function perCard(X, ctx, execFor, progress, o) {
+    o = Object.assign({ g: G1 }, o || {});
+    const list = cardOptions(X, ctx), adds = [...new Set(list.flatMap(r => r.opts.map(x => x.add)))];
+    const exec = execFor(makeInit(X, ctx, adds, { settings: ctx.settings }));
+    try {
+      const tasks = [], ref = [];
+      list.forEach(r => r.opts.forEach(x => { tasks.push({ id: tasks.length + 1, games: o.g, swaps: [{ cut: r.cut.n, add: x.add.n }] }); ref.push(x); }));
+      let done = 0; const res = await exec.run(tasks, async () => { done++; if (progress) await progress(done, tasks.length); });
+      const lim = Math.max(+((ctx.settings && ctx.settings.bracket) || 3), X.power.minBracket);
+      res.forEach((r, i) => { ref[i].g = r.g; ref[i].d = r.d; ref[i].after = r.after; });
+      // one option per band; an add is offered for at most MAX_USES cards (those it gains most for), so one strong card does
+      // not fill every row
+      const all = []; list.forEach((r, i) => r.opts.forEach(x => { if (x.g >= MIN_GAIN / 2 && x.after.minB <= lim) all.push({ i, x }); }));
+      all.sort((a, b) => b.x.g - a.x.g);
+      const uses = new Map(), pick = list.map(() => new Map());
+      for (const { i, x } of all) { if (pick[i].has(x.band) || (uses.get(x.add.n) || 0) >= MAX_USES) continue; pick[i].set(x.band, x); uses.set(x.add.n, (uses.get(x.add.n) || 0) + 1); }
+      const rows = list.map((r, i) => Object.assign({}, r, { opts: BANDS.map(([b]) => pick[i].get(b)).filter(Boolean) })).filter(r => r.opts.length);
+      rows.sort((a, b) => Math.max(...b.opts.map(x => x.g)) - Math.max(...a.opts.map(x => x.g)));
+      return { rows, cards: list.length, none: ctx.deck.filter(e => !A(e.c).isLand).length - rows.length, evals: tasks.length, games: o.g };
+    } finally { exec.close(); }
+  }
+
   /* ---------- results as swap rows for the Improve list ---------- */
   function rows(X, res) {
     const P = X.planner, price = c => P.price(c), r1 = v => Math.round(v * 10) / 10;
@@ -261,6 +306,6 @@ const Deep = (function () {
     return out;
   }
 
-  return { search, rows, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, PKG_MIN, DEF, WIDE };
+  return { search, rows, perCard, cardOptions, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, PKG_MIN, DEF, WIDE };
 })();
 if (typeof module !== 'undefined') module.exports = Deep;
