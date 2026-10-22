@@ -7,7 +7,7 @@
      recovered     share of the K removed cards that the package adds back (exact card)
      in candidates share of the K removed cards that were among the screened candidates (the upper bound for recovered)
      gain          package gain on the search's own objective
-   Usage: node tools/bench-recover.js [dataDir] [--bracket 4] [--k 10] [--mode standard|thorough] [--decks 60]
+   Usage: node tools/bench-recover.js [dataDir] [--bracket 4] [--k 10] [--mode standard|thorough] [--opts '{json}'] [--decks 60]
           [--shard i/n] [--json out.json]
    Shards run the same deck list split n ways, for parallel processes; merge with --merge a.json b.json … */
 'use strict';
@@ -16,7 +16,7 @@ const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf('--
 const q = (v, p) => { const s = [...v].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : null; };
 function summary(rows, meta) {
   const m = k => +(rows.reduce((s, r) => s + r[k], 0) / rows.length).toFixed(3);
-  return Object.assign({}, meta, { decks: rows.length, fillerCut: m('fillerCut'), cutPrecision: m('cutPrecision'), recovered: m('recovered'), inCandidates: m('inCandidates'), swaps: m('swaps'), gain: { median: q(rows.map(r => r.gain), 0.5), q25: q(rows.map(r => r.gain), 0.25), q75: q(rows.map(r => r.gain), 0.75) }, cpuS: m('cpuS') });
+  return Object.assign({}, meta, { decks: rows.length, fillerCut: m('fillerCut'), cutPrecision: m('cutPrecision'), recovered: m('recovered'), evals: m('evals'), gainMean: m('gain'), inCandidates: m('inCandidates'), swaps: m('swaps'), gain: { median: q(rows.map(r => r.gain), 0.5), q25: q(rows.map(r => r.gain), 0.25), q75: q(rows.map(r => r.gain), 0.75) }, cpuS: m('cpuS') });
 }
 if (argv[0] === '--merge') {
   const parts = argv.slice(1).map(f => JSON.parse(fs.readFileSync(f, 'utf8'))), rows = [].concat(...parts.map(p => p.rows));
@@ -35,7 +35,7 @@ const isLand = c => E.analyze(c).isLand;
 const decks = L.decks.filter(d => d.src === 'edhrec-avg' && d.bracket === BR).slice(0, ND).filter((_, i) => i % sn === si);
 
 (async () => {
-  const rows = [], o = MODE === 'thorough' ? D.WIDE : D.DEF;
+  const rows = [], o = Object.assign({}, MODE === 'thorough' ? D.WIDE : D.DEF, JSON.parse(opt('opts', '{}')));
   for (const d of decks) {
     const { cmds, deck } = deckOf(L, d); if (!cmds.length) continue;
     const CI = [...new Set(cmds.map(c => c.ci).join(''))].join(''), r = rng(d.id), have = new Set(deck.map(e => e.c.n).concat(cmds.map(c => c.n)));
@@ -58,9 +58,9 @@ const decks = L.decks.filter(d => d.src === 'edhrec-avg' && d.bracket === BR).sl
       missing: removed.filter(c => !cand.has(c.n)).map(c => c.n + (X.planner.pool.includes(c) ? '' : ' (not in pool)')),
       gain: pkg.length ? +pkg[pkg.length - 1].total.toFixed(2) : 0, evals: res.stats.evals, cpuS: +((cpu.user + cpu.system) / 1e6).toFixed(1) };
     rows.push(row);
-    console.error([row.cmd, 'filler cut ' + cutsF + '/' + K, 'recovered ' + addsR + '/' + K, 'in cand ' + Math.round(row.inCandidates * K), 'in pool ' + Math.round(row.inPool * K), 'swaps ' + pkg.length, 'gain ' + row.gain, row.cpuS + ' s'].join(' | '));
+    console.error([row.cmd, 'filler cut ' + cutsF + '/' + K, 'recovered ' + addsR + '/' + K, 'in cand ' + Math.round(row.inCandidates * K), 'in pool ' + Math.round(row.inPool * K), 'swaps ' + pkg.length, 'gain ' + row.gain, 'evals ' + row.evals, row.cpuS + ' s'].join(' | '));
   }
-  const meta = { bracket: BR, k: K, mode: MODE, cards: L.cardFile, spellbook: L.spellbook };
+  const meta = { bracket: BR, k: K, mode: MODE, opts: opt('opts', null), cards: L.cardFile, spellbook: L.spellbook };
   if (JSON_OUT) fs.writeFileSync(JSON_OUT, JSON.stringify({ meta, rows }, null, 1));
   console.log(JSON.stringify(summary(rows, meta), null, 1));
 })();
