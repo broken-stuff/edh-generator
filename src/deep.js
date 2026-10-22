@@ -253,7 +253,9 @@ const Deep = (function () {
     const P = X.planner, price = c => P.price(c), r1 = v => Math.round(v * 10) / 10;
     const row = (group, reason, cut, add, r, tag) => ({ group, reason, cut, add, tag: tag || '', d: r.d, after: r.after, g: r.g, dPrice: (price(add) || 0) - (price(cut) || 0), priceKnown: price(add) != null && price(cut) != null });
     const out = [];
-    for (const it of res.singles) it.adds.forEach((a, i) => out.push(row('Deep search', (it.kind === 'pair' ? 'Pair: completes ' + it.v.c.join(' + ') + ' with ' + it.adds.filter(x => x !== a).map(x => x.n).join(', ') : (res.why.get(a.n) || 'screened')) + ' · gain ' + r1(it.g2) + (it.kind === 'pair' ? ' for both' : ''), it.cuts[i], a, it.r)));
+    // a single swap whose add is already in the package is the same change twice; it is left out
+    const inPkg = new Set(res.pkg.map(p => p.add.n));
+    for (const it of res.singles) if (!it.adds.some(a => inPkg.has(a.n))) it.adds.forEach((a, i) => out.push(row('Deep search', (it.kind === 'pair' ? 'Pair: completes ' + it.v.c.join(' + ') + ' with ' + it.adds.filter(x => x !== a).map(x => x.n).join(', ') : (res.why.get(a.n) || 'screened')) + ' · gain ' + r1(it.g2) + (it.kind === 'pair' ? ' for both' : ''), it.cuts[i], a, it.r)));
     const nSteps = res.pkg.length ? res.pkg[res.pkg.length - 1].step : 0;
     for (const p of res.pkg) out.push(row('Package', 'Step ' + p.step + ' of ' + nSteps + ' · marginal gain ' + r1(p.m) + ' · package total ' + r1(p.total) + (p.kind === 'pair' ? ' · completes ' + p.v.c.join(' + ') : res.why.get(p.add.n) ? ' · ' + res.why.get(p.add.n) : ''), p.cut, p.add, p.r));
     return out;
