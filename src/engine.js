@@ -719,7 +719,7 @@ const Engine = (function () {
     const syn = new Map();
     const synOf = c => { let v = syn.get(c); if (v) return v; let s = 0; const hit = []; for (const t of tags) if (t.test(c)) { s += t.w * (t.factor ? t.factor(c) : 1); hit.push(t.label); } v = { s, hit }; syn.set(c, v); return v; };
     const pop = c => !mechMode && c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
-    const Wplan = W.plan != null ? +W.plan : 3, Wqual = W.textQuality != null ? +W.textQuality : 5;
+    const Wplan = W.plan != null ? +W.plan : 3, Wqual = W.textQuality != null ? +W.textQuality : 7; // mechPower 3 and textQuality 7: tools/bench-plan.js on 24 commanders (see the PR)
     const mechTerms = c => plan ? Wplan * plan.score(c) + Wqual * PL.quality(c) : 0;
     const priceRef = pcap != null ? pcap : (cap != null ? Math.max(1, cap / mainSize * 3) : null);
     const pricePen = c => { const p = price(c); if (p == null || !priceRef) return 0; return Math.min(3, p / priceRef); }; // no budget → price is ignored
@@ -729,11 +729,11 @@ const Engine = (function () {
     const baseCache = new Map();
     const base = c => {
       let v = baseCache.get(c); if (v != null) return v;
-      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (pPref + (mechMode ? 0 : W.quality != null ? +W.quality : 2)) * cardPower(c, mechMode) + mechTerms(c) + (noise.get(c.n) || 0);
+      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (pPref + (mechMode ? (W.mechPower != null ? +W.mechPower : 3) : W.quality != null ? +W.quality : 2)) * cardPower(c, mechMode) + mechTerms(c) + (noise.get(c.n) || 0);
       baseCache.set(c, v); return v;
     };
 
-    R.explain = c => ({ syn: W.syn * Math.min(synOf(c).s, 3), pop: W.pop * pop(c), curve: W.curve * curveFit(c), owned: owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0, price: -W.price * pricePen(c), bracket: -W.bracket * bpen(c), power: (pPref + (mechMode ? 0 : W.quality != null ? +W.quality : 2)) * cardPower(c, mechMode), plan: plan ? Wplan * plan.score(c) : 0, textQuality: plan ? Wqual * PL.quality(c) : 0, planWhy: plan ? plan.why(c) : [], noise: noise.get(c.n) || 0, total: base(c), inPool: pool.includes(c), excluded: R.excluded[c.n] || null, tags: synOf(c).hit });
+    R.explain = c => ({ syn: W.syn * Math.min(synOf(c).s, 3), pop: W.pop * pop(c), curve: W.curve * curveFit(c), owned: owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0, price: -W.price * pricePen(c), bracket: -W.bracket * bpen(c), power: (pPref + (mechMode ? (W.mechPower != null ? +W.mechPower : 3) : W.quality != null ? +W.quality : 2)) * cardPower(c, mechMode), plan: plan ? Wplan * plan.score(c) : 0, textQuality: plan ? Wqual * PL.quality(c) : 0, planWhy: plan ? plan.why(c) : [], noise: noise.get(c.n) || 0, total: base(c), inPool: pool.includes(c), excluded: R.excluded[c.n] || null, tags: synOf(c).hit });
     /* deck state */
     const st = { total: cmdCost, cnt: { gc: 0, mld: 0, xturn: 0, tutor: 0 }, creatures: 0, names: new Set(cmds.map(c => c.n)) };
     for (const c of cmds) { const a = analyze(c); for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k]++; }

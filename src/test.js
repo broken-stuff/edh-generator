@@ -265,5 +265,20 @@ function legalCheck(R, label) {
     const ritDeck = k => An.simulate([{ c: L('Plains'), qty: 36 }, { c: E.norm(card({ name: 'Synth Six', cmc: 6, mana_cost: '{5}{W}', type_line: 'Creature — Test', oracle_text: '', power: '6', toughness: '6', color_identity: ['W'] })), qty: 30 }, { c: k, qty: 33 }], [], 300, 7, { CI: 'W' });
     const withR = ritDeck(rock('Synth Ritual', 'Add {W}{W}{W}.', 1, 'Instant')), noR = ritDeck(pebble);
     assert(withR.perTurn[4].dmg > 0.5 && noR.perTurn[4].dmg === 0, 'simulate: a ritual casts a 6-drop early (damage by T5 ' + withR.perTurn[4].dmg.toFixed(2) + ' vs ' + noR.perTurn[4].dmg.toFixed(2) + ' without)');
+    // plan profile and the mechanics-only mode: the commander's own text sets the plan; EDHREC rank changes nothing
+    const Pl = require('./plan.js'), lord = E.lookup(db, 'Synth Mono Lord'), gPool = db.all.filter(c => c.ci === 'G' || c.ci === '');
+    const PP = Pl.profile(db, [lord], gPool), elf = gPool.find(c => /\bElf\b/.test(c.tl) && c !== lord), beast = gPool.find(c => /\bBeast\b/.test(c.tl));
+    assert(PP.parts.some(p => p.kind === 'type' && p.key === 'Elf') && PP.isPlan(elf) && !PP.isPlan(beast) && PP.quota === Math.min(PP.supply, Math.max(10, Math.min(30, Math.round(PP.supply / 4)))) || PP.supply < 10, 'plan: "another Elf you control" makes Elves plan cards, a Beast is not; quota from supply');
+    assert(Pl.quality(elf) > 0 && Pl.quality(elf) < 1 && Pl.features(elf).length === Pl.QF.length, 'plan: quality is a probability over the rules-text features');
+    const mk2 = (name, kw, text) => E.norm(card({ name, type_line: 'Creature — Ninja', mana_cost: '{1}{U}', cmc: 2, color_identity: ['U'], oracle_text: text, keywords: kw }));
+    assert(Mh.parse(mk2('Synth Shinobi', ['Ninjutsu'], 'Ninjutsu {1}{U}')).needs.has('evasion'), 'mech: reminder-only keywords (ninjutsu) carry needs from KWX');
+    const MS = Object.assign({}, { commanders: ['Synth Mono Lord'], seed: 'm', bracket: 3, bl: E.bracketDefaults(3), mode: 'mech' });
+    const RM = await E.generate(db, MS);
+    const rev = raw.map(c => Object.assign({}, c, { edhrec_rank: c.edhrec_rank ? 100000 - c.edhrec_rank : null })), dbRev = E.buildDB(rev.map(E.norm).filter(Boolean), {});
+    const RMr = await E.generate(dbRev, MS), names = R2 => R2.deck.map(e => e.qty + ' ' + e.c.n).sort().join('|');
+    assert(RM.ok !== false && !RM.errors.length && RM.plan && RM.plan.quota >= 0 && RM.deck.reduce((s2, e) => s2 + e.qty, 0) === 99, 'mech mode: legal 99 + commander with a plan profile (' + RM.plan.summary + ')');
+    assert(names(RM) === names(RMr), 'mech mode: reversing every EDHREC rank leaves the deck unchanged');
+    const RS = await E.generate(db, Object.assign({}, MS, { mode: '' })), RSr = await E.generate(dbRev, Object.assign({}, MS, { mode: '' }));
+    assert(names(RS) !== names(RSr), 'standard mode: the same reversal changes the deck (popularity is in its score)');
   }
 })();

@@ -42,6 +42,13 @@ Each card is weighed on:
 - fit to the mana curve
 - price, when you set a budget
 
+**Card choice: Mechanics only** (on Start, under Game plan) builds without EDHREC popularity. Each card is weighed instead on:
+- the commander's **plan profile**, read from its own rules text: mechanics it has or names (ninjutsu, mutate, goad, offspring, energy and the rest), creature types and card types it rewards ("other Zombies you control", "instant and sorcery spells"), power or mana value bounds it names, and links in the mechanics graph. The deck holds a quota of plan cards, and the curve target comes from the plan cards' own mana values. The Deck stats show the plan and how many cards meet it.
+- a **card-quality model** on rules-text features (roles, mana value, efficiency, card types, abilities), fitted on the reference decks with no popularity field among its inputs, so new and unplayed cards are judged on what they do
+- the card-power estimate without its popularity term, curve fit and price
+
+Analysis, Improve and deep search on a mechanics-only deck use the same quality model in place of EDHREC rank. Standard builds are unchanged.
+
 The five pages are in the left menu (a bar at the bottom on phones): **Start**, **Deck**, **Analysis**, **Improve** and **Primer**. **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title.
 
 ### Start
@@ -134,6 +141,7 @@ Each page is one self-contained HTML file with no frameworks, libraries or build
 |---|---|
 | `src/engine.js` | Card normalisation, role and theme tagging, brackets, deck generation and the swap optimiser, commander quiz scoring |
 | `src/analysis.js` | Power level, bracket estimate, goldfish simulation, draw odds, recommendations |
+| `src/plan.js` | Commander plan profiles (what a commander's text asks its deck for) and the rules-text card-quality model used by Mechanics only |
 | `src/mech.js` | Mechanics graph: Oracle text parsed into what each card needs (triggers, costs, scaling) and makes (effects and the events they cause); links between cards |
 | `src/deep.js` | Deep search: wide swap screen, combo completions, sequential swap package; runs in Web Workers |
 | `src/app.js` | Deck generator interface |
@@ -180,7 +188,7 @@ node sens.js     # prints a table of how decks respond to bracket, budget and ga
 
 **Reference decks (calibration):** `.github/workflows/ref-decks.yml` (manual, or a push that changes the downloader) runs `tools/ref-decks.js`, which saves bracket-labelled decklists for the 60 most-played commanders to `data/reference/decks.jsonl.gz`: EDHREC's average deck for each bracket (exhibition, core, upgraded, optimized, cEDH) and up to 3 of the most-viewed Archidekt decks per bracket (the bracket the owner set), one request every 1.2 s. `node tools/ref-calibrate.js data --json out.json` runs the analysis on every reference deck and prints agreement between its bracket and power level and the decks' brackets (exact, within one, confusion matrix, rank correlation), with power-level cut points fitted by leave-one-commander-out cross-validation. The page does not load these files.
 
-**Benchmarks:** `node tools/bench-recover.js data` takes the 60 EDHREC Bracket 4 average decks, swaps 10 nonland cards of each for random legal cards of the identity with EDHREC rank 12,000–25,000 (seeded), runs deep search and reports how many of the planted cards it cuts, how many of its cuts are planted cards, and how many removed originals it adds back (`--shard i/n` splits the run across processes; `--merge` combines them). `node tools/bench-auc.js data` measures, on the same decks, how well the swap objective alone separates planted cards from originals (AUC). `tools/opp-profile.js` and `tools/opp-shift.js` rebuild the opponent profiles of the table simulation.
+**Benchmarks:** `node tools/bench-recover.js data` takes the 60 EDHREC Bracket 4 average decks, swaps 10 nonland cards of each for random legal cards of the identity with EDHREC rank 12,000–25,000 (seeded), runs deep search and reports how many of the planted cards it cuts, how many of its cuts are planted cards, and how many removed originals it adds back (`--shard i/n` splits the run across processes; `--merge` combines them). `node tools/bench-auc.js data` measures, on the same decks, how well the swap objective alone separates planted cards from originals (AUC). `node tools/bench-plan.js data` measures deck building on what popularity cannot explain: for the 60 commanders with an EDHREC Bracket 3 average deck it builds a standard and a mechanics-only deck and reports plan cards, niche recall (the human decks' picks ranked above 5,000, made for that commander), overlap, mechanics links, curve error, and power level and win turn from an analysis that carries no EDHREC rank (`--set` passes settings to the mechanics-only build). `node tools/quality-fit.js data` refits the card-quality model and prints its held-out AUC. `tools/opp-profile.js` and `tools/opp-shift.js` rebuild the opponent profiles of the table simulation.
 
 **Mana in the simulation:** a mana ability yields its output less its activation cost (a Signet nets 1, a {1} filter 0). Lotus Petal, rituals and rocks that don't untap (Mana Vault, Grim Monolith) are one-shot mana, spent only on a turn they make the commander or another spell in hand castable. Mox Opal needs three artifacts, Mox Amber a legendary creature or planeswalker (the commander counts), Chrome Mox exiles a coloured card from hand and Mox Diamond discards a land; without one in hand they are not cast. Springleaf Drum needs a creature on the battlefield. Spend restrictions (such as Delighted Halfling's legendary-only mana) are not modelled. In the power level's Speed vector, fast mana counts by the same model: lasting mana fully, conditional moxen (Mox Opal unless the deck has 15+ artifacts) and one-shot mana less, cards that make no net mana (Lion's Eye Diamond) not at all.
 

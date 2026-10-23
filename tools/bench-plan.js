@@ -7,10 +7,11 @@
      overlap     share of the EDHREC average deck's nonland cards in the generated deck
      link        share of nonland cards linked to the commander in the mechanics graph (Mech.pairW ≥ Mech.LINK)
      mvErr       |average MV − the EDHREC average deck's average MV|
-     power, win  analysis power level and median goldfish win turn (1,500 games), the same for the human deck
+     power, win  analysis power level and typical win turn (1,500 games), the same for the human deck; the analysis runs
+                 with mode 'mech' for every deck, so the power level's card-quality term carries no EDHREC rank
      medRank     median EDHREC rank of the nonland cards (descriptive only)
    Usage: node tools/bench-plan.js [dataDir] [--bracket 3] [--decks 60] [--modes standard,mech] [--games 1500]
-          [--shard i/n] [--json out.json];  merge shards with --merge a.json b.json … */
+          [--shard i/n] [--json out.json] [--set '{settings for mech}'];  merge shards with --merge a.json b.json … */
 'use strict';
 const fs = require('fs');
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; };
@@ -25,6 +26,7 @@ function summary(rows) {
 if (argv[0] === '--merge') { const rows = [].concat(...argv.slice(1).map(f => JSON.parse(fs.readFileSync(f, 'utf8')).rows)); console.log(JSON.stringify(summary(rows), null, 1)); process.exit(0); }
 const dir = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'data';
 const BR = +opt('bracket', 3), ND = +opt('decks', 60), MODES = opt('modes', 'standard,mech').split(','), GAMES = +opt('games', 1500), JSON_OUT = opt('json', null);
+const SET = JSON.parse(opt('set', '{}')); // extra settings for the mech mode, e.g. '{"weights":{"plan":2}}'
 const [si, sn] = opt('shard', '0/1').split('/').map(Number);
 const { load, deckOf } = require('./ref-load.js');
 const L = load(dir), { E, An, db, prov } = L, M = require('../src/mech.js'), PL = require('../src/plan.js');
@@ -44,13 +46,13 @@ const nl = c => !E.analyze(c).isLand && !E.isBasic(c);
       const cards = list.map(e => e.c), non = cards.filter(nl);
       const mv = non.reduce((s, c) => s + c.cmc, 0) / non.length;
       const combos = await prov.find(cards.map(c => c.n).concat(cmds.map(c => c.n)), cmds.map(c => c.n));
-      const X = An.run(db, list, cmds, { settings: Object.assign(E.defaults(), { bracket: BR, bl: E.bracketDefaults(BR) }), games: GAMES, combos });
+      const X = An.run(db, list, cmds, { settings: Object.assign(E.defaults(), { bracket: BR, bl: E.bracketDefaults(BR), mode: 'mech' }), games: GAMES, combos });
       return { plan: non.filter(plan.isPlan).length, link: non.filter(c => cmds.some(k => M.pairW(c, k) >= M.LINK)).length / non.length, mv, power: X.power.pl, win: X.power.win ? X.power.win.typical : null, medRank: med(non.map(c => c.rank || 99999)), non };
     };
     const H = await stats(deck);
     const row = { id: d.id, cmd: key, quota: plan.quota, nicheN: niche.size, human: { power: H.power, win: H.win, link: H.link, plan: H.plan, mv: H.mv }, m: {} };
     for (const mode of MODES) {
-      const R = await E.generate(db, { commanders: cmds.map(c => c.n), bracket: BR, bl: E.bracketDefaults(BR), mode: mode === 'mech' ? 'mech' : '' }, { combos: prov });
+      const R = await E.generate(db, Object.assign({ commanders: cmds.map(c => c.n), bracket: BR, bl: E.bracketDefaults(BR), mode: mode === 'mech' ? 'mech' : '' }, mode === 'mech' ? SET : {}), { combos: prov });
       if (R.errors.length) { row.m[mode] = null; continue; }
       const G = await stats(R.deck);
       row.m[mode] = { plan: G.plan, planQuota: plan.quota ? Math.min(1, G.plan / plan.quota) : null, niche: niche.size ? G.non.filter(c => niche.has(c.n)).length / niche.size : null,
