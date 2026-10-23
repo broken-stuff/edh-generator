@@ -547,6 +547,10 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
       <select id="archetype" data-k="archetype">
         <option value="">Auto (from commander)</option><option value="tribal">Tribal (add the type in Themes and tags)</option>
       </select></label>
+    <label class="f">Card choice
+      <select id="mode" data-k="mode">
+        <option value="">Standard (synergy + EDHREC popularity)</option><option value="mech">Mechanics only (no popularity)</option>
+      </select></label>
     <label class="f">Power (Commander Bracket)
       <select id="bracket" data-k="bracket" data-type="num">
         <option value="1">1 · Exhibition</option><option value="2">2 · Core</option><option value="3">3 · Upgraded</option><option value="4">4 · Optimized</option><option value="5">5 · cEDH</option>
@@ -1199,7 +1203,9 @@ const Engine = (function () {
   /* ---------- card power index (0–1) from card data: flags, efficiency of each role at its mana value, free casting, EDHREC popularity.
      Weights are this tool's own; they rank cards, they are not a published rating. ---------- */
   const CP = new WeakMap();
-  function cardPower(c) {
+  // noRank: the same index without its EDHREC term (mechanics-only builds)
+  function cardPower(c, noRank) {
+    if (noRank) { const p = cardPower(c); return Math.max(0, p - 0.25 * (c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0)); }
     let v = CP.get(c); if (v != null) return v;
     const a = analyze(c), low = c.low || '', mv = c.cmc || 0, inst = /\bInstant\b/.test(c.ft) || (c.kw || []).includes('flash');
     let p = 0;
@@ -1332,7 +1338,7 @@ const Engine = (function () {
     }
 
     /* seeded RNG */
-    const seedBase = String(S.seed || '').trim() || ('auto:' + hashStr(stable(Object.assign({}, S, { seed: '', reroll: 0 }))));
+    const seedBase = String(S.seed || '').trim() || ('auto:' + hashStr(stable(Object.assign({}, S, { seed: '', reroll: 0 }, S.mode ? {} : { mode: undefined })))); // an empty mode leaves the seed as before
     R.seedUsed = seedBase + (S.reroll ? '#' + S.reroll : '');
     const rng = mulberry32(hashStr(R.seedUsed));
 
@@ -1368,16 +1374,30 @@ const Engine = (function () {
       pool.push(c);
     }
     R.poolSize = pool.length; R.exReasons = exReasons;
+    /* mechanics-only mode: no EDHREC rank anywhere in the score; the commander's plan profile and a rules-text quality
+       model take its place, and the curve target comes from the plan (src/plan.js) */
+    const mechMode = S.mode === 'mech';
+    const PL = mechMode ? ((typeof Plan !== 'undefined') ? Plan : require('./plan.js')) : null;
+    const plan = mechMode ? PL.profile(db, cmds, pool) : null;
+    if (plan) {
+      R.plan = { summary: PL.summary(plan), parts: plan.parts, supply: plan.supply, partSupply: plan.partSupply, quota: plan.quota, avgMV: plan.avgMV, strength: plan.strength, score: plan.score, why: plan.why, isPlan: plan.isPlan };
+      L('Plan (mechanics only): ' + R.plan.summary + '. ' + plan.supply + ' plan cards in the pool; quota ' + plan.quota + '; curve target ' + (S.mana.fixedMV ? (+S.mana.avgMV || 3) + ' (fixed by you)' : plan.avgMV + ' from the plan cards') + '.');
+      if (plan.quota) addTag('plan', { label: 'Plan', test: plan.isPlan }, 2, 'commander plan');
+      R.tags = tags.map(t => ({ key: t.key, label: t.label, w: t.w, src: t.src, q: t.q }));
+    }
     L('Pool: ' + pool.length + ' candidates within identity ' + (CI || 'C') + '. Excluded: ' + (Object.entries(exReasons).map(([k, v]) => k + ' ' + v).join(', ') || 'none') + '.');
     if (!pool.length && !incs.length) R.warnings.push('Candidate pool is empty after filters; deck will be filled with basic lands only.');
 
     /* scoring */
-    const T = +S.mana.avgMV || 3;
+    const T = plan && !S.mana.fixedMV ? plan.avgMV : (+S.mana.avgMV || 3);
+    R.curveTarget = T;
     const noise = new Map();
     for (const c of pool) noise.set(c.n, (rng() * 2 - 1) * (+S.variance || 0));
     const syn = new Map();
     const synOf = c => { let v = syn.get(c); if (v) return v; let s = 0; const hit = []; for (const t of tags) if (t.test(c)) { s += t.w * (t.factor ? t.factor(c) : 1); hit.push(t.label); } v = { s, hit }; syn.set(c, v); return v; };
-    const pop = c => c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
+    const pop = c => !mechMode && c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
+    const Wplan = W.plan != null ? +W.plan : 3, Wqual = W.textQuality != null ? +W.textQuality : 5;
+    const mechTerms = c => plan ? Wplan * plan.score(c) + Wqual * PL.quality(c) : 0;
     const priceRef = pcap != null ? pcap : (cap != null ? Math.max(1, cap / mainSize * 3) : null);
     const pricePen = c => { const p = price(c); if (p == null || !priceRef) return 0; return Math.min(3, p / priceRef); }; // no budget → price is ignored
     const curveFit = c => Math.max(-0.5, 1 - Math.abs(c.cmc - T) / (c.cmc < T ? 4 : 3));
@@ -1386,11 +1406,11 @@ const Engine = (function () {
     const baseCache = new Map();
     const base = c => {
       let v = baseCache.get(c); if (v != null) return v;
-      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (pPref + (W.quality != null ? +W.quality : 2)) * cardPower(c) + (noise.get(c.n) || 0);
+      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (pPref + (mechMode ? 0 : W.quality != null ? +W.quality : 2)) * cardPower(c, mechMode) + mechTerms(c) + (noise.get(c.n) || 0);
       baseCache.set(c, v); return v;
     };
 
-    R.explain = c => ({ syn: W.syn * Math.min(synOf(c).s, 3), pop: W.pop * pop(c), curve: W.curve * curveFit(c), owned: owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0, price: -W.price * pricePen(c), bracket: -W.bracket * bpen(c), power: (pPref + (W.quality != null ? +W.quality : 2)) * cardPower(c), noise: noise.get(c.n) || 0, total: base(c), inPool: pool.includes(c), excluded: R.excluded[c.n] || null, tags: synOf(c).hit });
+    R.explain = c => ({ syn: W.syn * Math.min(synOf(c).s, 3), pop: W.pop * pop(c), curve: W.curve * curveFit(c), owned: owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0, price: -W.price * pricePen(c), bracket: -W.bracket * bpen(c), power: (pPref + (mechMode ? 0 : W.quality != null ? +W.quality : 2)) * cardPower(c, mechMode), plan: plan ? Wplan * plan.score(c) : 0, textQuality: plan ? Wqual * PL.quality(c) : 0, planWhy: plan ? plan.why(c) : [], noise: noise.get(c.n) || 0, total: base(c), inPool: pool.includes(c), excluded: R.excluded[c.n] || null, tags: synOf(c).hit });
     /* deck state */
     const st = { total: cmdCost, cnt: { gc: 0, mld: 0, xturn: 0, tutor: 0 }, creatures: 0, names: new Set(cmds.map(c => c.n)) };
     for (const c of cmds) { const a = analyze(c); for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k]++; }
@@ -1489,7 +1509,9 @@ const Engine = (function () {
     let nbTarget = S.mana.nonbasic != null && S.mana.nonbasic !== '' ? +S.mana.nonbasic : autoNB;
     nbTarget = Math.max(0, Math.min(nbTarget, landTarget - landCount()));
     const landColors = c => { const a = analyze(c); if (a.land === 'command') return CI.length; if (a.land === 'fetch') { if (/basic land/.test(c.low)) return Math.min(CI.length, 1); const m = c.low.match(/plains|island|swamp|mountain|forest/g) || []; const map = { plains: 'W', island: 'U', swamp: 'B', mountain: 'R', forest: 'G' }; return new Set(m.map(x => map[x]).filter(x => CI.includes(x))).size; } return c.pm.filter(x => CI.includes(x)).length; };
-    const landScore = c => { const a = analyze(c); const on = landColors(c); return W.pop * pop(c) + (CI.length > 1 ? 1.5 * Math.min(on, CI.length) / CI.length : 0) + 0.5 * W.syn * Math.min(synOf(c).s, 2) - W.price * pricePen(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) + (noise.get(c.n) || 0) - (a.land === 'utility' && CI.length >= 3 ? 0.5 : 0); };
+    const landScore = c => { const a = analyze(c); const on = landColors(c); return W.pop * pop(c) + (CI.length > 1 ? 1.5 * Math.min(on, CI.length) / CI.length : 0) + 0.5 * W.syn * Math.min(synOf(c).s, 2) - W.price * pricePen(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) + (noise.get(c.n) || 0) - (a.land === 'utility' && CI.length >= 3 ? 0.5 : 0) + (mechMode ? landText(c) : 0); };
+    // mechanics-only: untapped and fetchable lands first, since popularity no longer sorts them
+    function landText(c) { const l = c.low; let v = 0; if (/enters (?:the battlefield )?tapped/.test(l) && !/unless|you may pay|if you control/.test(l)) v -= 1; if (/\b(?:plains|island|swamp|mountain|forest)\b/.test(c.ft.toLowerCase())) v += 0.5; if (analyze(c).land === 'fetch' || analyze(c).land === 'shock' || analyze(c).land === 'triome') v += 0.5; if (/spend this mana only|only to cast|can't be spent/.test(l)) v -= 1.5; if (CI && !c.pm.some(x => CI.includes(x)) && analyze(c).land !== 'fetch') v -= 1.5; if (/\{t\}, pay \d life|deals 1 damage to you|\{\d\}, \{t\}: add/.test(l)) v -= 0.3; return v; }
     const landOK = c => { const a = analyze(c); if (!a.isLand || a.land === 'basic') return false; if (!S.mana.types[a.land]) return false; if (a.land === 'fetch' && CI.length && landColors(c) === 0) return false; if ((a.land === 'dual' || a.land === 'shock' || a.land === 'triome') && landColors(c) < 2) return false; return true; };
     const landCands = sortScored(pool.filter(landOK).map(c => ({ c, s: landScore(c) })));
     let nb = 0, why = {};
@@ -1638,18 +1660,19 @@ const Engine = (function () {
       const PW = PAIRS.map(p => (cmds.some(c => p.en(c) || p.pay(c)) || tagKeys.has(p.key)) ? 1 : 0.35);
       const sidesCache = new Map();
       const sides = c => { let v = sidesCache.get(c); if (v) return v; v = []; PAIRS.forEach((p, i) => { if (p.en(c)) v.push(2 * i); if (p.pay(c)) v.push(2 * i + 1); }); sidesCache.set(c, v); return v; };
-      const roleBits = c => { const a = analyze(c); let b = 0; ROLES.forEach((r, i) => { if (a.roles[r]) b |= 1 << i; }); return b; };
+      const ORS = plan && plan.quota ? ROLES.concat(['plan']) : ROLES, hasR = (c, r) => r === 'plan' ? plan.isPlan(c) : !!analyze(c).roles[r];
+      const roleBits = c => { let b = 0; ORS.forEach((r, i) => { if (hasR(c, r)) b |= 1 << i; }); return b; };
       const pc = b => { let n = 0; while (b) { n += b & 1; b >>>= 1; } return n; };
       const G = (i, en, pay) => PW[i] * 2 * Math.sqrt(en * pay);
       const cnt = new Float64Array(NP * 2);
       for (const c of cmds) for (const k of sides(c)) cnt[k] += 3; // commander counts 3, as in the analysis
       for (const e of deck) if (!isBasic(e.c)) for (const k of sides(e.c)) cnt[k] += e.qty;
       const synTotal = () => { let g = 0; for (let i = 0; i < NP; i++) g += G(i, cnt[2 * i], cnt[2 * i + 1]); return Wl * g; };
-      const tgt = ROLES.map(r => +S.targets[r] || 0), rc = ROLES.map(r => roleCount(r));
+      const tgt = ORS.map(r => r === 'plan' ? plan.quota : +S.targets[r] || 0), rc = ORS.map(r => r === 'plan' ? deck.filter(e => !analyze(e.c).isLand && plan.isPlan(e.c)).length : roleCount(r));
       const nlE = () => deck.filter(e => !analyze(e.c).isLand);
       const nN = nlE().reduce((s, e) => s + e.qty, 0); let mvSum = nlE().reduce((s, e) => s + e.c.cmc * e.qty, 0);
       const curvePen = sum => W.curve * 8 * Math.max(0, Math.abs((nN ? sum / nN : T) - T) - 0.15);
-      const shortfall = () => ROLES.reduce((s, r, i) => s + Math.max(0, tgt[i] - rc[i]), 0);
+      const shortfall = () => ORS.reduce((s, r, i) => s + Math.max(0, tgt[i] - rc[i]), 0);
       const landVal = c => isBasic(c) ? 0 : landScore(c);
       const J = () => deck.reduce((s, e) => s + (analyze(e.c).isLand ? landVal(e.c) * e.qty : base(e.c) * e.qty), 0) + synTotal() - W.role * 2 * shortfall() - curvePen(mvSum);
       const pr = c => isBasic(c) && !S.budget.inclBasics ? 0 : (price(c) || 0);
@@ -1660,19 +1683,19 @@ const Engine = (function () {
       const J0 = J(); let pairs = 0, rounds = 0; const swaps = [], tabu = new Set();
       const validBudget = () => cap == null || st.total <= cap + 1e-9;
       const doSwap = (out, x, d, tag) => {
-        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ROLES.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; });
+        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ORS.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; });
         if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
-        const xr = x.land ? null : ROLES.find((r, i) => (x.rb & (1 << i)) && rc[i] < tgt[i]) || ROLES.find((r, i) => (x.rb & (1 << i)) && (roleBits(out.c) & (1 << i)));
-        const slot = xr || (!x.land && synOf(x.c).s > 0 ? 'synergy' : 'flex');
+        const xr = x.land ? null : ORS.find((r, i) => (x.rb & (1 << i)) && rc[i] < tgt[i]) || ORS.find((r, i) => (x.rb & (1 << i)) && (roleBits(out.c) & (1 << i)));
+        const slot = (xr === 'plan' ? 'synergy' : xr) || (!x.land && synOf(x.c).s > 0 ? 'synergy' : 'flex');
         removeEntry(out); const ox = byName.get(out.c.n); if (ox) ox.inDeck = false;
         if (x.land) { const ex = deck.find(e => e.c === x.c); if (ex) { ex.qty++; st.total += pr(x.c); } else add(x.c, 'basic', 1, 0, 'optimiser: budget for a better spell'); }
-        else { add(x.c, slot, 1, x.b, 'optimiser swap (' + tag + ')'); x.inDeck = true; for (const k of x.sd) cnt[k] += 1; ROLES.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
+        else { add(x.c, slot, 1, x.b, 'optimiser swap (' + tag + ')'); x.inDeck = true; for (const k of x.sd) cnt[k] += 1; ORS.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
         swaps.push({ out: out.c.n, in: x.c.n, d, tag });
       };
       // exact change in J for one swap in the current state (used to verify paired moves)
       const exactD = (out, x) => { const snap = { cnt: Float64Array.from(cnt), rc: rc.slice(), mv: mvSum };
-        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ROLES.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; }); if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
-        if (!x.land) { for (const k of x.sd) cnt[k] += 1; ROLES.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
+        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ORS.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; }); if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
+        if (!x.land) { for (const k of x.sd) cnt[k] += 1; ORS.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
         const outV = analyze(out.c).isLand ? landVal(out.c) : base(out.c), inV = x.land ? 0 : x.b;
         const synAfter = synTotal(), sfAfter = shortfall(), cpAfter = curvePen(mvSum);
         cnt.set(snap.cnt); rc.splice(0, rc.length, ...snap.rc); mvSum = snap.mv;
@@ -1693,7 +1716,7 @@ const Engine = (function () {
           for (const k of cs) cnt[k] += 1;
           const lossC = synNow - Wl * gNoC;
           let needMask = 0, openMask = 0;
-          ROLES.forEach((r, i) => { if ((cb & (1 << i)) && rc[i] <= tgt[i]) needMask |= 1 << i; if (!(cb & (1 << i)) && rc[i] < tgt[i]) openMask |= 1 << i; });
+          ORS.forEach((r, i) => { if ((cb & (1 << i)) && rc[i] <= tgt[i]) needMask |= 1 << i; if (!(cb & (1 << i)) && rc[i] < tgt[i]) openMask |= 1 << i; });
           const cp = new Map();
           const fixed = -bc - lossC + curNow;
           for (let q = 0; q < cands.length; q++) {
@@ -2081,6 +2104,7 @@ const Mech = (function () {
     ['combat', /beginning of combat/, 0.3]
   ];
   const EFFECTS = [ // effect → makes
+    ['energy', /\byou get (?:\{e\})+|\bget (?:x|that many|an amount of) \{e\}/, 1],
     ['mana', /\badd (?:\{|one|two|three|x |an amount|that much|mana)|adds? an additional|spells? (?:you cast )?costs? \{\d\} less|costs? \{\d\} less to cast/, 1],
     ['card', /\bdraws? (?:a|an|one|two|three|four|five|x|that many|cards?|seven)|exile the top [^.]* you may (?:play|cast) (?:it|them|that card)|put (?:it|that card|those cards|one of them|them) into your hand/, 1],
     ['token.creature', /create[^.]*creature tokens?|create[^.]*tokens? that'?s? (?:a )?cop(?:y|ies)|tokens that are copies|create (?:a|x|that many|[a-z]+) [^.]*\d+\/\d+[^.]*tokens?|amass|populate|afterlife/, 1],
@@ -2153,6 +2177,7 @@ const Mech = (function () {
     ['library.small', /number of cards in your library|no cards in your library|library has no cards|draw a card while your library|cards in your library/, 1],
     ['amp.trigger', /triggers? an additional time/, 1],
     ['amp.etb', /entering the battlefield causes a triggered ability/, 1],
+    ['energy', /\bpay (?:\{e\})+|\bpay [a-z]+ \{e\}|\bpay any amount of \{e\}|for each \{e\}|energy counters? you have/, 1],
     ['mana.sink', /\{x\}[^.]*(?:deals x|draw x|create x|x target)|spend this mana/, 0.3]
   ];
   // keywords Scryfall lists that carry a mechanic but whose text is reminder-only
@@ -2170,6 +2195,75 @@ const Mech = (function () {
     magecraft: ['needs', 'spell.noncreature'], constellation: ['needs', 'enchantment.enters'], threshold: ['needs', 'gy.cards'], delirium: ['needs', 'gy.cards'],
     mill: ['makes', 'gy.fill'], surveil: ['makes', 'gy.fill'], scry: ['makes', 'top'], treasure: ['makes', 'token.artifact'], blitz: ['makes', 'self.dies']
   };
+  // the rest of the keywords on 5+ cards: 'n:' needs, 'm:' makes, '@w' weight (default 1). New tags (energy, goad, face.down,
+  // exile.cast, mount, station, poison, …) link only cards that share them; type tags (equipment, aura, legendary, lowpow, …)
+  // are met by TYPE_MAKES below
+  const KWX_SRC = {
+    adamant: 'n:multicolor@0.3', addendum: 'n:spell.any@0.3', afflict: 'n:attack@0.4 m:drain@0.5', aftermath: 'n:gy.cards m:cast.gy@0.8',
+    airbend: 'm:exile.cast@0.8', alliance: 'n:creature.enters', amplify: 'n:count.creature@0.5 m:counter@0.7', annihilator: 'm:edict',
+    awaken: 'm:counter m:token.creature@0.3', backup: 'm:counter@0.8',
+    bargain: 'n:fodder.artifact@0.8 n:fodder.creature@0.4 n:fodder.permanent@0.5', 'basic landcycling': 'm:card@0.6 m:discard@0.5',
+    battalion: 'n:attack', 'battle cry': 'n:attack m:anthem@0.5', bestow: 'm:aura@0.7 n:aura@0.4', blight: 'm:counter@0.6',
+    bloodrush: 'n:discard@0.8', bloodthirst: 'n:damage.player@0.8', boast: 'n:attack', buyback: 'n:mana.sink@0.5',
+    celebration: 'n:creature.enters@0.3', champion: 'n:fodder.creature@0.6', channel: 'n:discard@0.6 m:activation@0.4',
+    cipher: 'm:copy@0.8 n:damage.player@0.8', cloak: 'm:face.down', 'collect evidence': 'n:gy.cards', compleated: 'm:poison@0.3',
+    conspire: 'n:tap.creatures m:copy@0.6', converge: 'n:multicolor@0.4', convert: 'm:vehicle@0.6 n:vehicle@0.4', corrupted: 'n:poison',
+    coven: 'n:count.creature@0.6', craft: 'n:gy.cards@0.6 n:fodder.permanent@0.5', crew: 'n:tap.creatures n:vehicle@0.6',
+    'cumulative upkeep': 'n:upkeep@0.5 n:mana.sink@0.4', dash: 'm:haste@0.8 m:bounce.own@0.5', deathtouch: 'm:deathtouch@0.5',
+    demonstrate: 'm:copy n:spell.any@0.5', descend: 'n:gy.cards@0.7', detain: 'm:removal@0.3', dethrone: 'n:attack@0.6 m:counter@0.7',
+    devoid: 'm:colorless@0.3', disappear: 'n:self.leaves@0.4 n:sacrifice@0.4 n:creature.dies@0.4', discover: 'm:free.cast m:spell.any@0.6',
+    disguise: 'm:face.down', disturb: 'n:gy.cards m:cast.gy@0.8 m:aura@0.3', domain: 'n:count.land@0.5', double: 'n:amp.counter@0.3',
+    'double strike': 'm:damage@0.3', earthbend: 'm:counter m:untap@0.3 n:land.enters@0.3', echo: 'n:upkeep@0.4 n:mana.sink@0.4',
+    'empower jace': 'm:counter@0.4', enchant: 'n:count.enchantment@0.3 m:aura@0.3', encore: 'm:token.copy n:gy.cards@0.6',
+    endure: 'm:counter@0.8 m:token.creature@0.8', enlist: 'n:tap.creatures@0.8 n:attack@0.6', enrage: 'n:creature.damaged',
+    epic: 'm:copy@0.8 n:spell.any@0.5', equip: 'n:ability.activated@0.4 n:equipment@0.5', escalate: 'n:discard@0.4',
+    evoke: 'n:self.enters m:sac.outlet@0.4 n:fodder.self@0.5', exalted: 'n:attack@0.4', exert: 'n:attack m:untap@0.4',
+    extort: 'm:drain n:spell.any', fading: 'n:counter.remove@0.4', 'fateful hour': 'n:life.total@0.8', 'fathomless descent': 'n:gy.cards',
+    ferocious: 'n:bigpow@0.8', fight: 'm:removal@0.5', firebending: 'm:mana@0.6 n:attack@0.6', flurry: 'n:spell.any@0.8',
+    food: 'm:food m:token.artifact@0.8', forage: 'n:gy.cards@0.7 n:food@0.7 n:fodder.artifact@0.7 m:counter@0.5', forecast: 'n:upkeep@0.4',
+    forestcycling: 'm:tutor@0.4 m:land.drop@0.3 m:discard@0.5', foretell: 'm:exile.cast m:spell.any@0.6',
+    formidable: 'n:count.creature@0.7 n:bigpow@0.5', freerunning: 'n:damage.player@0.8 n:attack@0.5', gift: 'm:token.treasure@0.3',
+    goad: 'm:goad', graft: 'n:creature.enters@0.5 m:counter@0.7', grandeur: 'n:discard@0.8',
+    harmonize: 'n:gy.cards m:cast.gy@0.8 n:tap.creatures@0.6 n:bigpow@0.3', haste: 'm:haste@0.5', haunt: 'n:self.dies',
+    hellbent: 'n:discard@0.3', heroic: 'n:targeted@0.5', 'hexproof from': 'm:protect@0.3', hideaway: 'm:free.cast@0.8 m:exile.cast@0.6',
+    impending: 'm:counter@0.4 n:counter.remove@0.4', imprint: 'n:count.hand@0.3', increment: 'n:spell.any m:counter@0.8',
+    indestructible: 'm:protect@0.3', infect: 'm:poison', infusion: 'n:life.gain',
+    ingest: 'm:library.exile m:gy.fill@0.3 n:damage.player@0.6', inspired: 'n:untap.self@0.7', islandcycling: 'm:card@0.6 m:discard@0.5',
+    'job select': 'm:token.creature m:equipment n:equipment@0.4', 'join forces': 'n:mana.sink@0.5',
+    jump: 'n:gy.cards n:discard@0.6 m:cast.gy@0.8', kinship: 'n:upkeep@0.6 m:gy.fill@0.4', landcycling: 'm:card@0.6 m:discard@0.5',
+    learn: 'm:card@0.6', 'level up': 'n:mana.sink@0.8 m:counter@0.6', lifelink: 'm:life@0.6', 'living metal': 'm:vehicle@0.5',
+    madness: 'n:discard@0.8', manifest: 'm:face.down', 'manifest dread': 'm:face.down m:gy.fill@0.5', 'max speed': 'n:speed',
+    mayhem: 'n:discard n:gy.cards@0.6 m:cast.gy@0.8', megamorph: 'm:face.down', melee: 'n:attack',
+    miracle: 'm:free.cast@0.6 n:card.draw@0.6', mobilize: 'm:token.creature n:attack@0.6', monstrosity: 'm:counter@0.8 n:mana.sink@0.6',
+    morbid: 'n:creature.dies@0.8', morph: 'm:face.down', mountaincycling: 'm:tutor@0.4 m:land.drop@0.3 m:discard@0.5',
+    mutate: 'n:creature.enters@0.4', myriad: 'm:token.creature n:attack@0.6', ninjutsu: 'n:evasion n:attack@0.6 m:bounce.own@0.6',
+    offering: 'n:fodder.creature', offspring: 'm:offspring.token m:token.creature@0.8 n:mana.sink@0.4',
+    'open an attraction': 'm:attraction n:attraction@0.5', outlast: 'm:counter n:untap.self@0.5', 'pack tactics': 'n:attack@0.8',
+    paradigm: 'm:free.cast@0.8 m:spell.any@0.5', paradox: 'n:spell.any@0.8 n:exile.cast@0.6', parley: 'm:card@0.6 n:card.draw@0.3',
+    'partner with': 'm:tutor@0.5', phasing: 'm:protect@0.3', plainscycling: 'm:tutor@0.4 m:land.drop@0.3 m:discard@0.5',
+    plot: 'm:exile.cast m:spell.any@0.8 m:free.cast@0.5', prepared: 'm:copy@0.5 n:spell.any@0.5', protection: 'm:protect@0.4',
+    prowl: 'n:damage.player@0.8', raid: 'n:attack@0.6', rally: 'n:creature.enters', ravenous: 'm:counter@0.7',
+    'read ahead': 'm:saga@0.4 n:saga@0.5', rebound: 'm:spell.any@0.5 m:exile.cast@0.6 m:free.cast@0.5',
+    reconfigure: 'm:equipment@0.7 n:equipment@0.5', recover: 'n:creature.dies n:gy.cards@0.5',
+    recruit: 'm:token.creature@0.7 m:card@0.6 m:gy.fill@0.5 n:discard@0.3', regenerate: 'm:protect@0.5',
+    reinforce: 'n:discard@0.6 m:counter@0.8', renew: 'n:gy.cards@0.5 m:counter@0.8', renown: 'n:damage.player@0.8 m:counter@0.6',
+    repartee: 'n:spell.noncreature@0.7 n:targeted@0.5', replicate: 'm:copy n:mana.sink@0.5',
+    revolt: 'n:self.leaves@0.4 n:creature.dies@0.4 n:fodder.permanent@0.3', ripple: 'm:free.cast@0.8 m:spell.any@0.6 m:top@0.4',
+    'role token': 'm:role.token m:aura@0.6', saddle: 'n:tap.creatures n:mount@0.6', scavenge: 'n:gy.cards@0.6 m:counter@0.8',
+    sneak: 'n:attack@0.8 m:bounce.own@0.6 n:evasion@0.5', soulbond: 'n:creature.enters@0.8',
+    soulshift: 'm:regrowth@0.8 n:creature.dies@0.4', spectacle: 'n:life.loss@0.8 n:damage.player@0.6', 'spell mastery': 'n:gy.cards@0.7',
+    splice: 'n:spell.any@0.5', squad: 'm:token.copy m:token.creature@0.6 n:mana.sink@0.6', 'start your engines!': 'm:speed n:life.loss@0.6',
+    station: 'm:station n:tap.creatures', storied: 'n:count.artifact@0.4 n:legendary@0.5 n:saga@0.5', sunburst: 'm:counter@0.6',
+    surge: 'n:spell.any@0.5', suspect: 'n:opp.creature@0.5', suspend: 'm:exile.cast m:spell.any@0.6',
+    swampcycling: 'm:tutor@0.4 m:land.drop@0.3 m:discard@0.5', teamwork: 'n:tap.creatures n:bigpow@0.3', tiered: 'n:tapped@0.5',
+    'time travel': 'n:counter.placed@0.4 m:counter@0.6 n:count.counter@0.3', toxic: 'm:poison n:damage.player@0.7',
+    transmute: 'm:tutor@0.8 n:discard@0.5', tribute: 'm:counter@0.5', triple: 'n:amp.damage@0.3', typecycling: 'm:card@0.6 m:discard@0.5',
+    'umbra armor': 'm:protect@0.8 n:aura@0.4', undergrowth: 'n:count.creature@0.8', unleash: 'm:counter@0.6', valiant: 'n:targeted',
+    vanishing: 'n:upkeep@0.4 n:counter.remove@0.6 m:counter@0.5', 'venture into the dungeon': 'm:dungeon', vivid: 'n:multicolor@0.5',
+    void: 'n:gy.enter@0.4', warp: 'm:exile.cast@0.8 m:spell.any@0.6', waterbend: 'n:tap.artifacts@0.5 n:tap.creatures@0.5',
+    'web-slinging': 'm:bounce.own@0.6 n:tapped@0.6', wither: 'm:counter@0.4'
+  };
+  const KWX = {}; for (const [k, v] of Object.entries(KWX_SRC)) KWX[k] = v.split(' ').map(t => { const m = /^([nm]):([^@]+)(?:@([\d.]+))?$/.exec(t); return [m[1] === 'n' ? 'needs' : 'makes', m[2], m[3] ? +m[3] : 1]; });
   // what each produced tag also causes, as an event other cards can need
   const CAUSES = {
     'token.creature': ['creature.enters', 'token.enters', 'fodder.creature', 'fodder.permanent', 'count.creature', 'tap.creatures'],
@@ -2190,7 +2284,19 @@ const Mech = (function () {
     [c => /\b(?:Instant|Sorcery)\b/.test(c.ft), [['spell.noncreature', 0.2], ['spell.any', 0.1], ['count.spell', 0.1]]],
     [c => !/\bLand\b/.test(c.ft) && c.cmc <= 1, [['spell.any', 0.7]]],
     [c => !/\b(?:Land|Creature)\b/.test(c.ft) && c.cmc <= 1, [['spell.noncreature', 0.5]]],
-    [c => /\bLand\b/.test(c.ft) && !/\bBasic\b/.test(c.ft), [['land.enters', 0.05]]]
+    [c => /\bLand\b/.test(c.ft) && !/\bBasic\b/.test(c.ft), [['land.enters', 0.05]]],
+    [c => /\bCreature\b/.test(c.ft) && c.pow != null && c.pow <= 2, [['lowpow', 0.5]]],
+    [c => /\bCreature\b/.test(c.ft) && c.pow != null && c.pow >= 5, [['bigpow', 0.5]]],
+    [c => /\bEquipment\b/.test(c.ft), [['equipment', 1]]],
+    [c => /\bAura\b/.test(c.ft), [['aura', 1]]],
+    [c => /\bVehicle\b/.test(c.ft), [['vehicle', 1]]],
+    [c => /\bSaga\b/.test(c.ft), [['saga', 1], ['historic', 0.5]]],
+    [c => /\bShrine\b/.test(c.ft), [['shrine', 1]]],
+    [c => /\bLegendary\b/.test(c.ft), [['legendary', 0.5], ['historic', 0.5]]],
+    [c => /\bArtifact\b/.test(c.ft), [['historic', 0.3]]],
+    [c => (c.ci || '').length >= 2, [['multicolor', 0.3]]],
+    [c => !c.ci && !/\bLand\b/.test(c.ft), [['colorless', 0.3]]],
+    [c => /\bMount\b/.test(c.tl), [['mount', 1]]]
   ];
   // needs that only matter with other cards: a card that needs 'self.enters' wants blink/reanimate, etc.
   const SELF_NEEDS = { 'self.enters': 'self.reenter', 'self.dies': 'sacrifice-of-self' };
@@ -2224,7 +2330,7 @@ const Mech = (function () {
       if (a.kind === 'activated' && /deals \d+ damage/.test(line)) add(needs, 'deathtouch', 0.6);
       if (a.needs.length || a.makes.length) abil.push(a);
     }
-    for (const k of c.kw || []) { const r = KW[k]; if (r) { add(r[0] === 'needs' ? needs : makes, r[1], 1); } }
+    for (const k of c.kw || []) { const r = KW[k]; if (r) { add(r[0] === 'needs' ? needs : makes, r[1], 1); } else for (const [sd, tg, w] of KWX[k] || []) add(sd === 'needs' ? needs : makes, tg, w); }
     // a creature or artifact with a "when ~ enters" ability needs re-entry (blink, reanimation, bounce)
     if (needs.has('self.enters')) add(needs, 'self.reenter', needs.get('self.enters'));
     if (/\b(?:Instant|Sorcery)\b/.test(c.ft)) add(needs, 'copy', makes.has('mana') || makes.has('card.opp') || makes.has('token.copy') ? 1 : 0.3);
@@ -2297,9 +2403,210 @@ const Mech = (function () {
     return { w, why: [...why].sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]) };
   }
 
-  return { parse, link, pair, pairW, LINK, graph, profile, links, supply, norm, split, EVENTS, EFFECTS, COSTS, COUNTS, KW, CAUSES };
+  return { parse, link, pair, pairW, LINK, graph, profile, links, supply, norm, split, EVENTS, EFFECTS, COSTS, COUNTS, KW, KWX, CAUSES };
 })();
 if (typeof module !== 'undefined') module.exports = Mech;
+</script>
+<script id="src-plan">
+/* ===== Plan: what a commander asks its deck for, read from its own rules text (pure; uses Engine and Mech) =====
+   A plan profile lists the commander's demands and scores every card against them, without popularity:
+     keyword   a mechanic the commander has or names (ninjutsu, mutate, goad, offspring, energy …): cards with it or that name it
+     type      a creature type named where the commander rewards it ("other Zombies you control", "whenever a Ninja …")
+     card type a card type it rewards (instants and sorceries, artifacts, Equipment, Auras, Vehicles, legendaries, lands …)
+     stat      a power or mana value bound it names ("power 2 or less", "mana value 5 or greater")
+     mechanics a link in the mechanics graph (Mech.pairW) between the card and the commander
+   score(c) sums the parts it meets (capped at 1.5); a card scoring 0.5 or more is a plan card. The profile also sets how many
+   plan cards the deck should hold (quota) and an average mana value target from the plan cards' own curve. */
+const Plan = (function () {
+  'use strict';
+  const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
+  const M = (typeof Mech !== 'undefined') ? Mech : require('./mech.js');
+  const PLAN_MIN = 0.5, CAP = 1.5;
+  // keywords that every colour plays for their own sake; a commander having one does not make it a plan
+  const EVERGREEN = new Set(['flying', 'first strike', 'double strike', 'deathtouch', 'haste', 'hexproof', 'indestructible', 'lifelink', 'menace',
+    'reach', 'trample', 'vigilance', 'flash', 'ward', 'equip', 'enchant', 'protection', 'shroud', 'partner', 'partner with', 'friends forever',
+    'choose a background', 'transform', 'kicker', 'fight', 'scry', 'mill', 'meld', 'daybound', 'nightbound', 'doctor\'s companion', 'cycling']);
+  // ability words printed on commanders for their own sake: other cards with them are other commanders, not plan cards
+  const COMMANDER_ONLY = new Set(['eminence', 'lieutenant', 'council\'s dilemma', 'will of the council', 'join forces', 'tempting offer', 'myriad', 'melee']);
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // keywords in the card data on 5+ cards, longest first (so "basic landcycling" wins over "landcycling")
+  function vocab(db) {
+    if (db._kwVocab) return db._kwVocab;
+    const n = new Map();
+    for (const c of db.all) for (const k of c.kw) n.set(k, (n.get(k) || 0) + 1);
+    db._kwVocab = [...n].filter(([k, v]) => v >= 5 && k.length >= 4 && !EVERGREEN.has(k)).map(([k]) => k).sort((a, b) => b.length - a.length);
+    return db._kwVocab;
+  }
+  // card-type demands: [key, label, commander text that rewards it, cards that meet it]
+  const CT = [
+    ['spells', 'instants and sorceries', /instant (?:and|or) sorcery|instant spells?|sorcery spells?|noncreature spells?|\bmagecraft|whenever you cast your (?:second|first)/, c => /\b(?:Instant|Sorcery)\b/.test(c.ft)],
+    ['artifacts', 'artifacts', /artifacts? you control|artifact spells?|whenever (?:an|another|one or more) (?:nontoken )?artifacts?|for each artifact|\bimprovise|affinity for artifacts/, c => /\bArtifact\b/.test(c.ft) || /create[^.]*(?:treasure|clue|food|blood|map|powerstone|gold|junk)[^.]*tokens?/.test(c.low)],
+    ['enchantments', 'enchantments', /enchantments? you control|enchantment spells?|whenever (?:an|another) enchantment|\bconstellation|for each enchantment/, c => /\bEnchantment\b/.test(c.ft)],
+    ['equipment', 'Equipment', /\bequipment\b|\bequipped\b|\bequip abilit/, c => /\bEquipment\b/.test(c.ft) || /\bequipped creature\b|\bequipment you control/.test(c.low)],
+    ['auras', 'Auras', /\bauras?\b|enchanted creatures? you control|enchanted by/, c => /\bAura\b/.test(c.ft) && /enchant creature/.test(c.low)],
+    ['vehicles', 'Vehicles', /\bvehicles?\b|\bcrews?\b/, c => /\bVehicle\b/.test(c.ft) || c.kw.includes('crew') || /\bvehicles? you control/.test(c.low)],
+    ['legendary', 'legendary and historic', /legendary (?:spells?|creatures? you control|permanents? you control)|\bhistoric\b/, c => /\bLegendary\b/.test(c.ft) || /\b(?:Artifact|Saga)\b/.test(c.ft)],
+    ['creatures', 'creature spells', /creature spells? (?:you cast|cost)|whenever you cast a creature spell/, c => /\bCreature\b/.test(c.ft)],
+    ['lands', 'lands', /\blandfall|whenever a land (?:you control )?enters|lands? you control|play (?:an|two) additional lands?|land cards? (?:from|in) your graveyard|sacrifice a land/, c => /\bLand\b/.test(c.ft) ? false : /\blandfall|whenever a land|play (?:an|two|x) additional lands?|search your library for [^.]*land cards?[^.]*onto the battlefield|land cards? from your graveyard|sacrifice (?:a|an|another) lands?|return [^.]*lands?[^.]* to (?:its|their) owner/.test(c.low)],
+    ['graveyard', 'graveyard', /cards? in your graveyard|from your graveyard|whenever [^.]{0,30}cards? (?:are|is) put into your graveyard|\bmills?\b|\bdescend|\bdelirium|\bthreshold/, c => /\bmills?\b|\bsurveil|from your graveyard|cards? in your graveyard|\bdredge|\bflashback|\bescape|\bunearth|\bdelve|discard (?:a|two|x|your hand)/.test(c.low) || ['flashback', 'escape', 'unearth', 'delve', 'dredge', 'embalm', 'eternalize', 'disturb', 'retrace', 'jump-start'].some(k => c.kw.includes(k))],
+    ['tokens', 'tokens', /tokens? you control|whenever you create (?:a|one or more) tokens?|create (?:twice|that many plus)|for each token/, c => /\bcreates? [^.]*tokens?\b|\bpopulate|\bamass|\bincubate|\binvestigate/.test(c.low)],
+    ['counters', '+1/+1 counters', /\+1\/\+1 counters? on|for each \+1\/\+1 counter|\bproliferate|whenever one or more \+1\/\+1 counters/, c => /put (?:a|one|two|three|x|that many|\w+) \+1\/\+1 counters?|\bproliferate|enters with [^.]*\+1\/\+1 counters?|\badapt\b|\bbolster|\bsupport\b/.test(c.low) || ['modular', 'riot', 'mentor', 'evolve', 'fabricate', 'outlast', 'graft', 'backup'].some(k => c.kw.includes(k))],
+    ['lifegain', 'lifegain', /whenever you gain life|life you gained|you've gained life/, c => /\bgain (?:\d+|x|that much)[^.]*life|\blifelink/.test(c.low) || c.kw.includes('lifelink')],
+    ['sacrifice', 'sacrifice and death', /whenever [^.]{0,40}(?:dies|you sacrifice)|sacrifice (?:a|another) creature/, c => /whenever [^.]{0,50}dies|whenever you sacrifice|sacrifice (?:a|another|an?(?: \w+)?) (?:creature|permanent|artifact)[^.:]*:/.test(c.low) || /\bcreates? [^.]*creature tokens?/.test(c.low)],
+    ['draw', 'card draw', /whenever you draw|draw your second card/, c => !!E.analyze(c).roles.draw],
+    ['attack', 'attacking', /whenever (?:a|an|one or more|another|each) [^.]{0,40}you control attacks?|attacking creatures? you control|whenever you attack|creatures? you control deals? combat damage|attacking causes|creatures you control (?:have|gain) [^.]{0,20}(?:can't be blocked|menace|flying)/, c => /\bCreature\b/.test(c.ft) && (/can't be blocked|\bmenace\b|\bflying\b|\btrample\b/.test(c.low) || ['flying', 'menace', 'trample', 'skulk', 'shadow', 'horsemanship', 'fear', 'intimidate'].some(k => c.kw.includes(k)))],
+    ['opponents', 'opponents drawing or losing life', /whenever an opponent (?:draws|loses life)|each opponent draws/, c => /each (?:player|opponent) draws|target player draws|each opponent loses/.test(c.low)]
+  ];
+  // most card types qualify a card alone at 0.5; broad ones (any creature, any evasive attacker) need a second part
+  const CT_W = { creatures: 0.3, attack: 0.35, legendary: 0.35 };
+  // creature types the commander rewards (payoff wording), not types it merely mentions
+  function typeDemands(db, cmd) {
+    const out = [], low = cmd.low;
+    for (const T of E.creatureTypes(db)) {
+      if (T.length < 3) continue;
+      const t = T.toLowerCase();
+      const w = '(?:' + esc(t) + '(?:s|es)?|' + esc(t.replace(/f$/, 'ves').replace(/y$/, 'ies')) + ')';
+      const pay = new RegExp('(?:other|another|each|target|nontoken|attacking) ' + w + '\\b|\\b' + w + ' (?:you control|spells?|cards?|creatures? you control|get|have|gain)|whenever (?:a|an|another|one or more) (?:nontoken )?' + w + '\\b|for each ' + w + '\\b|choose a creature type');
+      if (!pay.test(low)) continue;
+      if (/choose a creature type/.test(low) && !new RegExp('\\b' + w + '\\b').test(low)) continue; // changeling-style "choose a type" handled by the type count below
+      out.push(T);
+    }
+    // "choose a creature type" (Kindred lords, Morophon): the commander's own types
+    if (/choose a creature type/.test(low)) for (const T of (cmd.ft.split('—')[1] || '').trim().split(/\s+/)) if (T.length >= 3 && !out.includes(T)) out.push(T);
+    return out;
+  }
+  function statDemands(cmd) {
+    const out = [], low = cmd.low; let m;
+    const re = /(?:with |has |have )?(?:base )?(power|mana value|toughness) (\d+)(?: or (less|greater))?/g;
+    while ((m = re.exec(low))) if (m[3] || /with (?:base )?(?:power|toughness) \d/.test(m[0])) out.push({ stat: m[1], n: +m[2], dir: m[3] || 'eq' });
+    if (/toughness greater than its power|assigns combat damage equal to its toughness/.test(low)) out.push({ stat: 'tough>pow' });
+    return out;
+  }
+  function meetsStat(c, s) {
+    const cr = /\bCreature\b/.test(c.ft);
+    if (s.stat === 'power') return cr && c.pow != null && (s.dir === 'less' ? c.pow <= s.n : s.dir === 'eq' ? c.pow === s.n : c.pow >= s.n);
+    if (s.stat === 'mana value') return !/\bLand\b/.test(c.ft) && (s.dir === 'less' ? c.cmc <= s.n : c.cmc >= s.n);
+    if (s.stat === 'tough>pow') { const m = /^(\d+)\/(\d+)$/.exec(c.pt || ''); return cr && (c.kw.includes('defender') || (m && +m[2] > +m[1])); }
+    return false;
+  }
+  function keywordDemands(db, cmd) {
+    const out = new Set(), low = cmd.low;
+    for (const k of cmd.kw) if (!EVERGREEN.has(k) && !COMMANDER_ONLY.has(k)) out.add(k);
+    // an evergreen keyword counts when the commander rewards it ("creatures you control with flying", "have deathtouch")
+    for (const k of EVERGREEN) if (k.length >= 4 && new RegExp('(?:creatures?|permanents?|attackers?)(?: you control)? with ' + esc(k) + '\\b|(?:gain|gains|have|has) ' + esc(k) + ' (?:and|until|as long)|each creature you control with ' + esc(k)).test(low)) out.add(k);
+    for (const k of vocab(db)) if (!COMMANDER_ONLY.has(k) && new RegExp('\\b' + esc(k) + '\\b').test(low)) out.add(k);
+    if (/\{e\}/.test(low) || /energy counters?/.test(low)) out.add('energy');
+    return [...out];
+  }
+  const kwTest = k => k === 'energy' ? (c => /\{e\}|energy counter/.test(c.low)) : (c => c.kw.includes(k) || new RegExp('\\b' + esc(k) + '\\b').test(c.low));
+
+  /* ---------- profile ---------- */
+  // cmds: one or two commander cards. pool (optional): candidate cards, used for supply counts, quota and curve.
+  function profile(db, cmds, pool) {
+    const parts = [];
+    const kws = [...new Set(cmds.flatMap(c => keywordDemands(db, c)))];
+    for (const k of kws) parts.push({ kind: 'keyword', key: k, label: k, w: 1, test: kwTest(k) });
+    for (const T of [...new Set(cmds.flatMap(c => typeDemands(db, c)))]) {
+      const re = new RegExp('\\b' + esc(T) + '\\b');
+      parts.push({ kind: 'type', key: T, label: T, w: 1, test: c => re.test(c.tl.split('—').slice(1).join(' ')) || c.kw.includes('changeling') || new RegExp('\\b' + esc(T.toLowerCase()) + 's?\\b').test(c.low) });
+    }
+    for (const [key, label, cre, test] of CT) if (cmds.some(c => cre.test(c.low))) parts.push({ kind: 'cardtype', key, label, w: CT_W[key] || 0.5, test });
+    for (const s of cmds.flatMap(statDemands)) parts.push({ kind: 'stat', key: s.stat + (s.n != null ? ' ' + s.n + ' ' + s.dir : ''), label: s.stat === 'tough>pow' ? 'toughness over power' : s.stat + ' ' + s.n + (s.dir === 'eq' ? '' : ' or ' + s.dir), w: 0.5, test: c => meetsStat(c, s) });
+    const cache = new Map();
+    const mechW = c => { let w = 0; for (const k of cmds) if (k !== c) w = Math.max(w, M.pairW(c, k)); return w; };
+    const detail = c => {
+      let v = cache.get(c); if (v) return v;
+      const hit = []; let s = 0;
+      if (!cmds.includes(c) && !E.isBasic(c)) {
+        for (const p of parts) if (p.test(c)) { s += p.w; hit.push(p.label); }
+        // mechanics graph: nothing below the link threshold (type-only links), then up to 0.6 at pair weight 1.5
+        const mw = mechW(c), mp = mw >= M.LINK ? 0.6 * Math.min(1, (mw - 0.25) / 1.25) : 0;
+        if (mp > 0) { s += mp; hit.push('mechanics ' + mw.toFixed(1)); }
+      }
+      v = { s: Math.min(CAP, s), hit }; cache.set(c, v); return v;
+    };
+    const P = { cmds: cmds.map(c => c.n), parts: parts.map(p => ({ kind: p.kind, key: p.key, label: p.label, w: p.w })), score: c => detail(c).s, why: c => detail(c).hit, isPlan: c => detail(c).s >= PLAN_MIN, PLAN_MIN };
+    if (pool) {
+      const non = pool.filter(c => !E.analyze(c).isLand);
+      const plan = non.filter(P.isPlan);
+      P.supply = plan.length;
+      P.partSupply = parts.map(p => ({ label: p.label, n: non.filter(p.test).length }));
+      // quota: a quarter of the supply, 10–30 cards; a plan with fewer than 10 cards in the pool takes all of them
+      P.quota = plan.length < 10 ? plan.length : Math.max(10, Math.min(30, Math.round(plan.length / 4)));
+      // curve: the mean mana value of the 40 best plan cards, pulled halfway to 3.0, within 2.2–4.2
+      const top = plan.slice().sort((a, b) => detail(b).s - detail(a).s || a.cmc - b.cmc || (a.n < b.n ? -1 : 1)).slice(0, 40);
+      const mv = top.length ? top.reduce((s, c) => s + c.cmc, 0) / top.length : 3;
+      P.avgMV = Math.round(Math.max(2.2, Math.min(4.2, 0.5 * 3 + 0.5 * mv)) * 10) / 10;
+      P.strength = parts.some(p => p.kind !== 'cardtype') ? 'focused' : parts.length ? 'broad' : 'mechanics only';
+    }
+    return P;
+  }
+  // one line for the build log and the page
+  function summary(P) {
+    const by = k => P.parts.filter(p => p.kind === k).map(p => p.label);
+    const bits = [];
+    if (by('keyword').length) bits.push('mechanics: ' + by('keyword').join(', '));
+    if (by('type').length) bits.push('types: ' + by('type').join(', '));
+    if (by('cardtype').length) bits.push('card types: ' + by('cardtype').join(', '));
+    if (by('stat').length) bits.push('stats: ' + by('stat').join(', '));
+    if (!bits.length) bits.push('links in the mechanics graph only');
+    return bits.join('; ');
+  }
+
+  /* ---------- card quality without popularity ----------
+     A logistic model on rules-text features: P(a card is in a human-built deck | it is legal in that deck's colours).
+     Weights come from tools/quality-fit.js on data/reference/ (EDHREC average and Archidekt decks); no EDHREC rank or
+     other popularity field is a feature, so a card is judged by what it does, and new or unplayed cards score on text. */
+  const NUM = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, x: 2, that: 2 };
+  const QF = [
+    ['ramp', c => +!!E.analyze(c).roles.ramp], ['draw', c => +!!E.analyze(c).roles.draw], ['removal', c => +!!E.analyze(c).roles.removal],
+    ['wipes', c => +!!E.analyze(c).roles.wipes], ['protection', c => +!!E.analyze(c).roles.protection], ['recursion', c => +!!E.analyze(c).roles.recursion],
+    ['wincon', c => +!!E.analyze(c).roles.wincon], ['tutor', c => +!!E.analyze(c).flags.tutor], ['fast', c => +(!!E.analyze(c).flags.fast && !/\{\d\}, \{t\}(?:, sacrifice ~)?: add/.test(c.low))],
+    ['gc', c => +!!c.gc], ['stax', c => +!!E.analyze(c).flags.stax],
+    ['mv', c => Math.min(10, c.cmc) / 10], ['mv0-2', c => +(c.cmc <= 2)], ['mv6+', c => +(c.cmc >= 6)],
+    ['instant', c => +(/\bInstant\b/.test(c.ft) || c.kw.includes('flash'))], ['creature', c => +/\bCreature\b/.test(c.ft)],
+    ['artifact', c => +/\bArtifact\b/.test(c.ft)], ['enchantment', c => +/\bEnchantment\b/.test(c.ft)], ['planeswalker', c => +/\bPlaneswalker\b/.test(c.ft)],
+    ['sorcery', c => +/\bSorcery\b/.test(c.ft)], ['legendary', c => +/\bLegendary\b/.test(c.ft)],
+    ['rate', c => { if (!/\bCreature\b/.test(c.ft) || c.pow == null) return 0; const m = /\/(\d+)$/.exec(c.pt || ''); const t = m ? +m[1] : c.pow; return Math.max(-3, Math.min(3, (c.pow + t) / 2 - c.cmc)) / 3; }],
+    ['evasion', c => +c.kw.some(k => ['flying', 'trample', 'menace', 'shroud', 'hexproof', 'indestructible', 'ward'].includes(k))],
+    ['repeat', c => +/\b(?:whenever|at the beginning of)\b/.test(c.low) && +/\b(?:Artifact|Creature|Enchantment|Planeswalker|Land|Battle)\b/.test(c.ft)],
+    ['activated', c => +/^[^"\n]*\{[^}]+\}[^:\n]*:/m.test(c.low)],
+    ['etb', c => +/when ~ enters|when this [a-z]+ enters/.test(c.low)],
+    ['cards', c => { const m = c.low.match(/\bdraws? (a|an|one|two|three|four|five|six|seven|x|that) (?:additional )?cards?/); return m ? Math.min(4, NUM[m[1]] || 1) / 4 : 0; }],
+    ['wide-removal', c => +/\b(?:destroy|exile) (?:up to one )?target (?:nonland )?permanent|\bexile target (?:artifact or enchantment|nonland permanent)/.test(c.low)],
+    ['free', c => +/without paying (?:its|this spell's|their) mana cost|rather than pay (?:this spell's|its) mana cost/.test(c.low)],
+    ['reduce', c => +/costs? \{\d\} less|cost \{\d\} less/.test(c.low)],
+    ['modal', c => +/choose (?:one|two|one or more|any number)/.test(c.low)],
+    ['each-opp', c => +/each opponent/.test(c.low)],
+    ['drawback', c => +/\b(?:you lose|sacrifice ~|skip your|discard your hand|enters tapped|at the beginning of your upkeep, sacrifice|you can't)\b/.test(c.low)],
+    ['makes', c => Math.min(6, M.parse(c).makes.size) / 6], ['needs', c => Math.min(6, M.parse(c).needs.size) / 6],
+    ['abil', c => Math.min(5, M.parse(c).abil.length) / 5], ['text', c => Math.min(600, c.low.length) / 600],
+    ['colors', c => (c.ci || '').length / 5], ['vanilla', c => +!c.low.trim()],
+    ['rock', c => +(/^\{t\}: add /m.test(c.low) && !/\bLand\b/.test(c.ft))], ['paid-rock', c => +/^\{\d\}, \{t\}: add /m.test(c.low)],
+    ['one-shot', c => +/sacrifice ~: add|sacrifice ~[^:]*: add|, sacrifice ~: draw/.test(c.low)], ['sac-self', c => +/sacrifice ~/.test(c.low)],
+    ['cantrip', c => +/(?:^|\n|\. )draw a card\.?$/m.test(c.low) && +!/whenever|at the beginning/.test(c.low)],
+    ['cheap-removal', c => +(!!E.analyze(c).roles.removal && c.cmc <= 2)], ['cheap-ramp', c => +(!!E.analyze(c).roles.ramp && c.cmc <= 2)],
+    ['draw-engine', c => +(!!E.analyze(c).roles.draw && /whenever|at the beginning/.test(c.low))],
+    ['counterspell', c => +/counter target (?:spell|noncreature spell)/.test(c.low)], ['tokens', c => +/create[^.]*tokens?/.test(c.low)],
+    ['anthem', c => +/creatures you control get \+/.test(c.low)], ['double', c => +/\b(?:twice that many|double)\b/.test(c.low)],
+    ['untap', c => +/\buntap (?:all|target|each)/.test(c.low)], ['copy', c => +/\bcopy (?:target|that|it)/.test(c.low)],
+    ['restricted', c => +/spend this mana only|activate only as a sorcery|only during your turn/.test(c.low)],
+    ['symmetric', c => +/\beach player\b/.test(c.low)], ['you-lose', c => +/\byou lose (?:\d|x)|pay (?:\d|x) life/.test(c.low)]
+  ];
+  // fitted by tools/quality-fit.js (held-out AUC 0.764; cardPower without rank 0.645; EDHREC rank alone 0.935); order matches QF, last = intercept
+  const QW = [1.302, 0.36, 0.003, 0.518, 1.29, 0.768, 0.57, 1.412, 1.023, 2.494, 1.021, -0.644, 0.22, 0.34, 0.312, -0.072, 0.232, 0.147, -1.09, 0.155, 0.571, 0.224, 0.268, 0.219, -0.501, -0.06, 0.412, 1.092, 0.765, 0.574, -0.089, 0.296, -0.295, -0.36, -0.865, 1.451, 0.31, 2.066, -0.845, 0.733, 0.094, -0.018, -0.165, -0.782, 0.562, 0.728, 0.343, 0.723, 0.393, 0.051, 0.725, 0.433, 0.208, -0.331, 0.233, 0.593, -1.251];
+  const QC = new WeakMap();
+  function features(c) { return QF.map(f => +f[1](c) || 0); }
+  // 0–1: the model's probability, or a neutral 0.3 when no weights are loaded
+  function quality(c) {
+    let v = QC.get(c); if (v != null) return v;
+    if (!QW || E.analyze(c).isLand) v = 0.3;
+    else { const x = features(c); let z = QW[QW.length - 1]; for (let i = 0; i < x.length; i++) z += QW[i] * x[i]; v = 1 / (1 + Math.exp(-z)); }
+    QC.set(c, v); return v;
+  }
+  return { profile, summary, vocab, quality, features, QF, PLAN_MIN, EVERGREEN };
+})();
+if (typeof module !== 'undefined') module.exports = Plan;
 </script>
 <script id="src-analysis">
 /* ===== Analysis: offline deck evaluation (pure; uses Engine) ===== */
@@ -2309,6 +2616,7 @@ const Analysis = (function () {
   const M = (typeof Mech !== 'undefined') ? Mech : (typeof require === 'function' ? require('./mech.js') : null);
   const mechWhy = t => t.replace(/^needs /, 'uses ').replace(/\./g, ' ');
   const A = c => E.analyze(c);
+  const PQ = (typeof Plan !== 'undefined') ? Plan : (typeof require === 'function' ? require('./plan.js') : null);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const ratio = (have, target) => target > 0 ? clamp(have / target, 0, 1) : 1;
   function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -2780,6 +3088,9 @@ const Analysis = (function () {
   function run(db, deck, cmds, opts) {
     opts = opts || {};
     const S = opts.settings || E.defaults();
+    // mechanics-only settings: no EDHREC rank in power or in candidate order; the rules-text quality model stands in
+    const NR = S.mode === 'mech' && !!PQ;
+    const popOr = c => NR ? PQ.quality(c) : (c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0);
     const targets = Object.assign({}, BENCH, S.targets || {}, { avgMV: +((S.mana && S.mana.avgMV) || BENCH.avgMV) });
     const CI = 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
     const all = deck.map(e => ({ c: e.c, qty: e.qty || 1, locked: !!e.locked }));
@@ -2941,7 +3252,7 @@ const Analysis = (function () {
     const cmdKeys = new Set(cmds.map(c => E.nameKey(c.n)));
     const sat = (x, k) => 100 * (1 - Math.exp(-Math.max(0, x) / k));
     // each card counts w × (0.6 + card power), so a stronger card in the same slot scores higher
-    const qf = x => typeof x === 'string' ? 1 : 0.6 + E.cardPower(x);
+    const qf = x => typeof x === 'string' ? 1 : 0.6 + E.cardPower(x, NR);
     const comp = (label, n, w, cards) => { cards = cards || []; const pts = cards.length === n ? cards.reduce((s, x) => s + w * qf(x), 0) : n * w; return { label, n, w, pts, cards: cards.map(x => typeof x === 'string' ? x : x.n) }; };
     const vec = (key, label, k, parts) => { const pts = parts.reduce((s, p) => s + p.pts, 0); return { key, label, k, pts, score: Math.round(sat(pts, k)), parts }; };
     const uniq = new Set();
@@ -3041,7 +3352,7 @@ const Analysis = (function () {
     const WEIGHTS = { Combo: [0.25, 0.3, 0.15, 0.3], Control: [0.2, 0.25, 0.35, 0.2], Stax: [0.2, 0.25, 0.35, 0.2], Aggro: [0.3, 0.2, 0.15, 0.35], Voltron: [0.3, 0.2, 0.15, 0.35], Tribal: [0.3, 0.2, 0.15, 0.35], Tokens: [0.3, 0.2, 0.15, 0.35], 'Big mana': [0.35, 0.2, 0.15, 0.3] };
     const wv = WEIGHTS[primary] || [0.25, 0.25, 0.2, 0.3];
     const vmix = vSpeed.score * wv[0] + vCons.score * wv[1] + vInt.score * wv[2] + vThreat.score * wv[3];
-    const cps = nonland.map(e => E.cardPower(e.c)).sort((a, b) => b - a);
+    const cps = nonland.map(e => E.cardPower(e.c, NR)).sort((a, b) => b - a);
     const qualTop = cps.slice(0, 60); const cardQ = qualTop.length ? qualTop.reduce((a, b) => a + b, 0) / qualTop.length : 0;
     const qScore = Math.min(100, cardQ / 0.6 * 100);
     const plRaw = 1 + 9 * (0.7 * vmix + 0.3 * qScore) / 100;
@@ -3116,7 +3427,7 @@ const Analysis = (function () {
     const mRatio = (() => { if (!M) return 0; let a = 0, b = 0; for (const x of perCard) { a += x.mlinks; b += M.links(x.c, mprof, null, true).w; } return b > 0 ? a / b : 0; })();
     const mechAsAdd = c => M ? Math.round(M.links(c, mprof, null, false).w * mRatio) + (cmds.some(k => mechLink(c, k)) ? 3 : 0) : 0;
     const synBonus = c => { let s = 0; for (const [k, side] of sides(c)) if (activeKeys.has(k)) { const p = pairStats.find(x => x.key === k); s += side === 'en' ? (p.status.startsWith('payoff') ? 2 : 1) : (p.status.startsWith('enabler') ? 2 : 1); } if (tribal && new RegExp('\\b' + tribal.type + '\\b').test(c.ft)) s += 1; return Math.max(s, mechAsAdd(c) / 8); };
-    const pick = (pred, k) => pool.filter(pred).map(c => ({ c, s: synBonus(c) * 0.6 + (c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0) })).sort((a, b) => b.s - a.s || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
+    const pick = (pred, k) => pool.filter(pred).map(c => ({ c, s: synBonus(c) * 0.6 + popOr(c) })).sort((a, b) => b.s - a.s || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
     const addRec = (sev, text, cards) => recs.push({ sev, text, cards: (cards || []).map(c => ({ n: c.n, mc: c.mc, price: c.p[cur], rank: c.rank, uri: c.uri })) });
     for (const r of ['ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon']) {
       const have = role(r), t = +targets[r] || 0;
@@ -3139,7 +3450,7 @@ const Analysis = (function () {
     /* ---------- swap plans (evaluated by impact()) ---------- */
     const priceOf = c => c && c.p && c.p[cur] != null ? +c.p[cur] : null;
     const linkOf = new Map(perCard.map(x => [x.c, x.links]));
-    const rankTerm = c => c.rank ? 2 * (1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
+    const rankTerm = c => 2 * popOr(c);
     const baseValue = c => { const a = A(c); return 2 * Object.keys(a.roles).length + (a.flags.gc || a.flags.fast || a.flags.tutor ? 3 : 0) + rankTerm(c); };
     const cardValue = c => (linkOf.get(c) || 0) + baseValue(c);
     const usedCuts = new Set(), usedAdds = new Set();
@@ -3434,6 +3745,7 @@ const Deep = (function () {
   const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
   const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
   const A = c => E.analyze(c);
+  const PQ = (typeof Plan !== 'undefined') ? Plan : (typeof require === 'function' ? require('./plan.js') : null);
   // MIN_GAIN: 1 = 0.1 power level. Seed-to-seed SD of one swap's gain at G2 games is 0.05 (q90 0.09; 4 decks × 16 swaps × 6
   // seeds), so the threshold is about diminishing returns, not noise: accepting each package and re-running (4 reference decks)
   // gave round gains of 16–24, 5–15, 1.4–5, 0.6–3.4; at 0.5 the tail of 0.5–1 swaps kept every re-run proposing more
@@ -3517,7 +3829,9 @@ const Deep = (function () {
     const take = (list, tag) => { for (const c of list) { if (!why.has(c.n)) why.set(c.n, tag); if (!seen.has(c.n)) { seen.add(c.n); adds.push(c); } } };
     const non = pool.filter(c => !A(c).isLand);
     const gap = c => Object.keys(A(c).roles).reduce((s, r) => s + (r in P.have && P.have[r] < P.targets[r] ? 2 : 0), 0);
-    const fit = c => P.value(c) + gap(c), lr = c => c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0;
+    const NR = ctx.settings && ctx.settings.mode === 'mech' && typeof PQ !== 'undefined' && PQ;
+    // mechanics-only: the rules-text quality model takes play rate's place in the candidate order
+    const fit = c => P.value(c) + gap(c), lr = c => NR ? PQ.quality(c) : c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0;
     const top = (score, k) => non.map(c => ({ c, v: score(c) })).sort((a, b) => b.v - a.v || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
     take(top(fit, o.nonland), 'theme fit');
     for (const r of Object.keys(P.targets)) take(P.pick(c => !A(c).isLand && A(c).roles[r], o.perRole), E.SLOT_LABEL[r] || r);
@@ -3526,7 +3840,7 @@ const Deep = (function () {
     // the removed cards at median rank 4,167 of ~17,700 in the pool and play rate at 141; this order holds 67% of them in its
     // top 400, the fit order 8%
     take(top(c => 40 * lr(c) + fit(c) / 4, o.popular), 'most played');
-    const lands = P.multi ? pool.filter(c => A(c).isLand && P.landOn(c) >= 2).sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9)).slice(0, o.lands) : [];
+    const lands = P.multi ? pool.filter(c => A(c).isLand && P.landOn(c) >= 2).sort(NR ? (a, b) => P.landValue(b) - P.landValue(a) || (a.n < b.n ? -1 : 1) : (a, b) => (a.rank || 1e9) - (b.rank || 1e9)).slice(0, o.lands) : [];
     return { adds, lands, why };
   }
   async function comboCands(X, ctx, o) {
@@ -3573,7 +3887,7 @@ const Deep = (function () {
     // the value order alone listed 61% of the planted weak cards
     const cuttable = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !noCut.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c);
     const byValue = cuttable.slice().sort((a, b) => safe(b) - safe(a) || P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, o.cuts);
-    const cuts = byValue.concat(cuttable.filter(c => !byValue.includes(c)).sort((a, b) => (b.rank || 1e9) - (a.rank || 1e9) || (a.n < b.n ? -1 : 1)).slice(0, o.cutsRare));
+    const cuts = byValue.concat(cuttable.filter(c => !byValue.includes(c)).sort(ctx.settings && ctx.settings.mode === 'mech' && PQ ? (a, b) => PQ.quality(a) - PQ.quality(b) || (a.n < b.n ? -1 : 1) : (a, b) => (b.rank || 1e9) - (a.rank || 1e9) || (a.n < b.n ? -1 : 1)).slice(0, o.cutsRare));
     const basics = ctx.deck.filter(e => E.isBasic(e.c) && !e.locked && !noCut.has(e.c.n)).sort((a, b) => P.landValue(a.c) - P.landValue(b.c));
     const est = cuts.length + C.adds.length + C.lands.length + K.pairs.length + o.confirm + o.rounds * (o.beam || 1) * (o.lead + o.altFor * (o.altCuts - 1));
     let done = 0, total = est, id = 0, evals = 0;
@@ -4173,7 +4487,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
     const X = App.AN; if (!X || !X.planner || (App.DEEP && App.DEEP.busy)) return;
     const inp = X.inp, cp = comboProvider(), t0 = performance.now();
     const keep = new Set(inp.cmds.map(c => c.n).concat(App.anSource !== 'paste' && App.R ? App.R.deck.filter(e => e.inc).map(e => e.c.n) : []));
-    const src = ['src-engine', 'src-mech', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
+    const src = ['src-engine', 'src-mech', 'src-plan', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
     const useW = typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && src.every(Boolean);
     let ex = null;
     const D = App.DEEP = { busy: true, wide: !!wide, frac: 0, note: 'Preparing candidates…', X, cancel: () => { if (ex) ex.cancel(); } };
@@ -4391,7 +4705,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
     const X = App.AN; if (!X || !X.planner || (App.PC && App.PC.busy)) return;
     const inp = X.inp, cp = comboProvider(), t0 = performance.now();
     const keep = new Set(inp.cmds.map(c => c.n).concat(App.anSource !== 'paste' && App.R ? App.R.deck.filter(e => e.inc).map(e => e.c.n) : []));
-    const src = ['src-engine', 'src-mech', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
+    const src = ['src-engine', 'src-mech', 'src-plan', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
     const useW = typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && src.every(Boolean);
     let ex = null;
     const PC = App.PC = { busy: true, X, frac: 0, cancel: () => { if (ex) ex.cancel(); } };
@@ -4603,13 +4917,20 @@ if (typeof module !== 'undefined') module.exports = Deep;
     }).join('');
     const combos = R.combos && R.combos.length ? '<ul>' + R.combos.map(v => '<li>' + esc(v.c.join(' + ')) + ' → ' + esc(v.p.join(', ')) + (v.bt ? ' <span class="chip">' + esc(v.bt) + '</span>' : '') + '</li>').join('') + '</ul>' : '<p class="note">' + (R.comboStatus === 'unavailable' ? 'No Commander Spellbook file loaded, so combos were not checked.' : 'No complete combos detected.') + '</p>';
     return '<div class="statsgrid an-stats">' +
-      '<div><h3>Mana curve (nonland, excl. commander)</h3>' + curveSVG(s.curve) + '<p class="note">Average MV ' + s.avgMV.toFixed(2) + ' (target ' + (+R.settings.mana.avgMV).toFixed(1) + '). Creatures: ' + s.creatures + '.</p></div>' +
+      '<div><h3>Mana curve (nonland, excl. commander)</h3>' + curveSVG(s.curve) + '<p class="note">Average MV ' + s.avgMV.toFixed(2) + ' (target ' + (R.curveTarget != null ? +R.curveTarget : +R.settings.mana.avgMV).toFixed(1) + (R.plan && !R.settings.mana.fixedMV ? ', from the commander plan' : '') + '). Creatures: ' + s.creatures + '.</p></div>' +
       '<div><h3>Color pips and sources</h3>' + pipRow + '</div>' + colourCheckHTML(R) +
       '<div><h3>Category counts vs targets</h3><div style="display:flex;flex-direction:column;gap:6px">' + meters + '</div><p class="note">A card counts toward every role its tags match.</p></div>' +
       '<div><h3>Price</h3><p class="num">Total ' + fmtP(s.total) + (R.settings.budget.total != null ? ' / cap ' + fmtP(+R.settings.budget.total) : '') + '</p>' + (s.unknown.length ? '<p class="note">No price: ' + esc(s.unknown.join(', ')) + '</p>' : '') + '<h3 style="margin-top:8px">Game Changers (' + s.gcs.length + ')</h3><p>' + (s.gcs.length ? esc(s.gcs.join(', ')) : '<span class="note">None</span>') + '</p>' +
       '<h3 style="margin-top:8px">Detected combos</h3>' + combos + '</div>' +
       '<div><h3>Synergy tags used</h3>' + (R.tags.length ? '<table class="t"><tbody>' + R.tags.map(t => '<tr><td>' + esc(t.label) + '</td><td class="note">' + esc(t.src) + ', weight ' + t.w + '</td></tr>').join('') + '</tbody></table>' : '<p class="note">None derived from commander text; scores rely on roles, popularity and curve.</p>') + '</div>' +
-      '</div>';
+      planHTML(R) + '</div>';
+  }
+  // mechanics-only builds: what the commander's plan profile asked for and how much of it the deck holds
+  function planHTML(R) {
+    const P = R.plan; if (!P) return '';
+    const have = R.deck.filter(e => !Engine.analyze(e.c).isLand && P.isPlan(e.c)).length;
+    return '<div><h3>Commander plan</h3><p>' + esc(P.summary) + '</p><p class="note">Mechanics only: EDHREC popularity is not used. ' + have + ' plan cards in the deck (quota ' + P.quota + ', ' + P.supply.toLocaleString('en-US') + ' in the pool).</p>' +
+      (P.partSupply && P.partSupply.length ? '<table class="t"><tbody>' + P.partSupply.map(x => '<tr><td>' + esc(x.label) + '</td><td class="num">' + x.n.toLocaleString('en-US') + ' in pool</td></tr>').join('') + '</tbody></table>' : '') + '</div>';
   }
   function renderValidation() {
     const R = App.R;

@@ -16,6 +16,7 @@ const Deep = (function () {
   const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
   const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
   const A = c => E.analyze(c);
+  const PQ = (typeof Plan !== 'undefined') ? Plan : (typeof require === 'function' ? require('./plan.js') : null);
   // MIN_GAIN: 1 = 0.1 power level. Seed-to-seed SD of one swap's gain at G2 games is 0.05 (q90 0.09; 4 decks × 16 swaps × 6
   // seeds), so the threshold is about diminishing returns, not noise: accepting each package and re-running (4 reference decks)
   // gave round gains of 16–24, 5–15, 1.4–5, 0.6–3.4; at 0.5 the tail of 0.5–1 swaps kept every re-run proposing more
@@ -99,7 +100,9 @@ const Deep = (function () {
     const take = (list, tag) => { for (const c of list) { if (!why.has(c.n)) why.set(c.n, tag); if (!seen.has(c.n)) { seen.add(c.n); adds.push(c); } } };
     const non = pool.filter(c => !A(c).isLand);
     const gap = c => Object.keys(A(c).roles).reduce((s, r) => s + (r in P.have && P.have[r] < P.targets[r] ? 2 : 0), 0);
-    const fit = c => P.value(c) + gap(c), lr = c => c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0;
+    const NR = ctx.settings && ctx.settings.mode === 'mech' && typeof PQ !== 'undefined' && PQ;
+    // mechanics-only: the rules-text quality model takes play rate's place in the candidate order
+    const fit = c => P.value(c) + gap(c), lr = c => NR ? PQ.quality(c) : c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0;
     const top = (score, k) => non.map(c => ({ c, v: score(c) })).sort((a, b) => b.v - a.v || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
     take(top(fit, o.nonland), 'theme fit');
     for (const r of Object.keys(P.targets)) take(P.pick(c => !A(c).isLand && A(c).roles[r], o.perRole), E.SLOT_LABEL[r] || r);
@@ -108,7 +111,7 @@ const Deep = (function () {
     // the removed cards at median rank 4,167 of ~17,700 in the pool and play rate at 141; this order holds 67% of them in its
     // top 400, the fit order 8%
     take(top(c => 40 * lr(c) + fit(c) / 4, o.popular), 'most played');
-    const lands = P.multi ? pool.filter(c => A(c).isLand && P.landOn(c) >= 2).sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9)).slice(0, o.lands) : [];
+    const lands = P.multi ? pool.filter(c => A(c).isLand && P.landOn(c) >= 2).sort(NR ? (a, b) => P.landValue(b) - P.landValue(a) || (a.n < b.n ? -1 : 1) : (a, b) => (a.rank || 1e9) - (b.rank || 1e9)).slice(0, o.lands) : [];
     return { adds, lands, why };
   }
   async function comboCands(X, ctx, o) {
@@ -155,7 +158,7 @@ const Deep = (function () {
     // the value order alone listed 61% of the planted weak cards
     const cuttable = ctx.deck.filter(e => !e.locked && !keep.has(e.c.n) && !noCut.has(e.c.n) && !P.combo.has(e.c.n) && !A(e.c).isLand).map(e => e.c);
     const byValue = cuttable.slice().sort((a, b) => safe(b) - safe(a) || P.value(a) - P.value(b) || (a.n < b.n ? -1 : 1)).slice(0, o.cuts);
-    const cuts = byValue.concat(cuttable.filter(c => !byValue.includes(c)).sort((a, b) => (b.rank || 1e9) - (a.rank || 1e9) || (a.n < b.n ? -1 : 1)).slice(0, o.cutsRare));
+    const cuts = byValue.concat(cuttable.filter(c => !byValue.includes(c)).sort(ctx.settings && ctx.settings.mode === 'mech' && PQ ? (a, b) => PQ.quality(a) - PQ.quality(b) || (a.n < b.n ? -1 : 1) : (a, b) => (b.rank || 1e9) - (a.rank || 1e9) || (a.n < b.n ? -1 : 1)).slice(0, o.cutsRare));
     const basics = ctx.deck.filter(e => E.isBasic(e.c) && !e.locked && !noCut.has(e.c.n)).sort((a, b) => P.landValue(a.c) - P.landValue(b.c));
     const est = cuts.length + C.adds.length + C.lands.length + K.pairs.length + o.confirm + o.rounds * (o.beam || 1) * (o.lead + o.altFor * (o.altCuts - 1));
     let done = 0, total = est, id = 0, evals = 0;
