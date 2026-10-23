@@ -887,6 +887,30 @@
     return '<div><h3>Commander plan</h3><p>' + esc(P.summary) + '</p><p class="note">Mechanics only: EDHREC popularity is not used. ' + have + ' plan cards in the deck (quota ' + P.quota + ', ' + P.supply.toLocaleString('en-US') + ' in the pool).</p>' +
       (P.partSupply && P.partSupply.length ? '<table class="t"><tbody>' + P.partSupply.map(x => '<tr><td>' + esc(x.label) + '</td><td class="num">' + x.n.toLocaleString('en-US') + ' in pool</td></tr>').join('') + '</tbody></table>' : '') + '</div>';
   }
+  // Deck › Counts: cards per role (same tagging as the generator) against the middle half of real decks of a bracket
+  function renderCounts() {
+    const R = App.R, RR = Analysis.ROLE_RANGES, b = App.countsB != null ? App.countsB : (+R.settings.bracket || 0), ref = RR[b] || RR[0];
+    const rc = Analysis.roleCounts(R.deck), blue = (R.CI || '').includes('U');
+    const BN = { 0: 'All', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5' };
+    const seg = '<span class="row" style="gap:8px;align-items:center"><span class="note">Compare with</span><div class="seg" role="group" aria-label="Compare with bracket" id="cntB">' + Object.keys(BN).map(k => '<button type="button" data-cb="' + k + '" aria-pressed="' + (+k === b) + '" title="' + (k === '0' ? 'All brackets' : 'Bracket ' + k) + '">' + (k === '0' ? 'All' : 'B' + k) + '</button>').join('') + '</div></span>';
+    let low = 0, high = 0;
+    const rows = Analysis.COUNT_CATS.map(([k, label]) => {
+      const x = rc[k], [p25, med, p75] = ref[k], na = k === 'counters' && !blue;
+      const st = na ? ['na', 'No blue'] : x.n < p25 ? ['fail', 'Low'] : x.n > p75 ? ['warn', 'High'] : ['pass', 'Typical'];
+      if (st[1] === 'Low') low++; if (st[1] === 'High') high++;
+      const max = Math.max(x.n, p75 * 1.5, 4), pc = v => (Math.min(v, max) / max * 100).toFixed(1) + '%';
+      const bar = na ? '' : '<span class="cband" aria-hidden="true"><i style="left:' + pc(p25) + ';width:calc(' + pc(p75) + ' - ' + pc(p25) + ')"></i><b style="left:' + pc(x.n) + '"></b></span>';
+      const list = x.cards.length ? '<details class="ccards"><summary>' + x.cards.length + ' card' + (x.cards.length === 1 ? '' : 's') + '</summary>' + x.cards.slice().sort((a, c) => a.cmc - c.cmc || (a.n < c.n ? -1 : 1)).map(c => cardLink(c)).join(', ') + '</details>' : '<span class="note">none</span>';
+      return '<tr><td class="m-2"><b>' + esc(label) + '</b></td><td class="n m-3 num"><b>' + x.n + '</b></td><td class="n num" data-l="Typical">' + (na ? '—' : fmtR(p25) + '–' + fmtR(p75)) + '</td><td class="n num" data-l="Median">' + (na ? '—' : fmtR(med)) + '</td><td class="m-full">' + bar + '</td><td class="m-1"><span class="st ' + st[0] + '">' + st[1] + '</span></td><td class="m-full2">' + list + '</td></tr>';
+    }).join('');
+    const sum = low || high ? (low ? low + ' below' : '') + (low && high ? ', ' : '') + (high ? high + ' above' : '') + ' the typical range' : 'Every category is inside the typical range';
+    $('view').innerHTML = '<div class="row" style="justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><span class="note">' + sourceLine(R) + '</span>' + seg + '</div>' +
+      '<p><b>' + esc(sum) + '</b> <span class="note">for ' + (b ? 'Bracket ' + b : 'all brackets') + ' (' + ref.n + ' reference decks).</span></p>' +
+      '<div class="scroll"><table class="t mrows counts"><thead><tr><th>Category</th><th class="n">Deck</th><th class="n">Typical</th><th class="n">Median</th><th>Range</th><th>Status</th><th>Cards</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="note">Typical is the middle half (25th to 75th percentile) of ' + ref.n + ' Archidekt decklists' + (b ? ' tagged Bracket ' + b : '') + ' in data/reference, counted with the same rules as the generator; counterspells use only the ' + ref.nU + ' blue decks. The shaded band on each bar is that range and the mark is this deck. A card counts in every category it matches, and the commander is not counted. It describes what players build, not an optimum. Tag rules are under Start › Fine-tune › Advanced.</p>';
+    $('cntB').addEventListener('click', e => { const t = e.target.closest('button[data-cb]'); if (!t) return; App.countsB = +t.dataset.cb; renderCounts(); });
+  }
+  const fmtR = v => String(v).replace(/\.5$/, '½');
   function renderValidation() {
     const R = App.R;
     $('view').innerHTML = '<p class="note">' + sourceLine(R) + ' Checked ' + new Date(R.validation.at).toLocaleString() + '.</p><div class="scroll"><table class="t"><thead><tr><th>Rule</th><th>Result</th><th>Detail</th></tr></thead><tbody>' +
@@ -917,13 +941,13 @@
   /* ---------- pages: five in the rail (plus More), each holding one or more views; App.tab is the current view ---------- */
   const PAGES = {
     start: ['Start', [['setup', 'New deck'], ['import', 'Import a list'], ['find', 'Find a commander']]],
-    deck: ['Deck', [['cards', 'Cards'], ['hand', 'Sample hand'], ['export', 'Export']]],
+    deck: ['Deck', [['cards', 'Cards'], ['counts', 'Counts'], ['hand', 'Sample hand'], ['export', 'Export']]],
     analysis: ['Analysis', []],
     improve: ['Improve', [['changes', 'Suggested swaps'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]],
     primer: ['Primer', []],
     more: ['More', []]
   };
-  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
+  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
   const FIND = [['commanders', 'Browse'], ['inspire', 'Quiz'], ['surprise', 'Random']];
   const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
   const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
@@ -940,6 +964,7 @@
     import: 'Paste your current list to analyze it as it is. Suggested swaps come after, on Improve, when you ask for them.',
     commanders: 'Every legal commander in the card data, by colour, theme and popularity.', inspire: 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.', surprise: 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.',
     deck: 'Tap a card for its text and its actions: lock, swap or remove.', role: 'Grouped by the role slot each card fills. Tap a card for its actions.', valid: 'Every deck-building rule and whether this list passes it.',
+    counts: 'How many cards the deck has for each job (lands, ramp, draw, removal, wipes and more) next to what real decks of the same bracket run.',
     hand: 'Draw opening hands from this list, mulligan and draw on.', export: 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.',
     analysis: 'Power, speed, mana and problems from simulated games. Fixes are on Improve.',
     changes: 'Cuts and adds for the analyzed list, each scored with simulated games.', percard: 'Each card in the list with up to three better cards at different prices, each measured as a swap. You choose.', upgrade: 'Set an amount to spend. The best set of swaps that fits it, each add Commander-legal and in your colours, measured with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
@@ -989,6 +1014,7 @@
       case 'deck': $('view').innerHTML = renderDeckTable(false); break;
       case 'role': $('view').innerHTML = renderDeckTable(true); break;
       case 'valid': renderValidation(); break;
+      case 'counts': renderCounts(); break;
       case 'log': renderLog(); break;
       case 'export': renderExport(); break;
     }

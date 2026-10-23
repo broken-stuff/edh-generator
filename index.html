@@ -234,6 +234,11 @@ details.an-more{margin-top:12px}details.an-more>summary{cursor:pointer;padding:6
 .meter .track{height:8px;background:var(--card-2);border-radius:999px;position:relative;overflow:hidden}
 .meter .fill{position:absolute;inset:0 auto 0 0;background:var(--bar);border-radius:999px}
 .meter .fill.short{background:var(--warn)}
+.st.warn{background:var(--warn-soft);color:var(--warn)}
+.cband{display:block;position:relative;height:10px;min-width:120px;background:var(--card-2);border-radius:999px}
+.cband i{position:absolute;top:0;bottom:0;background:var(--ok-soft);border:1px solid var(--ok);border-radius:999px;box-sizing:border-box}
+.cband b{position:absolute;top:-3px;width:4px;height:16px;margin-left:-2px;background:var(--ink);border-radius:2px}
+table.counts td{vertical-align:middle}.ccards summary{cursor:pointer;color:var(--muted);font-size:calc(12.5px*var(--fz))}.ccards{font-size:calc(13px*var(--fz))}
 .statsgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
 .statsgrid>div{min-width:0}.statsgrid>.wide{grid-column:1/-1}.statsgrid table.t{width:100%}
 svg text{fill:var(--muted);font-family:var(--f-mono);font-size:calc(10px*var(--fz))}
@@ -2629,6 +2634,39 @@ const Analysis = (function () {
   const POP = { lands: 35.9, ramp: 12.7, draw: 7.6, removal: 8.5, wipes: 2.7, tutors: 3.0, counters: 2.4 };
   const BENCH = { lands: 37, ramp: 10, draw: 10, removal: 9, wipes: 3, protection: 3, recursion: 2, wincon: 3, avgMV: 3.0, engines: 3, cheapInteraction: 6, evasive: 8 };
 
+  /* ---------- role counts ("expected numbers"): same tagging as the generator; a card counts in every category it matches ---------- */
+  // Spot removal and counterspells split the generator's removal role by rule: rm-counter / prot-counter make a counterspell,
+  // any other removal rule (or the Scryfall otag) makes spot removal. Tutors are the tutor flag; lands are land cards.
+  const COUNT_CATS = [
+    ['lands', 'Lands', c => A(c).isLand],
+    ['ramp', 'Ramp', c => !!A(c).roles.ramp],
+    ['draw', 'Card draw', c => !!A(c).roles.draw],
+    ['removal', 'Spot removal', c => (A(c).rules.removal || []).some(r => r !== 'rm-counter')],
+    ['counters', 'Counterspells', c => (A(c).rules.removal || []).includes('rm-counter') || (A(c).rules.protection || []).includes('prot-counter')],
+    ['wipes', 'Board wipes', c => !!A(c).roles.wipes],
+    ['protection', 'Protection', c => !!A(c).roles.protection],
+    ['tutors', 'Tutors', c => !!A(c).flags.tutor],
+    ['recursion', 'Recursion', c => !!A(c).roles.recursion],
+    ['wincon', 'Win conditions', c => !!A(c).roles.wincon]
+  ];
+  function roleCounts(deck) {
+    const out = {};
+    for (const [k, label, test] of COUNT_CATS) { const cards = deck.filter(e => test(e.c)); out[k] = { key: k, label, n: cards.reduce((s, e) => s + (e.qty || 1), 0), cards: cards.map(e => e.c) }; }
+    return out;
+  }
+  // Middle half (25th–75th percentile) and median of each count across the Archidekt reference decks in
+  // data/reference/ (decks of 95+ cards, commanders excluded), by Commander Bracket; 0 = all brackets. Counterspells:
+  // blue decks only (nU of n).
+  // Regenerate with: node tools/ref-roles.js
+  const ROLE_RANGES = {
+    0: { n: 822, nU: 466, lands: [33, 35, 37], ramp: [10, 13, 18], draw: [8, 11, 14], removal: [5, 6, 9], counters: [1, 3, 6], wipes: [0, 1, 2], protection: [1, 2, 4], tutors: [0, 2, 5], recursion: [1, 2, 4], wincon: [2, 4, 7] },
+    1: { n: 163, nU: 93, lands: [35, 37, 38], ramp: [7, 10, 14], draw: [8, 10, 13], removal: [4, 6, 9], counters: [0, 1, 2], wipes: [0, 1, 2], protection: [0, 1, 3], tutors: [0, 1, 1], recursion: [1, 2, 3], wincon: [2, 4, 6] },
+    2: { n: 165, nU: 93, lands: [35, 36, 37], ramp: [9, 12, 16], draw: [9, 11, 15], removal: [5, 7, 9], counters: [0, 1, 4], wipes: [1, 1, 2], protection: [1, 2, 3], tutors: [0, 1, 2], recursion: [1, 2, 4], wincon: [2, 4, 7] },
+    3: { n: 165, nU: 94, lands: [34, 36, 37], ramp: [11, 13, 17], draw: [9, 11, 15], removal: [5, 7, 9], counters: [2, 3, 5], wipes: [0, 1, 2], protection: [1, 3, 4], tutors: [0, 2, 3], recursion: [1, 2, 4], wincon: [2, 5, 8] },
+    4: { n: 165, nU: 93, lands: [32, 34, 36], ramp: [12, 14, 20], draw: [8, 11, 14], removal: [5, 7, 9], counters: [2, 4, 6], wipes: [0, 1, 2], protection: [1, 2, 4], tutors: [2, 4, 6], recursion: [0, 1, 4], wincon: [2, 4, 8] },
+    5: { n: 164, nU: 93, lands: [27, 30, 34], ramp: [13, 18, 22], draw: [7, 10, 13], removal: [4, 6, 8], counters: [5, 7, 10], wipes: [0, 0, 1], protection: [1, 2, 3], tutors: [4, 7, 10], recursion: [1, 2, 3], wincon: [2, 3, 5] }
+  };
+
   /* ---------- enabler / payoff synergy pairs ---------- */
   const PAIRS = E.PAIRS; // shared with the generator (engine.js)
 
@@ -3722,7 +3760,7 @@ const Analysis = (function () {
     return { cmds: [], how: null, main, missing: [], candidates: cand };
   }
 
-  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
+  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp, COUNT_CATS, roleCounts, ROLE_RANGES };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;
 </script>
@@ -4932,6 +4970,30 @@ if (typeof module !== 'undefined') module.exports = Deep;
     return '<div><h3>Commander plan</h3><p>' + esc(P.summary) + '</p><p class="note">Mechanics only: EDHREC popularity is not used. ' + have + ' plan cards in the deck (quota ' + P.quota + ', ' + P.supply.toLocaleString('en-US') + ' in the pool).</p>' +
       (P.partSupply && P.partSupply.length ? '<table class="t"><tbody>' + P.partSupply.map(x => '<tr><td>' + esc(x.label) + '</td><td class="num">' + x.n.toLocaleString('en-US') + ' in pool</td></tr>').join('') + '</tbody></table>' : '') + '</div>';
   }
+  // Deck › Counts: cards per role (same tagging as the generator) against the middle half of real decks of a bracket
+  function renderCounts() {
+    const R = App.R, RR = Analysis.ROLE_RANGES, b = App.countsB != null ? App.countsB : (+R.settings.bracket || 0), ref = RR[b] || RR[0];
+    const rc = Analysis.roleCounts(R.deck), blue = (R.CI || '').includes('U');
+    const BN = { 0: 'All', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5' };
+    const seg = '<span class="row" style="gap:8px;align-items:center"><span class="note">Compare with</span><div class="seg" role="group" aria-label="Compare with bracket" id="cntB">' + Object.keys(BN).map(k => '<button type="button" data-cb="' + k + '" aria-pressed="' + (+k === b) + '" title="' + (k === '0' ? 'All brackets' : 'Bracket ' + k) + '">' + (k === '0' ? 'All' : 'B' + k) + '</button>').join('') + '</div></span>';
+    let low = 0, high = 0;
+    const rows = Analysis.COUNT_CATS.map(([k, label]) => {
+      const x = rc[k], [p25, med, p75] = ref[k], na = k === 'counters' && !blue;
+      const st = na ? ['na', 'No blue'] : x.n < p25 ? ['fail', 'Low'] : x.n > p75 ? ['warn', 'High'] : ['pass', 'Typical'];
+      if (st[1] === 'Low') low++; if (st[1] === 'High') high++;
+      const max = Math.max(x.n, p75 * 1.5, 4), pc = v => (Math.min(v, max) / max * 100).toFixed(1) + '%';
+      const bar = na ? '' : '<span class="cband" aria-hidden="true"><i style="left:' + pc(p25) + ';width:calc(' + pc(p75) + ' - ' + pc(p25) + ')"></i><b style="left:' + pc(x.n) + '"></b></span>';
+      const list = x.cards.length ? '<details class="ccards"><summary>' + x.cards.length + ' card' + (x.cards.length === 1 ? '' : 's') + '</summary>' + x.cards.slice().sort((a, c) => a.cmc - c.cmc || (a.n < c.n ? -1 : 1)).map(c => cardLink(c)).join(', ') + '</details>' : '<span class="note">none</span>';
+      return '<tr><td class="m-2"><b>' + esc(label) + '</b></td><td class="n m-3 num"><b>' + x.n + '</b></td><td class="n num" data-l="Typical">' + (na ? '—' : fmtR(p25) + '–' + fmtR(p75)) + '</td><td class="n num" data-l="Median">' + (na ? '—' : fmtR(med)) + '</td><td class="m-full">' + bar + '</td><td class="m-1"><span class="st ' + st[0] + '">' + st[1] + '</span></td><td class="m-full2">' + list + '</td></tr>';
+    }).join('');
+    const sum = low || high ? (low ? low + ' below' : '') + (low && high ? ', ' : '') + (high ? high + ' above' : '') + ' the typical range' : 'Every category is inside the typical range';
+    $('view').innerHTML = '<div class="row" style="justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><span class="note">' + sourceLine(R) + '</span>' + seg + '</div>' +
+      '<p><b>' + esc(sum) + '</b> <span class="note">for ' + (b ? 'Bracket ' + b : 'all brackets') + ' (' + ref.n + ' reference decks).</span></p>' +
+      '<div class="scroll"><table class="t mrows counts"><thead><tr><th>Category</th><th class="n">Deck</th><th class="n">Typical</th><th class="n">Median</th><th>Range</th><th>Status</th><th>Cards</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="note">Typical is the middle half (25th to 75th percentile) of ' + ref.n + ' Archidekt decklists' + (b ? ' tagged Bracket ' + b : '') + ' in data/reference, counted with the same rules as the generator; counterspells use only the ' + ref.nU + ' blue decks. The shaded band on each bar is that range and the mark is this deck. A card counts in every category it matches, and the commander is not counted. It describes what players build, not an optimum. Tag rules are under Start › Fine-tune › Advanced.</p>';
+    $('cntB').addEventListener('click', e => { const t = e.target.closest('button[data-cb]'); if (!t) return; App.countsB = +t.dataset.cb; renderCounts(); });
+  }
+  const fmtR = v => String(v).replace(/\.5$/, '½');
   function renderValidation() {
     const R = App.R;
     $('view').innerHTML = '<p class="note">' + sourceLine(R) + ' Checked ' + new Date(R.validation.at).toLocaleString() + '.</p><div class="scroll"><table class="t"><thead><tr><th>Rule</th><th>Result</th><th>Detail</th></tr></thead><tbody>' +
@@ -4962,13 +5024,13 @@ if (typeof module !== 'undefined') module.exports = Deep;
   /* ---------- pages: five in the rail (plus More), each holding one or more views; App.tab is the current view ---------- */
   const PAGES = {
     start: ['Start', [['setup', 'New deck'], ['import', 'Import a list'], ['find', 'Find a commander']]],
-    deck: ['Deck', [['cards', 'Cards'], ['hand', 'Sample hand'], ['export', 'Export']]],
+    deck: ['Deck', [['cards', 'Cards'], ['counts', 'Counts'], ['hand', 'Sample hand'], ['export', 'Export']]],
     analysis: ['Analysis', []],
     improve: ['Improve', [['changes', 'Suggested swaps'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]],
     primer: ['Primer', []],
     more: ['More', []]
   };
-  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
+  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
   const FIND = [['commanders', 'Browse'], ['inspire', 'Quiz'], ['surprise', 'Random']];
   const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
   const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
@@ -4985,6 +5047,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
     import: 'Paste your current list to analyze it as it is. Suggested swaps come after, on Improve, when you ask for them.',
     commanders: 'Every legal commander in the card data, by colour, theme and popularity.', inspire: 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.', surprise: 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.',
     deck: 'Tap a card for its text and its actions: lock, swap or remove.', role: 'Grouped by the role slot each card fills. Tap a card for its actions.', valid: 'Every deck-building rule and whether this list passes it.',
+    counts: 'How many cards the deck has for each job (lands, ramp, draw, removal, wipes and more) next to what real decks of the same bracket run.',
     hand: 'Draw opening hands from this list, mulligan and draw on.', export: 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.',
     analysis: 'Power, speed, mana and problems from simulated games. Fixes are on Improve.',
     changes: 'Cuts and adds for the analyzed list, each scored with simulated games.', percard: 'Each card in the list with up to three better cards at different prices, each measured as a swap. You choose.', upgrade: 'Set an amount to spend. The best set of swaps that fits it, each add Commander-legal and in your colours, measured with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
@@ -5034,6 +5097,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
       case 'deck': $('view').innerHTML = renderDeckTable(false); break;
       case 'role': $('view').innerHTML = renderDeckTable(true); break;
       case 'valid': renderValidation(); break;
+      case 'counts': renderCounts(); break;
       case 'log': renderLog(); break;
       case 'export': renderExport(); break;
     }

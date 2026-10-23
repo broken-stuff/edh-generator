@@ -18,6 +18,39 @@ const Analysis = (function () {
   const POP = { lands: 35.9, ramp: 12.7, draw: 7.6, removal: 8.5, wipes: 2.7, tutors: 3.0, counters: 2.4 };
   const BENCH = { lands: 37, ramp: 10, draw: 10, removal: 9, wipes: 3, protection: 3, recursion: 2, wincon: 3, avgMV: 3.0, engines: 3, cheapInteraction: 6, evasive: 8 };
 
+  /* ---------- role counts ("expected numbers"): same tagging as the generator; a card counts in every category it matches ---------- */
+  // Spot removal and counterspells split the generator's removal role by rule: rm-counter / prot-counter make a counterspell,
+  // any other removal rule (or the Scryfall otag) makes spot removal. Tutors are the tutor flag; lands are land cards.
+  const COUNT_CATS = [
+    ['lands', 'Lands', c => A(c).isLand],
+    ['ramp', 'Ramp', c => !!A(c).roles.ramp],
+    ['draw', 'Card draw', c => !!A(c).roles.draw],
+    ['removal', 'Spot removal', c => (A(c).rules.removal || []).some(r => r !== 'rm-counter')],
+    ['counters', 'Counterspells', c => (A(c).rules.removal || []).includes('rm-counter') || (A(c).rules.protection || []).includes('prot-counter')],
+    ['wipes', 'Board wipes', c => !!A(c).roles.wipes],
+    ['protection', 'Protection', c => !!A(c).roles.protection],
+    ['tutors', 'Tutors', c => !!A(c).flags.tutor],
+    ['recursion', 'Recursion', c => !!A(c).roles.recursion],
+    ['wincon', 'Win conditions', c => !!A(c).roles.wincon]
+  ];
+  function roleCounts(deck) {
+    const out = {};
+    for (const [k, label, test] of COUNT_CATS) { const cards = deck.filter(e => test(e.c)); out[k] = { key: k, label, n: cards.reduce((s, e) => s + (e.qty || 1), 0), cards: cards.map(e => e.c) }; }
+    return out;
+  }
+  // Middle half (25th–75th percentile) and median of each count across the Archidekt reference decks in
+  // data/reference/ (decks of 95+ cards, commanders excluded), by Commander Bracket; 0 = all brackets. Counterspells:
+  // blue decks only (nU of n).
+  // Regenerate with: node tools/ref-roles.js
+  const ROLE_RANGES = {
+    0: { n: 822, nU: 466, lands: [33, 35, 37], ramp: [10, 13, 18], draw: [8, 11, 14], removal: [5, 6, 9], counters: [1, 3, 6], wipes: [0, 1, 2], protection: [1, 2, 4], tutors: [0, 2, 5], recursion: [1, 2, 4], wincon: [2, 4, 7] },
+    1: { n: 163, nU: 93, lands: [35, 37, 38], ramp: [7, 10, 14], draw: [8, 10, 13], removal: [4, 6, 9], counters: [0, 1, 2], wipes: [0, 1, 2], protection: [0, 1, 3], tutors: [0, 1, 1], recursion: [1, 2, 3], wincon: [2, 4, 6] },
+    2: { n: 165, nU: 93, lands: [35, 36, 37], ramp: [9, 12, 16], draw: [9, 11, 15], removal: [5, 7, 9], counters: [0, 1, 4], wipes: [1, 1, 2], protection: [1, 2, 3], tutors: [0, 1, 2], recursion: [1, 2, 4], wincon: [2, 4, 7] },
+    3: { n: 165, nU: 94, lands: [34, 36, 37], ramp: [11, 13, 17], draw: [9, 11, 15], removal: [5, 7, 9], counters: [2, 3, 5], wipes: [0, 1, 2], protection: [1, 3, 4], tutors: [0, 2, 3], recursion: [1, 2, 4], wincon: [2, 5, 8] },
+    4: { n: 165, nU: 93, lands: [32, 34, 36], ramp: [12, 14, 20], draw: [8, 11, 14], removal: [5, 7, 9], counters: [2, 4, 6], wipes: [0, 1, 2], protection: [1, 2, 4], tutors: [2, 4, 6], recursion: [0, 1, 4], wincon: [2, 4, 8] },
+    5: { n: 164, nU: 93, lands: [27, 30, 34], ramp: [13, 18, 22], draw: [7, 10, 13], removal: [4, 6, 8], counters: [5, 7, 10], wipes: [0, 0, 1], protection: [1, 2, 3], tutors: [4, 7, 10], recursion: [1, 2, 3], wincon: [2, 3, 5] }
+  };
+
   /* ---------- enabler / payoff synergy pairs ---------- */
   const PAIRS = E.PAIRS; // shared with the generator (engine.js)
 
@@ -1111,6 +1144,6 @@ const Analysis = (function () {
     return { cmds: [], how: null, main, missing: [], candidates: cand };
   }
 
-  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp };
+  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp, COUNT_CATS, roleCounts, ROLE_RANGES };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;

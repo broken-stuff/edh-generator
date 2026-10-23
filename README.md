@@ -67,6 +67,7 @@ The five pages are in the left menu (a bar at the bottom on phones): **Start**, 
 ### Deck
 
 - **Cards:** the list, grouped by type or by role (ramp, draw, removal and so on). Tap a card for its text, price, roles, why it is in the deck, and its actions: **Lock** keeps it on rebuild, **Swap** shows the five best alternatives, **Remove** takes it out. **Rebuild around locks** rebuilds while keeping locked cards (if they can't fit the budget, the current deck stays). **Undo** reverts your last edit. **Rules** in the summary opens the legality and budget checks.
+- **Counts:** how many cards the deck has for each job (lands, ramp, card draw, spot removal, counterspells, board wipes, protection, tutors, recursion, win conditions), next to the typical range for real decks: the middle half (25th to 75th percentile) of the Archidekt decklists in `data/reference/` for the chosen bracket, counted with the generator's own role tags. Each row says Low, Typical or High and lists its cards. Works on generated and imported lists; counterspell ranges use blue decks only. `node tools/ref-roles.js` recomputes the ranges.
 - **Sample hand:** draw 7, take London mulligans, draw more.
 - **Export:** copy or download the list. **Added cards only** lists the cards added since the deck was generated or imported (combo adds, upgrades, accepted swaps) as `1 Card Name` lines for a store's mass entry (TCGplayer, Card Kingdom).
 
