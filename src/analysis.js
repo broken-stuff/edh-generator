@@ -5,6 +5,7 @@ const Analysis = (function () {
   const M = (typeof Mech !== 'undefined') ? Mech : (typeof require === 'function' ? require('./mech.js') : null);
   const mechWhy = t => t.replace(/^needs /, 'uses ').replace(/\./g, ' ');
   const A = c => E.analyze(c);
+  const PQ = (typeof Plan !== 'undefined') ? Plan : (typeof require === 'function' ? require('./plan.js') : null);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const ratio = (have, target) => target > 0 ? clamp(have / target, 0, 1) : 1;
   function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -476,6 +477,9 @@ const Analysis = (function () {
   function run(db, deck, cmds, opts) {
     opts = opts || {};
     const S = opts.settings || E.defaults();
+    // mechanics-only settings: no EDHREC rank in power or in candidate order; the rules-text quality model stands in
+    const NR = S.mode === 'mech' && !!PQ;
+    const popOr = c => NR ? PQ.quality(c) : (c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0);
     const targets = Object.assign({}, BENCH, S.targets || {}, { avgMV: +((S.mana && S.mana.avgMV) || BENCH.avgMV) });
     const CI = 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
     const all = deck.map(e => ({ c: e.c, qty: e.qty || 1, locked: !!e.locked }));
@@ -637,7 +641,7 @@ const Analysis = (function () {
     const cmdKeys = new Set(cmds.map(c => E.nameKey(c.n)));
     const sat = (x, k) => 100 * (1 - Math.exp(-Math.max(0, x) / k));
     // each card counts w × (0.6 + card power), so a stronger card in the same slot scores higher
-    const qf = x => typeof x === 'string' ? 1 : 0.6 + E.cardPower(x);
+    const qf = x => typeof x === 'string' ? 1 : 0.6 + E.cardPower(x, NR);
     const comp = (label, n, w, cards) => { cards = cards || []; const pts = cards.length === n ? cards.reduce((s, x) => s + w * qf(x), 0) : n * w; return { label, n, w, pts, cards: cards.map(x => typeof x === 'string' ? x : x.n) }; };
     const vec = (key, label, k, parts) => { const pts = parts.reduce((s, p) => s + p.pts, 0); return { key, label, k, pts, score: Math.round(sat(pts, k)), parts }; };
     const uniq = new Set();
@@ -737,7 +741,7 @@ const Analysis = (function () {
     const WEIGHTS = { Combo: [0.25, 0.3, 0.15, 0.3], Control: [0.2, 0.25, 0.35, 0.2], Stax: [0.2, 0.25, 0.35, 0.2], Aggro: [0.3, 0.2, 0.15, 0.35], Voltron: [0.3, 0.2, 0.15, 0.35], Tribal: [0.3, 0.2, 0.15, 0.35], Tokens: [0.3, 0.2, 0.15, 0.35], 'Big mana': [0.35, 0.2, 0.15, 0.3] };
     const wv = WEIGHTS[primary] || [0.25, 0.25, 0.2, 0.3];
     const vmix = vSpeed.score * wv[0] + vCons.score * wv[1] + vInt.score * wv[2] + vThreat.score * wv[3];
-    const cps = nonland.map(e => E.cardPower(e.c)).sort((a, b) => b - a);
+    const cps = nonland.map(e => E.cardPower(e.c, NR)).sort((a, b) => b - a);
     const qualTop = cps.slice(0, 60); const cardQ = qualTop.length ? qualTop.reduce((a, b) => a + b, 0) / qualTop.length : 0;
     const qScore = Math.min(100, cardQ / 0.6 * 100);
     const plRaw = 1 + 9 * (0.7 * vmix + 0.3 * qScore) / 100;
@@ -812,7 +816,7 @@ const Analysis = (function () {
     const mRatio = (() => { if (!M) return 0; let a = 0, b = 0; for (const x of perCard) { a += x.mlinks; b += M.links(x.c, mprof, null, true).w; } return b > 0 ? a / b : 0; })();
     const mechAsAdd = c => M ? Math.round(M.links(c, mprof, null, false).w * mRatio) + (cmds.some(k => mechLink(c, k)) ? 3 : 0) : 0;
     const synBonus = c => { let s = 0; for (const [k, side] of sides(c)) if (activeKeys.has(k)) { const p = pairStats.find(x => x.key === k); s += side === 'en' ? (p.status.startsWith('payoff') ? 2 : 1) : (p.status.startsWith('enabler') ? 2 : 1); } if (tribal && new RegExp('\\b' + tribal.type + '\\b').test(c.ft)) s += 1; return Math.max(s, mechAsAdd(c) / 8); };
-    const pick = (pred, k) => pool.filter(pred).map(c => ({ c, s: synBonus(c) * 0.6 + (c.rank ? 1 - Math.log10(c.rank) / Math.log10(40000) : 0) })).sort((a, b) => b.s - a.s || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
+    const pick = (pred, k) => pool.filter(pred).map(c => ({ c, s: synBonus(c) * 0.6 + popOr(c) })).sort((a, b) => b.s - a.s || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
     const addRec = (sev, text, cards) => recs.push({ sev, text, cards: (cards || []).map(c => ({ n: c.n, mc: c.mc, price: c.p[cur], rank: c.rank, uri: c.uri })) });
     for (const r of ['ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon']) {
       const have = role(r), t = +targets[r] || 0;
@@ -835,7 +839,7 @@ const Analysis = (function () {
     /* ---------- swap plans (evaluated by impact()) ---------- */
     const priceOf = c => c && c.p && c.p[cur] != null ? +c.p[cur] : null;
     const linkOf = new Map(perCard.map(x => [x.c, x.links]));
-    const rankTerm = c => c.rank ? 2 * (1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
+    const rankTerm = c => 2 * popOr(c);
     const baseValue = c => { const a = A(c); return 2 * Object.keys(a.roles).length + (a.flags.gc || a.flags.fast || a.flags.tutor ? 3 : 0) + rankTerm(c); };
     const cardValue = c => (linkOf.get(c) || 0) + baseValue(c);
     const usedCuts = new Set(), usedAdds = new Set();

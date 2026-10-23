@@ -442,7 +442,7 @@
     const X = App.AN; if (!X || !X.planner || (App.DEEP && App.DEEP.busy)) return;
     const inp = X.inp, cp = comboProvider(), t0 = performance.now();
     const keep = new Set(inp.cmds.map(c => c.n).concat(App.anSource !== 'paste' && App.R ? App.R.deck.filter(e => e.inc).map(e => e.c.n) : []));
-    const src = ['src-engine', 'src-mech', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
+    const src = ['src-engine', 'src-mech', 'src-plan', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
     const useW = typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && src.every(Boolean);
     let ex = null;
     const D = App.DEEP = { busy: true, wide: !!wide, frac: 0, note: 'Preparing candidates…', X, cancel: () => { if (ex) ex.cancel(); } };
@@ -660,7 +660,7 @@
     const X = App.AN; if (!X || !X.planner || (App.PC && App.PC.busy)) return;
     const inp = X.inp, cp = comboProvider(), t0 = performance.now();
     const keep = new Set(inp.cmds.map(c => c.n).concat(App.anSource !== 'paste' && App.R ? App.R.deck.filter(e => e.inc).map(e => e.c.n) : []));
-    const src = ['src-engine', 'src-mech', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
+    const src = ['src-engine', 'src-mech', 'src-plan', 'src-analysis', 'src-deep'].map(id => { const el = document.getElementById(id); return el ? el.textContent : null; });
     const useW = typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && src.every(Boolean);
     let ex = null;
     const PC = App.PC = { busy: true, X, frac: 0, cancel: () => { if (ex) ex.cancel(); } };
@@ -872,13 +872,20 @@
     }).join('');
     const combos = R.combos && R.combos.length ? '<ul>' + R.combos.map(v => '<li>' + esc(v.c.join(' + ')) + ' → ' + esc(v.p.join(', ')) + (v.bt ? ' <span class="chip">' + esc(v.bt) + '</span>' : '') + '</li>').join('') + '</ul>' : '<p class="note">' + (R.comboStatus === 'unavailable' ? 'No Commander Spellbook file loaded, so combos were not checked.' : 'No complete combos detected.') + '</p>';
     return '<div class="statsgrid an-stats">' +
-      '<div><h3>Mana curve (nonland, excl. commander)</h3>' + curveSVG(s.curve) + '<p class="note">Average MV ' + s.avgMV.toFixed(2) + ' (target ' + (+R.settings.mana.avgMV).toFixed(1) + '). Creatures: ' + s.creatures + '.</p></div>' +
+      '<div><h3>Mana curve (nonland, excl. commander)</h3>' + curveSVG(s.curve) + '<p class="note">Average MV ' + s.avgMV.toFixed(2) + ' (target ' + (R.curveTarget != null ? +R.curveTarget : +R.settings.mana.avgMV).toFixed(1) + (R.plan && !R.settings.mana.fixedMV ? ', from the commander plan' : '') + '). Creatures: ' + s.creatures + '.</p></div>' +
       '<div><h3>Color pips and sources</h3>' + pipRow + '</div>' + colourCheckHTML(R) +
       '<div><h3>Category counts vs targets</h3><div style="display:flex;flex-direction:column;gap:6px">' + meters + '</div><p class="note">A card counts toward every role its tags match.</p></div>' +
       '<div><h3>Price</h3><p class="num">Total ' + fmtP(s.total) + (R.settings.budget.total != null ? ' / cap ' + fmtP(+R.settings.budget.total) : '') + '</p>' + (s.unknown.length ? '<p class="note">No price: ' + esc(s.unknown.join(', ')) + '</p>' : '') + '<h3 style="margin-top:8px">Game Changers (' + s.gcs.length + ')</h3><p>' + (s.gcs.length ? esc(s.gcs.join(', ')) : '<span class="note">None</span>') + '</p>' +
       '<h3 style="margin-top:8px">Detected combos</h3>' + combos + '</div>' +
       '<div><h3>Synergy tags used</h3>' + (R.tags.length ? '<table class="t"><tbody>' + R.tags.map(t => '<tr><td>' + esc(t.label) + '</td><td class="note">' + esc(t.src) + ', weight ' + t.w + '</td></tr>').join('') + '</tbody></table>' : '<p class="note">None derived from commander text; scores rely on roles, popularity and curve.</p>') + '</div>' +
-      '</div>';
+      planHTML(R) + '</div>';
+  }
+  // mechanics-only builds: what the commander's plan profile asked for and how much of it the deck holds
+  function planHTML(R) {
+    const P = R.plan; if (!P) return '';
+    const have = R.deck.filter(e => !Engine.analyze(e.c).isLand && P.isPlan(e.c)).length;
+    return '<div><h3>Commander plan</h3><p>' + esc(P.summary) + '</p><p class="note">Mechanics only: EDHREC popularity is not used. ' + have + ' plan cards in the deck (quota ' + P.quota + ', ' + P.supply.toLocaleString('en-US') + ' in the pool).</p>' +
+      (P.partSupply && P.partSupply.length ? '<table class="t"><tbody>' + P.partSupply.map(x => '<tr><td>' + esc(x.label) + '</td><td class="num">' + x.n.toLocaleString('en-US') + ' in pool</td></tr>').join('') + '</tbody></table>' : '') + '</div>';
   }
   function renderValidation() {
     const R = App.R;

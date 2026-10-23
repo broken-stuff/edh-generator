@@ -1114,7 +1114,9 @@ const Engine = (function () {
   /* ---------- card power index (0–1) from card data: flags, efficiency of each role at its mana value, free casting, EDHREC popularity.
      Weights are this tool's own; they rank cards, they are not a published rating. ---------- */
   const CP = new WeakMap();
-  function cardPower(c) {
+  // noRank: the same index without its EDHREC term (mechanics-only builds)
+  function cardPower(c, noRank) {
+    if (noRank) { const p = cardPower(c); return Math.max(0, p - 0.25 * (c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0)); }
     let v = CP.get(c); if (v != null) return v;
     const a = analyze(c), low = c.low || '', mv = c.cmc || 0, inst = /\bInstant\b/.test(c.ft) || (c.kw || []).includes('flash');
     let p = 0;
@@ -1247,7 +1249,7 @@ const Engine = (function () {
     }
 
     /* seeded RNG */
-    const seedBase = String(S.seed || '').trim() || ('auto:' + hashStr(stable(Object.assign({}, S, { seed: '', reroll: 0 }))));
+    const seedBase = String(S.seed || '').trim() || ('auto:' + hashStr(stable(Object.assign({}, S, { seed: '', reroll: 0 }, S.mode ? {} : { mode: undefined })))); // an empty mode leaves the seed as before
     R.seedUsed = seedBase + (S.reroll ? '#' + S.reroll : '');
     const rng = mulberry32(hashStr(R.seedUsed));
 
@@ -1283,16 +1285,30 @@ const Engine = (function () {
       pool.push(c);
     }
     R.poolSize = pool.length; R.exReasons = exReasons;
+    /* mechanics-only mode: no EDHREC rank anywhere in the score; the commander's plan profile and a rules-text quality
+       model take its place, and the curve target comes from the plan (src/plan.js) */
+    const mechMode = S.mode === 'mech';
+    const PL = mechMode ? ((typeof Plan !== 'undefined') ? Plan : require('./plan.js')) : null;
+    const plan = mechMode ? PL.profile(db, cmds, pool) : null;
+    if (plan) {
+      R.plan = { summary: PL.summary(plan), parts: plan.parts, supply: plan.supply, partSupply: plan.partSupply, quota: plan.quota, avgMV: plan.avgMV, strength: plan.strength, score: plan.score, why: plan.why, isPlan: plan.isPlan };
+      L('Plan (mechanics only): ' + R.plan.summary + '. ' + plan.supply + ' plan cards in the pool; quota ' + plan.quota + '; curve target ' + (S.mana.fixedMV ? (+S.mana.avgMV || 3) + ' (fixed by you)' : plan.avgMV + ' from the plan cards') + '.');
+      if (plan.quota) addTag('plan', { label: 'Plan', test: plan.isPlan }, 2, 'commander plan');
+      R.tags = tags.map(t => ({ key: t.key, label: t.label, w: t.w, src: t.src, q: t.q }));
+    }
     L('Pool: ' + pool.length + ' candidates within identity ' + (CI || 'C') + '. Excluded: ' + (Object.entries(exReasons).map(([k, v]) => k + ' ' + v).join(', ') || 'none') + '.');
     if (!pool.length && !incs.length) R.warnings.push('Candidate pool is empty after filters; deck will be filled with basic lands only.');
 
     /* scoring */
-    const T = +S.mana.avgMV || 3;
+    const T = plan && !S.mana.fixedMV ? plan.avgMV : (+S.mana.avgMV || 3);
+    R.curveTarget = T;
     const noise = new Map();
     for (const c of pool) noise.set(c.n, (rng() * 2 - 1) * (+S.variance || 0));
     const syn = new Map();
     const synOf = c => { let v = syn.get(c); if (v) return v; let s = 0; const hit = []; for (const t of tags) if (t.test(c)) { s += t.w * (t.factor ? t.factor(c) : 1); hit.push(t.label); } v = { s, hit }; syn.set(c, v); return v; };
-    const pop = c => c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
+    const pop = c => !mechMode && c.rank ? Math.max(0, 1 - Math.log10(c.rank) / Math.log10(40000)) : 0;
+    const Wplan = W.plan != null ? +W.plan : 3, Wqual = W.textQuality != null ? +W.textQuality : 7; // mechPower 3 and textQuality 7: tools/bench-plan.js on 24 commanders (see the PR)
+    const mechTerms = c => plan ? Wplan * plan.score(c) + Wqual * PL.quality(c) : 0;
     const priceRef = pcap != null ? pcap : (cap != null ? Math.max(1, cap / mainSize * 3) : null);
     const pricePen = c => { const p = price(c); if (p == null || !priceRef) return 0; return Math.min(3, p / priceRef); }; // no budget → price is ignored
     const curveFit = c => Math.max(-0.5, 1 - Math.abs(c.cmc - T) / (c.cmc < T ? 4 : 3));
@@ -1301,11 +1317,11 @@ const Engine = (function () {
     const baseCache = new Map();
     const base = c => {
       let v = baseCache.get(c); if (v != null) return v;
-      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (pPref + (W.quality != null ? +W.quality : 2)) * cardPower(c) + (noise.get(c.n) || 0);
+      v = W.syn * Math.min(synOf(c).s, 3) + W.pop * pop(c) + W.curve * curveFit(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) - W.price * pricePen(c) - W.bracket * bpen(c) + (pPref + (mechMode ? (W.mechPower != null ? +W.mechPower : 3) : W.quality != null ? +W.quality : 2)) * cardPower(c, mechMode) + mechTerms(c) + (noise.get(c.n) || 0);
       baseCache.set(c, v); return v;
     };
 
-    R.explain = c => ({ syn: W.syn * Math.min(synOf(c).s, 3), pop: W.pop * pop(c), curve: W.curve * curveFit(c), owned: owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0, price: -W.price * pricePen(c), bracket: -W.bracket * bpen(c), power: (pPref + (W.quality != null ? +W.quality : 2)) * cardPower(c), noise: noise.get(c.n) || 0, total: base(c), inPool: pool.includes(c), excluded: R.excluded[c.n] || null, tags: synOf(c).hit });
+    R.explain = c => ({ syn: W.syn * Math.min(synOf(c).s, 3), pop: W.pop * pop(c), curve: W.curve * curveFit(c), owned: owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0, price: -W.price * pricePen(c), bracket: -W.bracket * bpen(c), power: (pPref + (mechMode ? (W.mechPower != null ? +W.mechPower : 3) : W.quality != null ? +W.quality : 2)) * cardPower(c, mechMode), plan: plan ? Wplan * plan.score(c) : 0, textQuality: plan ? Wqual * PL.quality(c) : 0, planWhy: plan ? plan.why(c) : [], noise: noise.get(c.n) || 0, total: base(c), inPool: pool.includes(c), excluded: R.excluded[c.n] || null, tags: synOf(c).hit });
     /* deck state */
     const st = { total: cmdCost, cnt: { gc: 0, mld: 0, xturn: 0, tutor: 0 }, creatures: 0, names: new Set(cmds.map(c => c.n)) };
     for (const c of cmds) { const a = analyze(c); for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k]++; }
@@ -1404,7 +1420,9 @@ const Engine = (function () {
     let nbTarget = S.mana.nonbasic != null && S.mana.nonbasic !== '' ? +S.mana.nonbasic : autoNB;
     nbTarget = Math.max(0, Math.min(nbTarget, landTarget - landCount()));
     const landColors = c => { const a = analyze(c); if (a.land === 'command') return CI.length; if (a.land === 'fetch') { if (/basic land/.test(c.low)) return Math.min(CI.length, 1); const m = c.low.match(/plains|island|swamp|mountain|forest/g) || []; const map = { plains: 'W', island: 'U', swamp: 'B', mountain: 'R', forest: 'G' }; return new Set(m.map(x => map[x]).filter(x => CI.includes(x))).size; } return c.pm.filter(x => CI.includes(x)).length; };
-    const landScore = c => { const a = analyze(c); const on = landColors(c); return W.pop * pop(c) + (CI.length > 1 ? 1.5 * Math.min(on, CI.length) / CI.length : 0) + 0.5 * W.syn * Math.min(synOf(c).s, 2) - W.price * pricePen(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) + (noise.get(c.n) || 0) - (a.land === 'utility' && CI.length >= 3 ? 0.5 : 0); };
+    const landScore = c => { const a = analyze(c); const on = landColors(c); return W.pop * pop(c) + (CI.length > 1 ? 1.5 * Math.min(on, CI.length) / CI.length : 0) + 0.5 * W.syn * Math.min(synOf(c).s, 2) - W.price * pricePen(c) + (owned && S.owned.mode === 'prefer' && owned.has(c.n) ? W.owned : 0) + (noise.get(c.n) || 0) - (a.land === 'utility' && CI.length >= 3 ? 0.5 : 0) + (mechMode ? landText(c) : 0); };
+    // mechanics-only: untapped and fetchable lands first, since popularity no longer sorts them
+    function landText(c) { const l = c.low; let v = 0; if (/enters (?:the battlefield )?tapped/.test(l) && !/unless|you may pay|if you control/.test(l)) v -= 1; if (/\b(?:plains|island|swamp|mountain|forest)\b/.test(c.ft.toLowerCase())) v += 0.5; if (analyze(c).land === 'fetch' || analyze(c).land === 'shock' || analyze(c).land === 'triome') v += 0.5; if (/spend this mana only|only to cast|can't be spent/.test(l)) v -= 1.5; if (CI && !c.pm.some(x => CI.includes(x)) && analyze(c).land !== 'fetch') v -= 1.5; if (/\{t\}, pay \d life|deals 1 damage to you|\{\d\}, \{t\}: add/.test(l)) v -= 0.3; return v; }
     const landOK = c => { const a = analyze(c); if (!a.isLand || a.land === 'basic') return false; if (!S.mana.types[a.land]) return false; if (a.land === 'fetch' && CI.length && landColors(c) === 0) return false; if ((a.land === 'dual' || a.land === 'shock' || a.land === 'triome') && landColors(c) < 2) return false; return true; };
     const landCands = sortScored(pool.filter(landOK).map(c => ({ c, s: landScore(c) })));
     let nb = 0, why = {};
@@ -1553,18 +1571,19 @@ const Engine = (function () {
       const PW = PAIRS.map(p => (cmds.some(c => p.en(c) || p.pay(c)) || tagKeys.has(p.key)) ? 1 : 0.35);
       const sidesCache = new Map();
       const sides = c => { let v = sidesCache.get(c); if (v) return v; v = []; PAIRS.forEach((p, i) => { if (p.en(c)) v.push(2 * i); if (p.pay(c)) v.push(2 * i + 1); }); sidesCache.set(c, v); return v; };
-      const roleBits = c => { const a = analyze(c); let b = 0; ROLES.forEach((r, i) => { if (a.roles[r]) b |= 1 << i; }); return b; };
+      const ORS = plan && plan.quota ? ROLES.concat(['plan']) : ROLES, hasR = (c, r) => r === 'plan' ? plan.isPlan(c) : !!analyze(c).roles[r];
+      const roleBits = c => { let b = 0; ORS.forEach((r, i) => { if (hasR(c, r)) b |= 1 << i; }); return b; };
       const pc = b => { let n = 0; while (b) { n += b & 1; b >>>= 1; } return n; };
       const G = (i, en, pay) => PW[i] * 2 * Math.sqrt(en * pay);
       const cnt = new Float64Array(NP * 2);
       for (const c of cmds) for (const k of sides(c)) cnt[k] += 3; // commander counts 3, as in the analysis
       for (const e of deck) if (!isBasic(e.c)) for (const k of sides(e.c)) cnt[k] += e.qty;
       const synTotal = () => { let g = 0; for (let i = 0; i < NP; i++) g += G(i, cnt[2 * i], cnt[2 * i + 1]); return Wl * g; };
-      const tgt = ROLES.map(r => +S.targets[r] || 0), rc = ROLES.map(r => roleCount(r));
+      const tgt = ORS.map(r => r === 'plan' ? plan.quota : +S.targets[r] || 0), rc = ORS.map(r => r === 'plan' ? deck.filter(e => !analyze(e.c).isLand && plan.isPlan(e.c)).length : roleCount(r));
       const nlE = () => deck.filter(e => !analyze(e.c).isLand);
       const nN = nlE().reduce((s, e) => s + e.qty, 0); let mvSum = nlE().reduce((s, e) => s + e.c.cmc * e.qty, 0);
       const curvePen = sum => W.curve * 8 * Math.max(0, Math.abs((nN ? sum / nN : T) - T) - 0.15);
-      const shortfall = () => ROLES.reduce((s, r, i) => s + Math.max(0, tgt[i] - rc[i]), 0);
+      const shortfall = () => ORS.reduce((s, r, i) => s + Math.max(0, tgt[i] - rc[i]), 0);
       const landVal = c => isBasic(c) ? 0 : landScore(c);
       const J = () => deck.reduce((s, e) => s + (analyze(e.c).isLand ? landVal(e.c) * e.qty : base(e.c) * e.qty), 0) + synTotal() - W.role * 2 * shortfall() - curvePen(mvSum);
       const pr = c => isBasic(c) && !S.budget.inclBasics ? 0 : (price(c) || 0);
@@ -1575,19 +1594,19 @@ const Engine = (function () {
       const J0 = J(); let pairs = 0, rounds = 0; const swaps = [], tabu = new Set();
       const validBudget = () => cap == null || st.total <= cap + 1e-9;
       const doSwap = (out, x, d, tag) => {
-        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ROLES.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; });
+        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ORS.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; });
         if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
-        const xr = x.land ? null : ROLES.find((r, i) => (x.rb & (1 << i)) && rc[i] < tgt[i]) || ROLES.find((r, i) => (x.rb & (1 << i)) && (roleBits(out.c) & (1 << i)));
-        const slot = xr || (!x.land && synOf(x.c).s > 0 ? 'synergy' : 'flex');
+        const xr = x.land ? null : ORS.find((r, i) => (x.rb & (1 << i)) && rc[i] < tgt[i]) || ORS.find((r, i) => (x.rb & (1 << i)) && (roleBits(out.c) & (1 << i)));
+        const slot = (xr === 'plan' ? 'synergy' : xr) || (!x.land && synOf(x.c).s > 0 ? 'synergy' : 'flex');
         removeEntry(out); const ox = byName.get(out.c.n); if (ox) ox.inDeck = false;
         if (x.land) { const ex = deck.find(e => e.c === x.c); if (ex) { ex.qty++; st.total += pr(x.c); } else add(x.c, 'basic', 1, 0, 'optimiser: budget for a better spell'); }
-        else { add(x.c, slot, 1, x.b, 'optimiser swap (' + tag + ')'); x.inDeck = true; for (const k of x.sd) cnt[k] += 1; ROLES.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
+        else { add(x.c, slot, 1, x.b, 'optimiser swap (' + tag + ')'); x.inDeck = true; for (const k of x.sd) cnt[k] += 1; ORS.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
         swaps.push({ out: out.c.n, in: x.c.n, d, tag });
       };
       // exact change in J for one swap in the current state (used to verify paired moves)
       const exactD = (out, x) => { const snap = { cnt: Float64Array.from(cnt), rc: rc.slice(), mv: mvSum };
-        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ROLES.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; }); if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
-        if (!x.land) { for (const k of x.sd) cnt[k] += 1; ROLES.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
+        for (const k of sides(out.c)) cnt[k] -= 1; const ob = roleBits(out.c); ORS.forEach((r, i) => { if (ob & (1 << i)) rc[i]--; }); if (!analyze(out.c).isLand) mvSum -= out.c.cmc;
+        if (!x.land) { for (const k of x.sd) cnt[k] += 1; ORS.forEach((r, i) => { if (x.rb & (1 << i)) rc[i]++; }); mvSum += x.mv; }
         const outV = analyze(out.c).isLand ? landVal(out.c) : base(out.c), inV = x.land ? 0 : x.b;
         const synAfter = synTotal(), sfAfter = shortfall(), cpAfter = curvePen(mvSum);
         cnt.set(snap.cnt); rc.splice(0, rc.length, ...snap.rc); mvSum = snap.mv;
@@ -1608,7 +1627,7 @@ const Engine = (function () {
           for (const k of cs) cnt[k] += 1;
           const lossC = synNow - Wl * gNoC;
           let needMask = 0, openMask = 0;
-          ROLES.forEach((r, i) => { if ((cb & (1 << i)) && rc[i] <= tgt[i]) needMask |= 1 << i; if (!(cb & (1 << i)) && rc[i] < tgt[i]) openMask |= 1 << i; });
+          ORS.forEach((r, i) => { if ((cb & (1 << i)) && rc[i] <= tgt[i]) needMask |= 1 << i; if (!(cb & (1 << i)) && rc[i] < tgt[i]) openMask |= 1 << i; });
           const cp = new Map();
           const fixed = -bc - lossC + curNow;
           for (let q = 0; q < cands.length; q++) {
