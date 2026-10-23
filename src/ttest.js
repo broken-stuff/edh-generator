@@ -24,3 +24,16 @@ for (const [role, list] of Object.entries(STAPLES)) {
 const top = db.all.filter(c => c.leg === 'legal' && c.rank && c.rank <= 500 && !E.analyze(c).isLand);
 const bare = top.filter(c => { const a = E.analyze(c); return !Object.keys(a.roles).length && !Object.keys(a.flags).some(k => a.flags[k]); });
 assert(bare.length / top.length <= 0.2, 'EDHREC top 500: ' + bare.length + ' of ' + top.length + ' nonland cards (' + Math.round(100 * bare.length / top.length) + '%) have no role or flag; limit 20%');
+// Deck › Counts categories: the removal role splits into spot removal and counterspells; tutors and lands are counted too
+{
+  const An = require('./analysis.js');
+  const CASES = { removal: ['Swords to Plowshares', 'Beast Within', 'Lightning Bolt'], counters: ['Counterspell', 'Swan Song', 'Negate', 'Red Elemental Blast'], tutors: ['Demonic Tutor', 'Vampiric Tutor', 'Enlightened Tutor'], lands: ['Command Tower', 'Forest'] };
+  const deck = Object.values(CASES).flat().map(n => ({ c: E.lookup(db, n), qty: 1 })).filter(e => e.c), rc = An.roleCounts(deck);
+  for (const [k, list] of Object.entries(CASES)) {
+    const got = new Set(rc[k].cards.map(c => c.n)), miss = list.filter(n => E.lookup(db, n) && !got.has(E.lookup(db, n).n));
+    assert(!miss.length, 'counts ' + k + ': ' + list.length + ' cards' + (miss.length ? '; missing ' + miss.join(', ') : ''));
+  }
+  const pure = ['Counterspell', 'Negate'].map(n => E.lookup(db, n)).filter(Boolean);
+  assert(pure.every(c => !rc.removal.cards.includes(c)), 'counts: pure counterspells are not spot removal');
+  assert([0, 1, 2, 3, 4, 5].every(b => An.ROLE_RANGES[b] && An.COUNT_CATS.every(([k]) => An.ROLE_RANGES[b][k][0] <= An.ROLE_RANGES[b][k][2])), 'counts: reference ranges for every bracket and category');
+}
