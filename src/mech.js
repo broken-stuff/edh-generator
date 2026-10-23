@@ -62,6 +62,7 @@ const Mech = (function () {
     ['combat', /beginning of combat/, 0.3]
   ];
   const EFFECTS = [ // effect → makes
+    ['energy', /\byou get (?:\{e\})+|\bget (?:x|that many|an amount of) \{e\}/, 1],
     ['mana', /\badd (?:\{|one|two|three|x |an amount|that much|mana)|adds? an additional|spells? (?:you cast )?costs? \{\d\} less|costs? \{\d\} less to cast/, 1],
     ['card', /\bdraws? (?:a|an|one|two|three|four|five|x|that many|cards?|seven)|exile the top [^.]* you may (?:play|cast) (?:it|them|that card)|put (?:it|that card|those cards|one of them|them) into your hand/, 1],
     ['token.creature', /create[^.]*creature tokens?|create[^.]*tokens? that'?s? (?:a )?cop(?:y|ies)|tokens that are copies|create (?:a|x|that many|[a-z]+) [^.]*\d+\/\d+[^.]*tokens?|amass|populate|afterlife/, 1],
@@ -134,6 +135,7 @@ const Mech = (function () {
     ['library.small', /number of cards in your library|no cards in your library|library has no cards|draw a card while your library|cards in your library/, 1],
     ['amp.trigger', /triggers? an additional time/, 1],
     ['amp.etb', /entering the battlefield causes a triggered ability/, 1],
+    ['energy', /\bpay (?:\{e\})+|\bpay [a-z]+ \{e\}|\bpay any amount of \{e\}|for each \{e\}|energy counters? you have/, 1],
     ['mana.sink', /\{x\}[^.]*(?:deals x|draw x|create x|x target)|spend this mana/, 0.3]
   ];
   // keywords Scryfall lists that carry a mechanic but whose text is reminder-only
@@ -151,6 +153,75 @@ const Mech = (function () {
     magecraft: ['needs', 'spell.noncreature'], constellation: ['needs', 'enchantment.enters'], threshold: ['needs', 'gy.cards'], delirium: ['needs', 'gy.cards'],
     mill: ['makes', 'gy.fill'], surveil: ['makes', 'gy.fill'], scry: ['makes', 'top'], treasure: ['makes', 'token.artifact'], blitz: ['makes', 'self.dies']
   };
+  // the rest of the keywords on 5+ cards: 'n:' needs, 'm:' makes, '@w' weight (default 1). New tags (energy, goad, face.down,
+  // exile.cast, mount, station, poison, …) link only cards that share them; type tags (equipment, aura, legendary, lowpow, …)
+  // are met by TYPE_MAKES below
+  const KWX_SRC = {
+    adamant: 'n:multicolor@0.3', addendum: 'n:spell.any@0.3', afflict: 'n:attack@0.4 m:drain@0.5', aftermath: 'n:gy.cards m:cast.gy@0.8',
+    airbend: 'm:exile.cast@0.8', alliance: 'n:creature.enters', amplify: 'n:count.creature@0.5 m:counter@0.7', annihilator: 'm:edict',
+    awaken: 'm:counter m:token.creature@0.3', backup: 'm:counter@0.8',
+    bargain: 'n:fodder.artifact@0.8 n:fodder.creature@0.4 n:fodder.permanent@0.5', 'basic landcycling': 'm:card@0.6 m:discard@0.5',
+    battalion: 'n:attack', 'battle cry': 'n:attack m:anthem@0.5', bestow: 'm:aura@0.7 n:aura@0.4', blight: 'm:counter@0.6',
+    bloodrush: 'n:discard@0.8', bloodthirst: 'n:damage.player@0.8', boast: 'n:attack', buyback: 'n:mana.sink@0.5',
+    celebration: 'n:creature.enters@0.3', champion: 'n:fodder.creature@0.6', channel: 'n:discard@0.6 m:activation@0.4',
+    cipher: 'm:copy@0.8 n:damage.player@0.8', cloak: 'm:face.down', 'collect evidence': 'n:gy.cards', compleated: 'm:poison@0.3',
+    conspire: 'n:tap.creatures m:copy@0.6', converge: 'n:multicolor@0.4', convert: 'm:vehicle@0.6 n:vehicle@0.4', corrupted: 'n:poison',
+    coven: 'n:count.creature@0.6', craft: 'n:gy.cards@0.6 n:fodder.permanent@0.5', crew: 'n:tap.creatures n:vehicle@0.6',
+    'cumulative upkeep': 'n:upkeep@0.5 n:mana.sink@0.4', dash: 'm:haste@0.8 m:bounce.own@0.5', deathtouch: 'm:deathtouch@0.5',
+    demonstrate: 'm:copy n:spell.any@0.5', descend: 'n:gy.cards@0.7', detain: 'm:removal@0.3', dethrone: 'n:attack@0.6 m:counter@0.7',
+    devoid: 'm:colorless@0.3', disappear: 'n:self.leaves@0.4 n:sacrifice@0.4 n:creature.dies@0.4', discover: 'm:free.cast m:spell.any@0.6',
+    disguise: 'm:face.down', disturb: 'n:gy.cards m:cast.gy@0.8 m:aura@0.3', domain: 'n:count.land@0.5', double: 'n:amp.counter@0.3',
+    'double strike': 'm:damage@0.3', earthbend: 'm:counter m:untap@0.3 n:land.enters@0.3', echo: 'n:upkeep@0.4 n:mana.sink@0.4',
+    'empower jace': 'm:counter@0.4', enchant: 'n:count.enchantment@0.3 m:aura@0.3', encore: 'm:token.copy n:gy.cards@0.6',
+    endure: 'm:counter@0.8 m:token.creature@0.8', enlist: 'n:tap.creatures@0.8 n:attack@0.6', enrage: 'n:creature.damaged',
+    epic: 'm:copy@0.8 n:spell.any@0.5', equip: 'n:ability.activated@0.4 n:equipment@0.5', escalate: 'n:discard@0.4',
+    evoke: 'n:self.enters m:sac.outlet@0.4 n:fodder.self@0.5', exalted: 'n:attack@0.4', exert: 'n:attack m:untap@0.4',
+    extort: 'm:drain n:spell.any', fading: 'n:counter.remove@0.4', 'fateful hour': 'n:life.total@0.8', 'fathomless descent': 'n:gy.cards',
+    ferocious: 'n:bigpow@0.8', fight: 'm:removal@0.5', firebending: 'm:mana@0.6 n:attack@0.6', flurry: 'n:spell.any@0.8',
+    food: 'm:food m:token.artifact@0.8', forage: 'n:gy.cards@0.7 n:food@0.7 n:fodder.artifact@0.7 m:counter@0.5', forecast: 'n:upkeep@0.4',
+    forestcycling: 'm:tutor@0.4 m:land.drop@0.3 m:discard@0.5', foretell: 'm:exile.cast m:spell.any@0.6',
+    formidable: 'n:count.creature@0.7 n:bigpow@0.5', freerunning: 'n:damage.player@0.8 n:attack@0.5', gift: 'm:token.treasure@0.3',
+    goad: 'm:goad', graft: 'n:creature.enters@0.5 m:counter@0.7', grandeur: 'n:discard@0.8',
+    harmonize: 'n:gy.cards m:cast.gy@0.8 n:tap.creatures@0.6 n:bigpow@0.3', haste: 'm:haste@0.5', haunt: 'n:self.dies',
+    hellbent: 'n:discard@0.3', heroic: 'n:targeted@0.5', 'hexproof from': 'm:protect@0.3', hideaway: 'm:free.cast@0.8 m:exile.cast@0.6',
+    impending: 'm:counter@0.4 n:counter.remove@0.4', imprint: 'n:count.hand@0.3', increment: 'n:spell.any m:counter@0.8',
+    indestructible: 'm:protect@0.3', infect: 'm:poison', infusion: 'n:life.gain',
+    ingest: 'm:library.exile m:gy.fill@0.3 n:damage.player@0.6', inspired: 'n:untap.self@0.7', islandcycling: 'm:card@0.6 m:discard@0.5',
+    'job select': 'm:token.creature m:equipment n:equipment@0.4', 'join forces': 'n:mana.sink@0.5',
+    jump: 'n:gy.cards n:discard@0.6 m:cast.gy@0.8', kinship: 'n:upkeep@0.6 m:gy.fill@0.4', landcycling: 'm:card@0.6 m:discard@0.5',
+    learn: 'm:card@0.6', 'level up': 'n:mana.sink@0.8 m:counter@0.6', lifelink: 'm:life@0.6', 'living metal': 'm:vehicle@0.5',
+    madness: 'n:discard@0.8', manifest: 'm:face.down', 'manifest dread': 'm:face.down m:gy.fill@0.5', 'max speed': 'n:speed',
+    mayhem: 'n:discard n:gy.cards@0.6 m:cast.gy@0.8', megamorph: 'm:face.down', melee: 'n:attack',
+    miracle: 'm:free.cast@0.6 n:card.draw@0.6', mobilize: 'm:token.creature n:attack@0.6', monstrosity: 'm:counter@0.8 n:mana.sink@0.6',
+    morbid: 'n:creature.dies@0.8', morph: 'm:face.down', mountaincycling: 'm:tutor@0.4 m:land.drop@0.3 m:discard@0.5',
+    mutate: 'n:creature.enters@0.4', myriad: 'm:token.creature n:attack@0.6', ninjutsu: 'n:evasion n:attack@0.6 m:bounce.own@0.6',
+    offering: 'n:fodder.creature', offspring: 'm:offspring.token m:token.creature@0.8 n:mana.sink@0.4',
+    'open an attraction': 'm:attraction n:attraction@0.5', outlast: 'm:counter n:untap.self@0.5', 'pack tactics': 'n:attack@0.8',
+    paradigm: 'm:free.cast@0.8 m:spell.any@0.5', paradox: 'n:spell.any@0.8 n:exile.cast@0.6', parley: 'm:card@0.6 n:card.draw@0.3',
+    'partner with': 'm:tutor@0.5', phasing: 'm:protect@0.3', plainscycling: 'm:tutor@0.4 m:land.drop@0.3 m:discard@0.5',
+    plot: 'm:exile.cast m:spell.any@0.8 m:free.cast@0.5', prepared: 'm:copy@0.5 n:spell.any@0.5', protection: 'm:protect@0.4',
+    prowl: 'n:damage.player@0.8', raid: 'n:attack@0.6', rally: 'n:creature.enters', ravenous: 'm:counter@0.7',
+    'read ahead': 'm:saga@0.4 n:saga@0.5', rebound: 'm:spell.any@0.5 m:exile.cast@0.6 m:free.cast@0.5',
+    reconfigure: 'm:equipment@0.7 n:equipment@0.5', recover: 'n:creature.dies n:gy.cards@0.5',
+    recruit: 'm:token.creature@0.7 m:card@0.6 m:gy.fill@0.5 n:discard@0.3', regenerate: 'm:protect@0.5',
+    reinforce: 'n:discard@0.6 m:counter@0.8', renew: 'n:gy.cards@0.5 m:counter@0.8', renown: 'n:damage.player@0.8 m:counter@0.6',
+    repartee: 'n:spell.noncreature@0.7 n:targeted@0.5', replicate: 'm:copy n:mana.sink@0.5',
+    revolt: 'n:self.leaves@0.4 n:creature.dies@0.4 n:fodder.permanent@0.3', ripple: 'm:free.cast@0.8 m:spell.any@0.6 m:top@0.4',
+    'role token': 'm:role.token m:aura@0.6', saddle: 'n:tap.creatures n:mount@0.6', scavenge: 'n:gy.cards@0.6 m:counter@0.8',
+    sneak: 'n:attack@0.8 m:bounce.own@0.6 n:evasion@0.5', soulbond: 'n:creature.enters@0.8',
+    soulshift: 'm:regrowth@0.8 n:creature.dies@0.4', spectacle: 'n:life.loss@0.8 n:damage.player@0.6', 'spell mastery': 'n:gy.cards@0.7',
+    splice: 'n:spell.any@0.5', squad: 'm:token.copy m:token.creature@0.6 n:mana.sink@0.6', 'start your engines!': 'm:speed n:life.loss@0.6',
+    station: 'm:station n:tap.creatures', storied: 'n:count.artifact@0.4 n:legendary@0.5 n:saga@0.5', sunburst: 'm:counter@0.6',
+    surge: 'n:spell.any@0.5', suspect: 'n:opp.creature@0.5', suspend: 'm:exile.cast m:spell.any@0.6',
+    swampcycling: 'm:tutor@0.4 m:land.drop@0.3 m:discard@0.5', teamwork: 'n:tap.creatures n:bigpow@0.3', tiered: 'n:tapped@0.5',
+    'time travel': 'n:counter.placed@0.4 m:counter@0.6 n:count.counter@0.3', toxic: 'm:poison n:damage.player@0.7',
+    transmute: 'm:tutor@0.8 n:discard@0.5', tribute: 'm:counter@0.5', triple: 'n:amp.damage@0.3', typecycling: 'm:card@0.6 m:discard@0.5',
+    'umbra armor': 'm:protect@0.8 n:aura@0.4', undergrowth: 'n:count.creature@0.8', unleash: 'm:counter@0.6', valiant: 'n:targeted',
+    vanishing: 'n:upkeep@0.4 n:counter.remove@0.6 m:counter@0.5', 'venture into the dungeon': 'm:dungeon', vivid: 'n:multicolor@0.5',
+    void: 'n:gy.enter@0.4', warp: 'm:exile.cast@0.8 m:spell.any@0.6', waterbend: 'n:tap.artifacts@0.5 n:tap.creatures@0.5',
+    'web-slinging': 'm:bounce.own@0.6 n:tapped@0.6', wither: 'm:counter@0.4'
+  };
+  const KWX = {}; for (const [k, v] of Object.entries(KWX_SRC)) KWX[k] = v.split(' ').map(t => { const m = /^([nm]):([^@]+)(?:@([\d.]+))?$/.exec(t); return [m[1] === 'n' ? 'needs' : 'makes', m[2], m[3] ? +m[3] : 1]; });
   // what each produced tag also causes, as an event other cards can need
   const CAUSES = {
     'token.creature': ['creature.enters', 'token.enters', 'fodder.creature', 'fodder.permanent', 'count.creature', 'tap.creatures'],
@@ -171,7 +242,19 @@ const Mech = (function () {
     [c => /\b(?:Instant|Sorcery)\b/.test(c.ft), [['spell.noncreature', 0.2], ['spell.any', 0.1], ['count.spell', 0.1]]],
     [c => !/\bLand\b/.test(c.ft) && c.cmc <= 1, [['spell.any', 0.7]]],
     [c => !/\b(?:Land|Creature)\b/.test(c.ft) && c.cmc <= 1, [['spell.noncreature', 0.5]]],
-    [c => /\bLand\b/.test(c.ft) && !/\bBasic\b/.test(c.ft), [['land.enters', 0.05]]]
+    [c => /\bLand\b/.test(c.ft) && !/\bBasic\b/.test(c.ft), [['land.enters', 0.05]]],
+    [c => /\bCreature\b/.test(c.ft) && c.pow != null && c.pow <= 2, [['lowpow', 0.5]]],
+    [c => /\bCreature\b/.test(c.ft) && c.pow != null && c.pow >= 5, [['bigpow', 0.5]]],
+    [c => /\bEquipment\b/.test(c.ft), [['equipment', 1]]],
+    [c => /\bAura\b/.test(c.ft), [['aura', 1]]],
+    [c => /\bVehicle\b/.test(c.ft), [['vehicle', 1]]],
+    [c => /\bSaga\b/.test(c.ft), [['saga', 1], ['historic', 0.5]]],
+    [c => /\bShrine\b/.test(c.ft), [['shrine', 1]]],
+    [c => /\bLegendary\b/.test(c.ft), [['legendary', 0.5], ['historic', 0.5]]],
+    [c => /\bArtifact\b/.test(c.ft), [['historic', 0.3]]],
+    [c => (c.ci || '').length >= 2, [['multicolor', 0.3]]],
+    [c => !c.ci && !/\bLand\b/.test(c.ft), [['colorless', 0.3]]],
+    [c => /\bMount\b/.test(c.tl), [['mount', 1]]]
   ];
   // needs that only matter with other cards: a card that needs 'self.enters' wants blink/reanimate, etc.
   const SELF_NEEDS = { 'self.enters': 'self.reenter', 'self.dies': 'sacrifice-of-self' };
@@ -205,7 +288,7 @@ const Mech = (function () {
       if (a.kind === 'activated' && /deals \d+ damage/.test(line)) add(needs, 'deathtouch', 0.6);
       if (a.needs.length || a.makes.length) abil.push(a);
     }
-    for (const k of c.kw || []) { const r = KW[k]; if (r) { add(r[0] === 'needs' ? needs : makes, r[1], 1); } }
+    for (const k of c.kw || []) { const r = KW[k]; if (r) { add(r[0] === 'needs' ? needs : makes, r[1], 1); } else for (const [sd, tg, w] of KWX[k] || []) add(sd === 'needs' ? needs : makes, tg, w); }
     // a creature or artifact with a "when ~ enters" ability needs re-entry (blink, reanimation, bounce)
     if (needs.has('self.enters')) add(needs, 'self.reenter', needs.get('self.enters'));
     if (/\b(?:Instant|Sorcery)\b/.test(c.ft)) add(needs, 'copy', makes.has('mana') || makes.has('card.opp') || makes.has('token.copy') ? 1 : 0.3);
@@ -278,6 +361,6 @@ const Mech = (function () {
     return { w, why: [...why].sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]) };
   }
 
-  return { parse, link, pair, pairW, LINK, graph, profile, links, supply, norm, split, EVENTS, EFFECTS, COSTS, COUNTS, KW, CAUSES };
+  return { parse, link, pair, pairW, LINK, graph, profile, links, supply, norm, split, EVENTS, EFFECTS, COSTS, COUNTS, KW, KWX, CAUSES };
 })();
 if (typeof module !== 'undefined') module.exports = Mech;
