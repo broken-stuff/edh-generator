@@ -49,6 +49,8 @@ Each card is weighed on:
 
 Analysis, Improve and deep search on a mechanics-only deck use the same quality model in place of EDHREC rank. Standard builds are unchanged.
 
+**Easy and Normal.** The header has an **Easy | Normal** switch. Easy is one screen: paste a list (or pick a commander and bracket and build one), then read its snapshot (cards, lands, average mana value, price, power, bracket, win turn, curve), a quick analysis of 1,500 simulated games (keepable hands, missed land drops, commander on curve, weakest area, the three main problems, the three best measured swaps with Accept) and the role counts against real decks. For an imported list the counts compare with the bracket the list plays at. **Go deeper** opens the matching Normal page. Normal is the full app described below. The choice is kept in your browser; a link ending in `#easy` or `#normal` opens in that mode. Easy is the default on a first visit. Both modes use the same functions, so at the same number of games they give the same numbers.
+
 The five pages are in the left menu (a bar at the bottom on phones): **Start**, **Deck**, **Analysis**, **Improve** and **Primer**. **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title.
 
 ### Start
