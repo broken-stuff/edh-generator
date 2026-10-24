@@ -460,6 +460,24 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
 .ins-card .cp-ot{font-size:calc(12.5px*var(--fz));line-height:1.45;color:var(--ink);background:var(--card-2);border-radius:10px;padding:8px 10px}
 .ins-card .row{margin-top:auto}
 .ins-card a.small{font-size:calc(12px*var(--fz))}
+/* Easy mode: one screen (input, snapshot, counts, quick review); the rail, header KPIs and Generate button belong to Normal */
+body[data-mode="easy"] .rail,body[data-mode="easy"] #kpis,body[data-mode="easy"] #scorebar,body[data-mode="easy"] #genBtn,body[data-mode="easy"] #regenBtn{display:none}
+body[data-mode="easy"] .wrap{grid-template-columns:minmax(0,1fr)}
+body[data-mode="easy"] .results{max-width:1100px;width:100%;margin:0 auto}
+@media (max-width:900px){body[data-mode="easy"][data-page]{padding-bottom:16px}}
+.modeseg button{padding:5px 12px}
+.ez-in{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px}
+.ez-in .an-card{display:flex;flex-direction:column;gap:8px}
+.ez-in textarea{min-height:150px}
+.ez-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:14px}
+.ez-snap{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px 16px}
+.ez-snap .kv b{font-size:calc(17px*var(--fz))}
+.ez-list{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.ez-next{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
+details.ez-again{margin-bottom:14px}
+details.ez-again>summary{cursor:pointer}
+@media (max-width:700px){.ez-in{grid-template-columns:minmax(0,1fr)}.ez-grid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:440px){.modeseg button{padding:5px 9px}}
 </style>
 
 
@@ -470,6 +488,7 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
     <h1>broken-stuff<small>EDH generator</small></h1>
   </div>
   <nav class="sitenav" aria-label="Site"><a href="./" aria-current="page"><span class="sn-l">Deck generator</span><span class="sn-s">Decks</span></a><a href="card.html"><span class="sn-l">Card explorer</span><span class="sn-s">Cards</span></a></nav>
+  <div class="seg modeseg" id="modeSeg" role="group" aria-label="Interface"><button type="button" data-mode="easy" aria-pressed="true" title="One screen: counts, a quick analysis and the top swaps">Easy</button><button type="button" data-mode="normal" aria-pressed="false" title="Every page and setting">Normal</button></div>
   <div class="sources" id="sources" aria-live="polite">
     <span class="pill" id="pBulk"><span class="dot"></span>Cards: not loaded</span>
     <span class="pill hidden" id="pCombo"><span class="dot"></span></span>
@@ -4437,7 +4456,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
     const deck = App.R.deck.map(e => e.imp ? Object.assign({}, e, { locked: false }) : e);
     return { deck, asIs: !!App.R.asIs, cmds: App.R.commanders, unknown: [], label: App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck', combos: App.R.combos };
   }
-  const anGames = () => { const g = +App.anGames || 100000; return [1500, 10000, 25000, 50000, 100000].includes(g) ? g : 100000; };
+  const anGames = () => { if (App.tab === 'easy') return EASY_GAMES; const g = +App.anGames || 100000; return [1500, 10000, 25000, 50000, 100000].includes(g) ? g : 100000; };
   async function runAnalysis() {
     if (App.anSource === 'compare') return runCompare();
     const inp = analysisInput();
@@ -4464,7 +4483,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
     App.AN = X;
     setStatus('Analysis done in ' + ((performance.now() - t0) / 1000).toFixed(2) + ' s (' + X.sim.games.toLocaleString() + ' simulated games).');
     X.impact = []; X.impactDone = !X.plans.length;
-    X.held = !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
+    X.held = App.tab !== 'easy' && !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
     renderAnView();
     if (!X.plans.length || X.held) { if (!X.held && App.DEEP) { deepMerge(X); renderSwaps(); } return; }
     // swap impact: one plan per tick so the page stays responsive
@@ -4480,10 +4499,10 @@ if (typeof module !== 'undefined') module.exports = Deep;
       await new Promise(r => setTimeout(r, 0));
       X.impact.push(Analysis.impactOne(prep, p));
       setStatus('Evaluating changes ' + X.impact.length + '/' + X.plans.length + '…');
-      if (App.tab === 'analysis' || App.tab === 'changes') renderSwaps();
+      if (App.tab === 'analysis' || App.tab === 'changes' || App.tab === 'easy') renderSwaps();
     }
     X.impactDone = true; setStatus('Analysis done; ' + X.plans.length + ' changes evaluated.'); deepMerge(X);
-    if (App.tab === 'analysis' || App.tab === 'changes') renderSwaps();
+    if (App.tab === 'analysis' || App.tab === 'changes' || App.tab === 'easy') renderSwaps();
   }
   // apply one swap to the analysed list: the generated deck (validated, locked) or the pasted text
   async function applyChange(cut, add, quiet) {
@@ -4566,6 +4585,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
   const compatible = list => { const cut = new Set(), add = new Set(); return list.filter(p => { if (cut.has(p.cut) || (add.has(p.add) && !Engine.isBasic(p.add))) return false; cut.add(p.cut); add.add(p.add); return true; }); };
   const worth = p => App.showWeak || !(p.group === 'Fix gaps' || p.group === 'Upgrades') || p.g == null || p.g >= Deep.MIN_GAIN;
   function renderSwaps() {
+    if (App.tab === 'easy') { const e = $('ezSwaps'); if (e && App.AN) e.innerHTML = ezSwapsHTML(App.AN); return; }
     const el = $('anSwaps'), X = App.AN; if (!el || !X) return;
     el.innerHTML = swapsHTML(X);
   }
@@ -4727,7 +4747,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
       (r.combos && cards ? '<div class="recc">' + r.combos.map(v => '<span class="chip">+ ' + esc(v.missing.join(', ')) + ' → ' + esc(v.cards.join(' + ')) + (v.produces.length ? ' (' + esc(v.produces[0]) + ')' : '') + '</span>').join('') + '</div>' : '') + '</li>').join('') + '</ol>' : '<p class="note">No gaps against the benchmarks.</p>') + '</div>';
   }
   // Analysis and Improve share one analysis (App.AN)
-  function renderAnView() { if (App.tab === 'changes') renderChanges(); else if (App.tab === 'percard') renderPerCard(); else if (App.tab === 'analysis') renderAnalysis(); }
+  function renderAnView() { if (App.tab === 'easy') renderEasy(); else if (App.tab === 'changes') renderChanges(); else if (App.tab === 'percard') renderPerCard(); else if (App.tab === 'analysis') renderAnalysis(); }
   function renderChanges() {
     if (App.anSource === 'compare') { $('view').innerHTML = '<p class="note">Suggested swaps apply to one list. On <button type="button" class="link" data-go="analysis">Analysis</button>, choose the deck or a pasted list instead of Compare.</p>'; return; }
     App.recsShown = true; // opening Changes is asking for them
@@ -4971,8 +4991,8 @@ if (typeof module !== 'undefined') module.exports = Deep;
       (P.partSupply && P.partSupply.length ? '<table class="t"><tbody>' + P.partSupply.map(x => '<tr><td>' + esc(x.label) + '</td><td class="num">' + x.n.toLocaleString('en-US') + ' in pool</td></tr>').join('') + '</tbody></table>' : '') + '</div>';
   }
   // Deck › Counts: cards per role (same tagging as the generator) against the middle half of real decks of a bracket
-  function renderCounts() {
-    const R = App.R, RR = Analysis.ROLE_RANGES, b = App.countsB != null ? App.countsB : (+R.settings.bracket || 0), ref = RR[b] || RR[0];
+  function countsHTML(R, bDef) {
+    const RR = Analysis.ROLE_RANGES, b = App.countsB != null ? App.countsB : bDef != null ? bDef : (+R.settings.bracket || 0), ref = RR[b] || RR[0];
     const rc = Analysis.roleCounts(R.deck), blue = (R.CI || '').includes('U');
     const BN = { 0: 'All', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5' };
     const seg = '<span class="row" style="gap:8px;align-items:center"><span class="note">Compare with</span><div class="seg" role="group" aria-label="Compare with bracket" id="cntB">' + Object.keys(BN).map(k => '<button type="button" data-cb="' + k + '" aria-pressed="' + (+k === b) + '" title="' + (k === '0' ? 'All brackets' : 'Bracket ' + k) + '">' + (k === '0' ? 'All' : 'B' + k) + '</button>').join('') + '</div></span>';
@@ -4987,13 +5007,88 @@ if (typeof module !== 'undefined') module.exports = Deep;
       return '<tr><td class="m-2"><b>' + esc(label) + '</b></td><td class="n m-3 num"><b>' + x.n + '</b></td><td class="n num" data-l="Typical">' + (na ? '—' : fmtR(p25) + '–' + fmtR(p75)) + '</td><td class="n num" data-l="Median">' + (na ? '—' : fmtR(med)) + '</td><td class="m-full">' + bar + '</td><td class="m-1"><span class="st ' + st[0] + '">' + st[1] + '</span></td><td class="m-full2">' + list + '</td></tr>';
     }).join('');
     const sum = low || high ? (low ? low + ' below' : '') + (low && high ? ', ' : '') + (high ? high + ' above' : '') + ' the typical range' : 'Every category is inside the typical range';
-    $('view').innerHTML = '<div class="row" style="justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><span class="note">' + sourceLine(R) + '</span>' + seg + '</div>' +
-      '<p><b>' + esc(sum) + '</b> <span class="note">for ' + (b ? 'Bracket ' + b : 'all brackets') + ' (' + ref.n + ' reference decks).</span></p>' +
+    return { seg, html: '<p><b>' + esc(sum) + '</b> <span class="note">for ' + (b ? 'Bracket ' + b : 'all brackets') + ' (' + ref.n + ' reference decks).</span></p>' +
       '<div class="scroll"><table class="t mrows counts"><thead><tr><th>Category</th><th class="n">Deck</th><th class="n">Typical</th><th class="n">Median</th><th>Range</th><th>Status</th><th>Cards</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<p class="note">Typical is the middle half (25th to 75th percentile) of ' + ref.n + ' Archidekt decklists' + (b ? ' tagged Bracket ' + b : '') + ' in data/reference, counted with the same rules as the generator; counterspells use only the ' + ref.nU + ' blue decks. The shaded band on each bar is that range and the mark is this deck. A card counts in every category it matches, and the commander is not counted. It describes what players build, not an optimum. Tag rules are under Start › Fine-tune › Advanced.</p>';
-    $('cntB').addEventListener('click', e => { const t = e.target.closest('button[data-cb]'); if (!t) return; App.countsB = +t.dataset.cb; renderCounts(); });
+      '<p class="note">Typical is the middle half (25th to 75th percentile) of ' + ref.n + ' Archidekt decklists' + (b ? ' tagged Bracket ' + b : '') + ' in data/reference, counted with the same rules as the generator; counterspells use only the ' + ref.nU + ' blue decks. The shaded band on each bar is that range and the mark is this deck. A card counts in every category it matches, and the commander is not counted. It describes what players build, not an optimum. Tag rules are under Start › Fine-tune › Advanced.</p>' };
+  }
+  function renderCounts() {
+    const R = App.R, C = countsHTML(R);
+    $('view').innerHTML = '<div class="row" style="justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><span class="note">' + sourceLine(R) + '</span>' + C.seg + '</div>' + C.html;
   }
   const fmtR = v => String(v).replace(/\.5$/, '½');
+
+  /* ---------- Easy mode: one screen. Paste or build a list, then its snapshot, role counts and a quick analysis
+     (EASY_GAMES simulated games) with the top swaps. Same functions and numbers as Normal's Counts, Analysis and
+     Suggested swaps; Normal runs more games by default. ---------- */
+  const EASY_GAMES = 1500;
+  function ezTop(X) {
+    if (!X || !X.impactDone) return [];
+    return compatible(X.impact.filter(p => p.g != null && p.g >= Deep.MIN_GAIN).sort((a, b) => b.g - a.g)).slice(0, 3);
+  }
+  function ezSwapsHTML(X) {
+    if (!X || X.error || !X.sim) return '<p class="note">Waiting for the analysis.</p>';
+    if (!X.plans.length) return '<p class="note">No swaps suggested: role targets are met and no costly card has a cheaper same-role replacement.</p>';
+    if (!X.impactDone) return '<p class="note">Measuring ' + X.plans.length + ' candidate swaps with simulated games: ' + X.impact.length + '/' + X.plans.length + '…</p>';
+    const top = ezTop(X), cur = X.cur || 'usd';
+    const log = (App.accepted || []).filter(a => a.src === 'deck');
+    const acc = log.length ? '<p class="note">Accepted: ' + log.map(a => '− ' + esc(a.cut.n) + ' + ' + esc(a.add.n) + ' <button type="button" class="link" data-sw="undo" data-i="' + App.accepted.indexOf(a) + '">undo</button>').join(' · ') + '</p>' : '';
+    if (!top.length) return acc + '<p class="note"><b>Near optimal.</b> None of the ' + X.impact.length + ' measured swaps gains ' + Deep.MIN_GAIN + ' power or more.</p>';
+    return acc + '<ol class="ez-list">' + top.map(p => '<li><div class="sw"><span class="out">− ' + esc(p.cut.n) + '</span><span class="in">+ ' + esc(p.add.n) + '</span></div><div class="note">' + esc(p.reason) + ' · power +' + (p.g / 10).toFixed(2) +
+      (p.priceKnown ? ' · ' + (p.dPrice >= 0 ? '+' : '−') + Engine.fmt(Math.abs(p.dPrice), cur) : '') + '</div><div class="sw-acts"><button type="button" class="small primary" data-sw="accept" data-i="' + X.impact.indexOf(p) + '">Accept</button></div></li>').join('') + '</ol>';
+  }
+  function renderEasy() {
+    const R = App.R && App.R.stats ? App.R : null, X = App.AN && !App.AN.error && !App.AN.compare && App.AN.sim ? App.AN : null;
+    const b = App.S.bracket;
+    const input = '<div class="ez-in">' +
+      '<div class="an-card"><h3>Review my deck</h3><label class="f">Paste a decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="impText" rows="7" spellcheck="false" placeholder="// COMMANDER&#10;1 Galadriel, Light of Valinor&#10;&#10;1 Arcane Signet&#10;26 Forest&#10;...">' + esc(App.impText || '') + '</textarea></label>' +
+      '<div class="row"><button type="button" class="primary" id="impBtn">Review deck</button><span class="note" id="impNote">' + esc(App.impNote || '') + '</span></div></div>' +
+      '<div class="an-card"><h3>Build a new deck</h3><div class="ac"><label class="f">Commander<input type="search" id="ezCmd" data-k="commanders.0" autocomplete="off" placeholder="Start typing a name" value="' + esc(App.S.commanders[0] || '') + '"></label><ul class="hidden" role="listbox" id="ezCmdL"></ul></div>' +
+      '<label class="f">Power (Commander Bracket)<select id="ezBr">' + [1, 2, 3, 4, 5].map(k => '<option value="' + k + '"' + (k === +b ? ' selected' : '') + '>' + k + ' · ' + esc(Engine.BRACKETS[k].name) + '</option>').join('') + '</select></label>' +
+      '<div class="row"><button type="button" class="primary" data-ez="build"' + (App.busy ? ' disabled' : '') + '>Build deck</button><span class="note">Budget, themes and the rest are in Normal, on Start.</span></div></div></div>' +
+      (App.bulk ? '' : '<p class="note">Loading card data… If it never finishes, switch to Normal and load a file under Start, Card data.</p>');
+    if (!R) { $('view').innerHTML = input; setupAC('ezCmd', 'ezCmdL'); return; }
+    const s = R.stats, C = countsHTML(R, R.asIs && X ? X.power.minBracket : null), cur = R.settings.budget.cur, n = R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0);
+    const lands = R.deck.reduce((a, e) => a + (Engine.analyze(e.c).isLand ? e.qty : 0), 0);
+    const P = X && X.power, minB = P ? P.minBracket : null;
+    const snap = '<div class="an-card"><h3>' + R.commanders.map(c => esc(c.n)).join(' + ') + ' ' + pipsHTML(R.CI) + '</h3><div class="ez-snap">' + [
+      ['Cards', n + (n !== 100 ? ' <span class="st fail">≠100</span>' : '')],
+      ['Lands', lands],
+      ['Avg MV', s.avgMV.toFixed(2)],
+      ['Price', Engine.fmt(s.total, cur)],
+      ['Power', P ? P.pl.toFixed(1) + '<span class="note"> /10</span>' : '…'],
+      ['Bracket', P ? 'B' + minB + '<span class="note"> ' + esc(Engine.BRACKETS[minB].name) + '</span>' : '…'],
+      ['Win turn', P ? 'T' + P.win.typical : '…'],
+      ['Fundamentals', X ? X.overall + '<span class="note"> /100</span>' : '…']
+    ].map(([k, v]) => '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>').join('') + '</div>' + curveSVG(s.curve) + '</div>';
+    let review = '<p class="note">Analyzing (' + EASY_GAMES.toLocaleString() + ' simulated games)…</p>';
+    if (App.AN && App.AN.error) review = '<div class="msg err">' + esc(App.AN.error) + '</div>';
+    else if (X) {
+      const sm = X.sim, low = X.axes.slice().sort((a, c) => a.score - c.score)[0], sevLabel = { high: 'High', med: 'Medium', low: 'Low', info: 'Info' };
+      const probs = rankedRecs(X).filter(r => r.sev !== 'info').slice(0, 3);
+      review = '<table class="t compact"><tbody>' + [
+        ['Keepable opening 7', pct(sm.keep7)],
+        ['Missed a land drop by turn 4', pct(sm.missLandDropT4)],
+        ['Commander cast on curve', sm.cmdOnCurve == null ? '—' : pct(sm.cmdOnCurve)],
+        ['Weakest area', esc(low.label) + ' ' + low.score + '/100']
+      ].map(r => '<tr><td>' + r[0] + '</td><td class="n">' + r[1] + '</td></tr>').join('') + '</tbody></table>' +
+        '<h4 class="an-sub">Main problems</h4>' + (probs.length ? '<ol class="ez-list">' + probs.map(r => '<li><span class="chip sev-' + r.sev + '">' + sevLabel[r.sev] + '</span> ' + esc(r.text.replace(/\s*[^.]*:$/, '') || r.text) + '</li>').join('') + '</ol>' : '<p class="note">No gaps against the benchmarks.</p>') +
+        '<h4 class="an-sub">Top swaps</h4><div id="ezSwaps">' + ezSwapsHTML(X) + '</div>' +
+        '<p class="note">' + X.sim.games.toLocaleString() + ' simulated games. Normal runs up to 100,000 and shows every factor.</p>';
+    }
+    const next = '<div class="ez-next"><button type="button" data-ez="copy">Copy list</button><span class="note" id="ezNote"></span><span class="note" style="margin-left:auto">Go deeper:</span>' +
+      [['analysis', 'Full analysis'], ['changes', 'All swaps'], ['deck', 'Cards'], ['primer', 'Primer'], ['export', 'Export']].map(([v, l]) => '<button type="button" class="small" data-ezgo="' + v + '">' + l + ' ›</button>').join('') + '</div>';
+    $('view').innerHTML = '<details class="ez-again"' + (App.ezOpen ? ' open' : '') + '><summary class="note">Review another list or build another deck</summary>' + input + '</details>' +
+      '<div class="ez-grid">' + snap + '<div class="an-card"><h3>Quick review</h3>' + review + '</div></div>' +
+      '<div class="an-card" style="margin-top:14px"><div class="row" style="justify-content:space-between;align-items:center;gap:10px"><h3>Counts</h3>' + C.seg + '</div>' + C.html + '</div>' + next;
+    setupAC('ezCmd', 'ezCmdL');
+  }
+  // Easy ↔ Normal; the choice is kept in this browser, and #easy / #normal in the address sets it
+  function setMode(easy, quiet) {
+    App.easy = !!easy; document.body.dataset.mode = App.easy ? 'easy' : 'normal'; LS.set('edhgen.mode', App.easy ? 'easy' : 'normal');
+    $('modeSeg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', (b.dataset.mode === 'easy') === App.easy));
+    if (quiet) return;
+    if (App.easy) { App.anSource = 'deck'; go('easy'); } else go(App.R && App.R.stats ? 'analysis' : 'setup');
+  }
   function renderValidation() {
     const R = App.R;
     $('view').innerHTML = '<p class="note">' + sourceLine(R) + ' Checked ' + new Date(R.validation.at).toLocaleString() + '.</p><div class="scroll"><table class="t"><thead><tr><th>Rule</th><th>Result</th><th>Detail</th></tr></thead><tbody>' +
@@ -5028,19 +5123,20 @@ if (typeof module !== 'undefined') module.exports = Deep;
     analysis: ['Analysis', []],
     improve: ['Improve', [['changes', 'Suggested swaps'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]],
     primer: ['Primer', []],
-    more: ['More', []]
+    more: ['More', []],
+    easy: ['Quick review', []]
   };
-  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
+  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more', easy: 'easy' };
   const FIND = [['commanders', 'Browse'], ['inspire', 'Quiz'], ['surprise', 'Random']];
   const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
   const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
   const lastView = {};
   // opens a view (or a page's last view), as a click in the rail would
   function go(v) {
-    if (PAGES[v] && v !== 'analysis' && v !== 'primer') v = lastView[v] || viewOf(PAGES[v][1][0][0]);
+    if (PAGES[v] && v !== 'analysis' && v !== 'primer' && v !== 'easy') v = lastView[v] || viewOf(PAGES[v][1][0][0]);
     if (!PAGE_OF[v]) return;
     hidePop(); App.tab = v; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 });
-    if (v === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis();
+    if ((v === 'analysis' && App.anSource !== 'paste' || v === 'easy') && App.R && App.R.stats) runAnalysis();
   }
   const VIEW_NOTE = {
     setup: 'Choose a commander, a budget and a plan. Generate scores every legal card in the data and optimises the list inside your bracket and budget.',
@@ -5052,6 +5148,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
     analysis: 'Power, speed, mana and problems from simulated games. Fixes are on Improve.',
     changes: 'Cuts and adds for the analyzed list, each scored with simulated games.', percard: 'Each card in the list with up to three better cards at different prices, each measured as a swap. You choose.', upgrade: 'Set an amount to spend. The best set of swaps that fits it, each add Commander-legal and in your colours, measured with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
     primer: 'How to play this list, from its own simulation and card roles.',
+    easy: 'Paste your list or build one. You get its counts against real decks, a quick analysis and the top swaps. Normal has every page and setting.',
     history: 'The last 25 decks and revisions in this browser. Tick two to compare them.', log: 'Each step the generator and optimiser took.', tests: 'Checks the generator against the loaded card data.'
   };
   function pageHeadHTML(page) {
@@ -5091,6 +5188,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
     if (App.tab === 'inspire') return renderInspire();
     if (App.tab === 'surprise') return renderSurprise();
     if (App.tab === 'import') return renderImport();
+    if (App.tab === 'easy') return renderEasy();
     if (App.tab === 'hand') return renderHand();
     if (!App.R || !App.R.stats) { $('view').innerHTML = emptyView(); return; }
     switch (App.tab) {
@@ -5491,7 +5589,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
     App.busy = false; setProg(null); renderSources(); renderAll();
     if (built && opts.onBuilt) opts.onBuilt(App.R);
     if (built && !App.restoring) histPush('generate', opts.asIs ? 'Imported deck' : opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
-    if ((App.tab === 'analysis' || App.tab === 'changes' || App.tab === 'percard') && App.anSource !== 'paste' && App.R) runAnalysis();
+    if ((App.tab === 'analysis' || App.tab === 'changes' || App.tab === 'percard' || App.tab === 'easy') && App.anSource !== 'paste' && App.R && !opts.asIs) runAnalysis(); // an import runs its own
   }
 
   /* ---------- import: a pasted list becomes the working deck exactly as pasted, every card locked ---------- */
@@ -5532,7 +5630,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
       (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
       (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
     say(msg); setStatus(msg);
-    App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
+    App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = App.easy ? 'easy' : 'analysis'; App.ezOpen = false; renderView(); window.scrollTo({ top: 0 });
     runAnalysis();
   }
 
@@ -5976,9 +6074,9 @@ if (typeof module !== 'undefined') module.exports = Deep;
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }
       if (a === 'clear-deny') { App.denied.clear(); App.AN = null; runAnalysis(); return; }
       if (a === 'weak') { App.showWeak = !App.showWeak; renderSwaps(); return; }
-      if (a === 'accept-all' || a === 'accept-group') { const G = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'], sh = X.shownNow || X.impact.filter(worth); const list = compatible(a === 'accept-all' ? G.flatMap(g => sh.filter(p => p.group === g)) : sh.filter(p => p.group === b.dataset.g)); if (!list.length) return; document.querySelectorAll('#anSwaps button').forEach(x => { x.disabled = true; }); await acceptMany(list); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
-      if (a === 'accept') { App.acceptNote = ''; const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
-      if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); }
+      if (a === 'accept-all' || a === 'accept-group') { const G = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'], sh = X.shownNow || X.impact.filter(worth); const list = compatible(a === 'accept-all' ? G.flatMap(g => sh.filter(p => p.group === g)) : sh.filter(p => p.group === b.dataset.g)); if (!list.length) return; document.querySelectorAll('#anSwaps button').forEach(x => { x.disabled = true; }); await acceptMany(list); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
+      if (a === 'accept') { App.acceptNote = ''; const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
+      if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); }
     });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
     $('view').addEventListener('click', e => {
@@ -5995,7 +6093,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
         if (k === 'copy') return copyText(buyList(App.UP.res.swaps.map(x => ({ c: x.add, qty: 1 }))), null, $('upCopyNote'));
       }
     });
-    document.querySelector('.results').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
+    document.querySelector('.results').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { if (App.easy) setMode(false, true); App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-hist]'); if (!b) return;
       const v = b.dataset.hist, h = await histLoad();
@@ -6016,6 +6114,19 @@ if (typeof module !== 'undefined') module.exports = Deep;
       if (t && App.SH && App.SH.need) { e.stopPropagation(); e.preventDefault(); const S = App.SH, c = S.hand.splice(+t.dataset.hc, 1)[0]; if (c) { S.bottom.push(c); S.lib.push(c); S.need--; } hidePop(); renderHand(); }
     });
     wireDiscover();
+    $('modeSeg').addEventListener('click', e => { const b = e.target.closest('button[data-mode]'); if (b && (b.dataset.mode === 'easy') !== App.easy) setMode(b.dataset.mode === 'easy'); });
+    $('view').addEventListener('click', e => { const t = e.target.closest('button[data-cb]'); if (!t) return; App.countsB = +t.dataset.cb; if (App.tab === 'easy') renderEasy(); else renderCounts(); });
+    $('view').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('ez-again')) App.ezOpen = e.target.open; }, true);
+    $('view').addEventListener('click', e => {
+      const g = e.target.closest('button[data-ezgo]'); if (g) { setMode(false, true); go(g.dataset.ezgo); return; }
+      const b = e.target.closest('button[data-ez]'); if (!b) return;
+      if (b.dataset.ez === 'copy' && App.R) copyText(Engine.exportDeck(App.R, 'plain'), null, $('ezNote'));
+      if (b.dataset.ez === 'build') {
+        const name = ($('ezCmd').value || '').trim(); if (!name) { $('ezCmd').focus(); return; }
+        App.S.commanders = [name, '']; App.S.bracket = +$('ezBr').value; App.S.reroll = 0; writeForm(App.S); persistSettings();
+        App.ezOpen = false; App.anSource = 'deck'; runGenerate();
+      }
+    });
     let cbrT = 0;
     $('view').addEventListener('input', e => { if (e.target.id === 'cbrQ' && App.cbr) { App.cbr.q = e.target.value; App.cbr.n = 50; clearTimeout(cbrT); cbrT = setTimeout(renderCmdResults, 150); } });
     $('view').addEventListener('change', e => { const F = App.cbr, k = { cbrMode: 'mode', cbrTheme: 'theme', cbrSort: 'sort' }[e.target.id]; if (F && k) { F[k] = e.target.value; F.n = 50; renderCmdResults(); } });
@@ -6073,8 +6184,8 @@ if (typeof module !== 'undefined') module.exports = Deep;
       if (!confirm('Start over? This clears the current deck and all settings. History, card data and appearance are kept.')) return;
       App.R = null; App.AN = null; App.QS = null; App.PR = null; App.SH = null; App.hsel = []; App.hdiff = false; App.chain = null; App.accepted = []; App.denied = new Set(); App.anText = ''; App.anSource = 'deck'; App.openSwap = null; App.cbQ = ''; App.cbN = '';
       applySettings({}); try { history.replaceState(null, '', location.pathname + location.search); } catch (x) { }
-      showMsgs([], []); App.tab = 'setup'; renderAll(); setStatus('Cleared. Pick a commander to start a new deck.'); window.scrollTo({ top: 0 });
-      $('cmd1').focus();
+      showMsgs([], []); App.tab = App.easy ? 'easy' : 'setup'; renderAll(); setStatus('Cleared. Pick a commander to start a new deck.'); window.scrollTo({ top: 0 });
+      $(App.easy ? 'ezCmd' : 'cmd1').focus();
     });
     const pop = $('appearance'), setPop = open => { pop.classList.toggle('hidden', !open); $('themeBtn').setAttribute('aria-expanded', open); };
     $('themeBtn').addEventListener('click', e => { e.stopPropagation(); setPop(pop.classList.contains('hidden')); });
@@ -6102,6 +6213,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && k.toLowerCase() === 'z') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } return; }
       if (e.ctrlKey || e.metaKey) return;
       const tabs = [...document.querySelectorAll('.tabs button[data-page]')];
+      if (App.easy && (/^[1-9]$/.test(k) || k === '/' || k === 'g' || k === 'G')) return;
       if (/^[1-9]$/.test(k)) { const b = tabs[+k - 1]; if (b) { e.preventDefault(); b.click(); } }
       else if (k === 'g' || k === 'G') { if (!$('genBtn').disabled) { e.preventDefault(); $('genBtn').click(); } }
       else if (k === 'u' || k === 'U') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } }
@@ -6134,7 +6246,10 @@ if (typeof module !== 'undefined') module.exports = Deep;
     if (!S || S.weightsV !== 3) { App.S.weights = uiDefaults().weights; App.S.variance = 0; App.S.reroll = 0; App.S.weightsV = 3; } // v2: weights recalibrated on real data; v3: no random variance, so a rebuild is identical
     if (App.S.bl && ({ 1: 2, 2: 3, 3: 6 })[App.S.bracket] === +App.S.bl.tutor) App.S.bl.tutor = 999; // old defaults; tutor limits were removed Oct 21 2025
     writeForm(App.S); updateShareToken();
-    wire(); renderSources(); renderAll();
+    const mh = /^(easy|normal)$/i.test(hash) ? hash.toLowerCase() : null;
+    if (mh) { try { history.replaceState(null, '', location.pathname + location.search); } catch (x) { } }
+    wire(); setMode((mh || LS.get('edhgen.mode') || 'easy') === 'easy', true); if (App.easy) App.tab = 'easy';
+    renderSources(); renderAll();
     autoload();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();

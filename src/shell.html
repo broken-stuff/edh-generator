@@ -454,6 +454,24 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
 .ins-card .cp-ot{font-size:calc(12.5px*var(--fz));line-height:1.45;color:var(--ink);background:var(--card-2);border-radius:10px;padding:8px 10px}
 .ins-card .row{margin-top:auto}
 .ins-card a.small{font-size:calc(12px*var(--fz))}
+/* Easy mode: one screen (input, snapshot, counts, quick review); the rail, header KPIs and Generate button belong to Normal */
+body[data-mode="easy"] .rail,body[data-mode="easy"] #kpis,body[data-mode="easy"] #scorebar,body[data-mode="easy"] #genBtn,body[data-mode="easy"] #regenBtn{display:none}
+body[data-mode="easy"] .wrap{grid-template-columns:minmax(0,1fr)}
+body[data-mode="easy"] .results{max-width:1100px;width:100%;margin:0 auto}
+@media (max-width:900px){body[data-mode="easy"][data-page]{padding-bottom:16px}}
+.modeseg button{padding:5px 12px}
+.ez-in{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px}
+.ez-in .an-card{display:flex;flex-direction:column;gap:8px}
+.ez-in textarea{min-height:150px}
+.ez-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:14px}
+.ez-snap{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px 16px}
+.ez-snap .kv b{font-size:calc(17px*var(--fz))}
+.ez-list{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.ez-next{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
+details.ez-again{margin-bottom:14px}
+details.ez-again>summary{cursor:pointer}
+@media (max-width:700px){.ez-in{grid-template-columns:minmax(0,1fr)}.ez-grid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:440px){.modeseg button{padding:5px 9px}}
 </style>
 
 
@@ -464,6 +482,7 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
     <h1>broken-stuff<small>EDH generator</small></h1>
   </div>
   <nav class="sitenav" aria-label="Site"><a href="./" aria-current="page"><span class="sn-l">Deck generator</span><span class="sn-s">Decks</span></a><a href="card.html"><span class="sn-l">Card explorer</span><span class="sn-s">Cards</span></a></nav>
+  <div class="seg modeseg" id="modeSeg" role="group" aria-label="Interface"><button type="button" data-mode="easy" aria-pressed="true" title="One screen: counts, a quick analysis and the top swaps">Easy</button><button type="button" data-mode="normal" aria-pressed="false" title="Every page and setting">Normal</button></div>
   <div class="sources" id="sources" aria-live="polite">
     <span class="pill" id="pBulk"><span class="dot"></span>Cards: not loaded</span>
     <span class="pill hidden" id="pCombo"><span class="dot"></span></span>
