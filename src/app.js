@@ -310,7 +310,7 @@
   function pipsHTML(ci) { if (!ci) return '<span class="ms C">C</span>'; return ci.split('').map(x => '<span class="ms ' + x + '">' + x + '</span>').join(''); }
   function manaHTML(mc) {
     if (!mc) return '';
-    return esc(mc).replace(/\{([^}]+)\}/g, (m, s) => { const cols = s.split('/').filter(x => 'WUBRG'.includes(x)); const cls = cols.length === 1 ? cols[0] : ''; return '<span class="ms ' + cls + '">' + s.replace('/', '') + '</span>'; });
+    return '<span class="mcost">' + esc(mc).replace(/\{([^}]+)\}/g, (m, s) => { const cols = s.split('/').filter(x => 'WUBRG'.includes(x)); const cls = cols.length === 1 ? cols[0] : ''; return '<span class="ms ' + cls + '">' + s.replace('/', '') + '</span>'; }) + '</span>';
   }
   const fmtP = (v) => Engine.fmt(v, App.R ? App.R.settings.budget.cur : App.S.budget.cur);
   function setStatus(t) { $('status').textContent = t || ''; syncActions(); }
@@ -1073,7 +1073,7 @@
     $('summary').classList.toggle('hidden', !(App.tab === 'deck' || App.tab === 'role' || App.tab === 'valid') || !App.R || !App.R.stats);
     $('testBtn').classList.toggle('hidden', App.tab !== 'tests'); syncActions(); syncMini();
     $('pageHead').classList.remove('hidden'); $('pageHead').innerHTML = pageHeadHTML(page);
-    if (setup) return;
+    if (setup) { $('view').innerHTML = ''; return; } // a hidden Easy form left in #view would overwrite Start's commander on readForm()
     if (App.tab === 'tests') return renderTests();
     if (App.tab === 'analysis') return renderAnalysis();
     if (App.tab === 'changes') return renderChanges();
