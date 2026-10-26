@@ -197,11 +197,12 @@
   function syncQuick(S) {
     const plan = S.plan || 'balanced', P = PLANS[plan];
     document.querySelectorAll('#qPlan button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.plan === plan)));
-    if ($('qPlanNote')) $('qPlanNote').textContent = P ? P.t.lands + ' lands · ' + P.t.ramp + ' ramp · ' + P.t.draw + ' draw · ' + P.t.removal + ' removal · ' + P.t.wipes + ' wipe' + (P.t.wipes === 1 ? '' : 's') + ' · avg MV ' + P.mv.toFixed(1) + '. Sets Category targets; edit them under Fine-tune.' : '';
+    if ($('qPlanNote')) $('qPlanNote').textContent = P ? P.t.lands + ' lands · ' + P.t.ramp + ' ramp · ' + P.t.draw + ' draw · ' + P.t.removal + ' removal · ' + P.t.wipes + ' wipe' + (P.t.wipes === 1 ? '' : 's') + ' · avg MV ' + P.mv.toFixed(1) + '.' : '';
     const tags = new Set(tagList(S).map(t => t.toLowerCase()));
     document.querySelectorAll('#qThemes button').forEach(b => b.setAttribute('aria-pressed', String(tags.has(b.dataset.tag))));
     const bv = S.budget && S.budget.total != null && S.budget.total !== '' ? String(+S.budget.total) : '';
     document.querySelectorAll('#qBudget button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.b === bv)));
+    document.querySelectorAll('#qBracket button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.br === +S.bracket)));
     if ($('budHint')) $('budHint').textContent = bv ? Engine.fmt(+bv, S.budget.cur || 'usd') + ' cap' : 'no limit';
   }
   function wireQuick() {
@@ -219,6 +220,7 @@
       writeForm(App.S); persistSettings();
     });
     $('qBudget').addEventListener('click', e => { const b = e.target.closest('button[data-b]'); if (!b) return; App.S.budget.total = b.dataset.b === '' ? '' : +b.dataset.b; writeForm(App.S); persistSettings(); });
+    $('qBracket').addEventListener('click', e => { const b = e.target.closest('button[data-br]'); if (!b) return; App.S.bracket = +b.dataset.br; App.S.bl = Engine.bracketDefaults(App.S.bracket); writeForm(App.S); persistSettings(); });
     $('qGen').addEventListener('click', () => $('genBtn').click());
   }
   function onFormChange(ev) {
@@ -314,7 +316,7 @@
   }
   const fmtP = (v) => Engine.fmt(v, App.R ? App.R.settings.budget.cur : App.S.budget.cur);
   function setStatus(t) { $('status').textContent = t || ''; syncActions(); }
-  function syncActions() { const has = App.R && App.R.stats; $('regenBtn').classList.toggle('hidden', !has); const ops = has && App.chain ? App.chain.ops : []; $('undoBtn').classList.toggle('hidden', !ops.length); $('undoBtn').disabled = !!App.busy; if (ops.length) $('undoBtn').title = 'Undo ' + opLabel(ops[ops.length - 1]) + ' (U or Ctrl+Z)'; document.querySelector('.actions').classList.toggle('hidden', !has && !$('status').textContent && App.tab !== 'tests'); }
+  function syncActions() { const has = App.R && App.R.stats, locks = has && (App.R.deck.some(e => e.locked && !e.inc && !e.imp) || (App.R.bans || []).length > 0); $('regenBtn').classList.toggle('hidden', !locks); const ops = has && App.chain ? App.chain.ops : []; $('undoBtn').classList.toggle('hidden', !ops.length); $('undoBtn').disabled = !!App.busy; if (ops.length) $('undoBtn').title = 'Undo ' + opLabel(ops[ops.length - 1]) + ' (U or Ctrl+Z)'; document.querySelector('.actions').classList.toggle('hidden', !locks && !ops.length && !$('status').textContent && App.tab !== 'tests'); }
   function setProg(f) { const p = $('genProg'); if (f == null) { p.classList.add('hidden'); return; } p.classList.remove('hidden'); p.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; }
   function showMsgs(errors, warnings, extraHTML) {
     let h = '';
@@ -337,36 +339,81 @@
     return 'Prices (' + R.settings.budget.cur.toUpperCase() + '), legality, Game Changer flags and EDHREC ranks: ' + esc(m.source || '') + (m.file ? ' "' + esc(m.file) + '"' : '') + (t ? ', ' + esc(t) : '') + '.';
   }
 
-  /* ---------- collection for suggestions: every add on Analysis and Improve comes from all cards or only from the
-     collection list (the one under Start › Fine-tune › Collection). The choice is kept in this browser, apart from the
-     settings so it doesn't change a generated deck's seed; until it is set it follows the collection mode (Owned only). ---------- */
+  /* ---------- collection: one list (Collection page, kept with the settings) and one choice of how to use it.
+     off = mark only (owned cards get a green dot), prefer = new decks favour owned cards, only = new decks and every
+     suggestion on Analysis and Improve come from the collection (basic lands always allowed). ---------- */
   let ownC = null;
   function ownedCards() {
     if (!App.bulk) return null;
     const l = App.S.owned.list || '';
     if (!ownC || ownC.l !== l || ownC.db !== App.bulk) {
-      const set = new Set(); let miss = 0;
-      for (const it of Engine.parseList(l)) { const c = Engine.lookup(App.bulk, it.name); if (c) set.add(c.n); else miss++; }
-      ownC = { l, db: App.bulk, set, miss, key: Engine.hashStr(l) };
+      const set = new Set(), missNames = [];
+      for (const it of Engine.parseList(l)) { const c = Engine.lookup(App.bulk, it.name); if (c) set.add(c.n); else missNames.push(it.name); }
+      ownC = { l, db: App.bulk, set, miss: missNames.length, missNames, key: Engine.hashStr(l) };
     }
     return ownC;
   }
-  const ownOnly = () => App.impOwn ? App.impOwn === 'only' : App.S.owned.mode === 'only';
+  const ownOnly = () => App.S.owned.mode === 'only';
+  const ownSet = () => { const o = ownedCards(); return o && o.set.size ? o.set : null; }; // for the owned marks
   const ownOpt = () => { const o = ownOnly() && ownedCards(); return o ? o.set : null; }; // Analysis.run opts.owned
   const ownKey = () => ownOnly() ? 'own:' + (ownedCards() || {}).key : 'all';
+  const OWN_MODES = [
+    ['off', 'Mark the cards I own', 'A green dot after every card you own. Builds and suggestions use all cards.'],
+    ['prefer', 'Prefer cards I own', 'New decks favour your cards. Suggestions use all cards, with yours marked.'],
+    ['only', 'Only cards I own', 'New decks and every suggestion on Analysis and Improve come from your cards. Basic lands are always allowed.']
+  ];
+  function setOwnMode(m) {
+    if ((App.S.owned.mode || 'off') === m) return;
+    if (m !== 'only') LS.set('edhgen.ownPrev', m);
+    App.S.owned.mode = m; persistSettings(); ownChanged();
+  }
+  // owned and missing cards of the current deck (commanders included, basic lands left out)
+  function deckOwned() {
+    const R = App.R, set = ownSet(); if (!R || !R.stats || !set) return null;
+    const cur = R.settings.budget.cur, all = R.commanders.map(c => ({ c, qty: 1 })).concat(R.deck).filter(e => !Engine.isBasic(e.c));
+    const miss = all.filter(e => !set.has(e.c.n)), n = all.reduce((a, e) => a + e.qty, 0), m = miss.reduce((a, e) => a + e.qty, 0);
+    return { n, have: n - m, miss, cost: miss.reduce((a, e) => a + (e.c.p[cur] || 0) * e.qty, 0), cur };
+  }
+  function ownSumHTML() {
+    const D = deckOwned(); if (!D) return '';
+    return '<span class="note"><span class="ownmk"></span> ' + D.have + ' of ' + D.n + ' nonbasic cards in your collection' + (D.miss.length ? '; the other ' + (D.n - D.have) + ' cost ' + Engine.fmt(D.cost, D.cur) : '') + '</span>';
+  }
+  // Improve header: where suggestions come from
   function ownBarHTML() {
-    const o = ownedCards(), on = ownOnly(), n = o ? o.set.size : 0, open = App.ownEdit || (on && !n);
+    const o = ownedCards(), on = ownOnly(), n = o ? o.set.size : 0;
     const seg = '<div class="seg" role="group" aria-label="Suggest cards from"><button type="button" data-own="all" aria-pressed="' + !on + '">All cards</button><button type="button" data-own="only" aria-pressed="' + on + '">My collection</button></div>';
-    const note = (n ? n.toLocaleString() + ' card' + (n === 1 ? '' : 's') + ' in your collection' + (o.miss ? ', ' + o.miss + ' not found' : '') : 'No collection list yet') + ' · <button type="button" class="link" data-own="edit" aria-expanded="' + !!open + '">' + (n ? 'edit' : 'add one') + '</button>';
-    const box = !open ? '' : '<div class="own-box"><label class="f">Your collection: one card per line ("1 Card Name" or just the name), or a CSV export with a Name column (Moxfield, Archidekt, Deckbox)<textarea id="ownList" rows="6" spellcheck="false" placeholder="1 Sol Ring&#10;1 Swords to Plowshares&#10;...">' + esc(App.ownDraft != null ? App.ownDraft : App.S.owned.list || '') + '</textarea></label>' +
-      '<div class="row"><button type="button" class="small primary" data-own="save">Use this list</button>' + (n ? '<button type="button" class="small" data-own="close">Cancel</button>' : '') + '<label class="small own-file">Load a file <input type="file" id="ownFile" accept=".txt,.csv,text/plain,text/csv"></label></div>' +
-      '<p class="note">The same list as Start › Fine-tune › Collection, kept in this browser. Basic lands are always allowed.</p></div>';
-    return '<div class="own-bar"><span class="note">Suggest cards from</span>' + seg + '<span class="note">' + note + '</span></div>' + box;
+    const note = (n ? n.toLocaleString() + ' card' + (n === 1 ? '' : 's') + ' in your collection' : 'No collection yet') + ' · <button type="button" class="link" data-go="collection">' + (n ? 'edit' : 'add one') + '</button>';
+    return '<div class="own-bar"><span class="note">Suggest cards from</span>' + seg + '<span class="note">' + note + '</span></div>';
+  }
+  // Start: the collection tile
+  function renderOwnTile() {
+    const el = $('ownTile'); if (!el) return;
+    const o = ownedCards(), n = o ? o.set.size : 0, m = App.S.owned.mode || 'off';
+    $('ownHint').textContent = n ? n.toLocaleString() + ' cards' : 'optional';
+    el.innerHTML = '<p class="note" style="margin:0">' + (n ? 'Your cards are marked with a green dot.' : 'Add the cards you own to see which ones a deck needs, or to build only from them.') + '</p>' +
+      (n ? '<div class="seg wide" role="radiogroup" aria-label="Use my collection">' + OWN_MODES.map(([k, l]) => '<button type="button" data-ownmode="' + k + '" aria-pressed="' + (k === m) + '">' + ({ off: 'Mark', prefer: 'Prefer', only: 'Only mine' })[k] + '</button>').join('') + '</div>' : '') +
+      '<div class="row"><button type="button" class="small" data-go="collection">' + (n ? 'Edit collection' : 'Add my collection') + ' ›</button></div>';
+  }
+  /* ---------- Collection page ---------- */
+  function renderCollection() {
+    const o = ownedCards(), n = o ? o.set.size : 0, m = App.S.owned.mode || 'off', R = App.R && App.R.stats ? App.R : null;
+    const list = '<div class="tile"><div class="tile-h"><h3>Your cards</h3><span class="hint">' + (!o ? 'card data loading…' : n ? n.toLocaleString() + ' recognised' + (o.miss ? ' · ' + o.miss + ' not found' : '') : 'empty') + '</span></div>' +
+      '<label class="f">One card per line ("1 Card Name" or just the name), or a CSV export with a Name column (Moxfield, Archidekt, Deckbox, ManaBox)<textarea id="collList" rows="12" spellcheck="false" placeholder="1 Sol Ring&#10;1 Swords to Plowshares&#10;1 Cultivate&#10;...">' + esc(App.ownDraft != null ? App.ownDraft : App.S.owned.list || '') + '</textarea></label>' +
+      '<div class="row"><button type="button" class="primary" data-own="save">Save collection</button><label class="small own-file">Load a file <input type="file" id="ownFile" accept=".txt,.csv,text/plain,text/csv"></label>' + (App.S.owned.list ? '<button type="button" class="small" data-own="clear">Clear</button>' : '') + '<span class="note" id="collNote">' + esc(App.collNote || '') + '</span></div>' +
+      (o && o.miss ? '<details class="tdet"><summary class="note">Not found in the card data (' + o.miss + ')</summary><p class="note">' + esc(o.missNames.slice(0, 60).join('; ')) + (o.miss > 60 ? ' …' : '') + '</p></details>' : '') +
+      '<p class="note" style="margin:0">Kept in this browser with your settings. Nothing is uploaded.</p></div>';
+    const use = '<div class="tile"><div class="tile-h"><h3>Use it to</h3></div><div class="own-modes" role="radiogroup" aria-label="Use my collection">' + OWN_MODES.map(([k, l, d]) => '<button type="button" data-ownmode="' + k + '" aria-pressed="' + (k === m) + '">' + l + '<span>' + d + '</span></button>').join('') + '</div></div>';
+    const D = deckOwned();
+    const deck = D ? '<div class="tile"><div class="tile-h"><h3>Current deck</h3><span class="hint">' + R.commanders.map(c => esc(c.n)).join(' + ') + '</span></div><div class="own-sum"><span class="kv"><span>Owned</span><b>' + D.have + ' / ' + D.n + '</b></span><span class="kv"><span>To get</span><b>' + (D.n - D.have) + ' · ' + Engine.fmt(D.cost, D.cur) + '</b></span></div>' +
+      '<div class="row">' + (D.miss.length ? '<button type="button" class="small" data-own="buy">Copy the cards to get</button>' : '') + '<button type="button" class="small" data-go="deck">See the deck ›</button><span class="note" id="buyNote"></span></div></div>' : '';
+    const next = R ? '<div class="next-tile"><p><b>Next:</b> check the deck on Analysis, then improve it' + (n && m === 'only' ? ' with your cards' : '') + '.</p><button type="button" class="primary" data-go="analysis">Analysis ›</button></div>'
+      : '<div class="next-tile"><p><b>Next:</b> build a deck or import yours.</p><button type="button" class="primary" data-go="setup">Start ›</button></div>';
+    $('view').innerHTML = '<div class="coll-grid">' + list + '<div style="display:flex;flex-direction:column;gap:14px;min-width:0">' + use + deck + '</div></div>' + next;
   }
   // the suggestion source or the collection changed: measured results no longer apply
   function ownChanged() {
     App.DEEP = null; App.PC = null; App.UP = null; App.PX = null;
-    anStale(); renderView();
+    anStale(); renderOwnTile(); renderView();
     if (App.AN && App.AN.stale) runAnalysis(); // Suggested swaps and By card start their own
   }
   // the analysed list or the suggestion source changed: on Analysis the page stays up, marked stale, until the new
@@ -385,12 +432,12 @@
       if (!deck.length) return { error: 'Decklist is empty.', unknown };
       return { deck, cmds, unknown, label: 'Pasted list' };
     }
-    if (!App.R || !App.R.stats) return { error: 'Generate a deck first, or switch to "Pasted list".' };
+    if (!App.R || !App.R.stats) return { error: 'Build or import a deck on Start first.' };
     // imported cards are locked so rebuilds keep them, but analysis may still suggest cutting them
     const deck = App.R.deck.map(e => e.imp ? Object.assign({}, e, { locked: false }) : e);
     return { deck, asIs: !!App.R.asIs, cmds: App.R.commanders, unknown: [], label: App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck', combos: App.R.combos };
   }
-  const anGames = () => { if (App.tab === 'easy') return EASY_GAMES; const g = +App.anGames || 100000; return [1500, 10000, 25000, 50000, 100000].includes(g) ? g : 100000; };
+  const anGames = () => { const g = +App.anGames || 100000; return [1500, 10000, 25000, 50000, 100000].includes(g) ? g : 100000; };
   async function runAnalysis() {
     if (App.anSource === 'compare') return runCompare();
     const inp = analysisInput();
@@ -417,7 +464,7 @@
     App.AN = X;
     setStatus('Analysis done in ' + ((performance.now() - t0) / 1000).toFixed(2) + ' s (' + X.sim.games.toLocaleString() + ' simulated games).');
     X.impact = []; X.impactDone = !X.plans.length;
-    X.held = App.tab !== 'easy' && !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
+    X.held = !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
     renderAnView();
     if (!X.plans.length || X.held) { if (!X.held && App.DEEP) { deepMerge(X); renderSwaps(); } return; }
     return scoreSwaps(X);
@@ -438,10 +485,10 @@
       await new Promise(r => setTimeout(r, 0));
       X.impact.push(Analysis.impactOne(prep, p));
       setStatus('Evaluating changes ' + X.impact.length + '/' + X.plans.length + '…');
-      if (App.tab === 'analysis' || App.tab === 'changes' || App.tab === 'easy') renderSwaps();
+      if (App.tab === 'analysis' || App.tab === 'changes') renderSwaps();
     }
     X.impactDone = true; setStatus('Analysis done; ' + X.plans.length + ' changes evaluated.'); deepMerge(X);
-    if (App.tab === 'analysis' || App.tab === 'changes' || App.tab === 'easy') renderSwaps();
+    if (App.tab === 'analysis' || App.tab === 'changes') renderSwaps();
   }
   // apply one swap to the analysed list: the generated deck (validated, locked) or the pasted text
   async function applyChange(cut, add, quiet) {
@@ -524,7 +571,6 @@
   const compatible = list => { const cut = new Set(), add = new Set(); return list.filter(p => { if (cut.has(p.cut) || (add.has(p.add) && !Engine.isBasic(p.add))) return false; cut.add(p.cut); add.add(p.add); return true; }); };
   const worth = p => App.showWeak || !(p.group === 'Fix gaps' || p.group === 'Upgrades') || p.g == null || p.g >= Deep.MIN_GAIN;
   function renderSwaps() {
-    if (App.tab === 'easy') { const e = $('ezSwaps'); if (e && App.AN) e.innerHTML = ezSwapsHTML(App.AN); return; }
     const el = $('anSwaps'), X = App.AN; if (!el || !X) return;
     el.innerHTML = swapsHTML(X);
   }
@@ -546,7 +592,7 @@
     const log = (App.accepted || []).filter(a => a.src === App.anSource);
     const logHTML = log.length ? '<div class="accepted"><span class="note">Accepted:</span> ' + log.map((a, j) => '<span class="chip">− ' + esc(a.cut.n) + ' + ' + esc(a.add.n) + ' <button type="button" class="link" data-sw="undo" data-i="' + (App.accepted.indexOf(a)) + '" aria-label="Undo">undo</button></span>').join(' ') + '</div>' : '';
     const denN = App.denied && App.denied.size ? '<span class="note"> · ' + App.denied.size + ' denied <button type="button" class="link" data-sw="clear-deny">reset</button></span>' : '';
-    const own = ownOnly() && ownedCards(), mine = !own && ownedCards() && ownedCards().set.size ? ownedCards().set : null;
+    const own = ownOnly() && ownedCards();
     if (own && !own.set.size) return '<p class="note">Add your collection above to get suggestions from it, or switch to All cards.</p>';
     if (!X.plans.length) return head + logHTML + denN + '<p class="note">' + (own && !own.set.size ? 'Add your collection above to get suggestions from it.' : own ? 'No changes from your collection: none of its cards in your colours fills a gap, upgrades a weak area or replaces a costly card for less.' : 'No changes suggested: targets are met and no costly card has a cheaper same-role replacement in the loaded data.') + '</p>';
     // rows with the same cut sit together; after the first, a row is an alternative ("or + card") for that cut
@@ -569,7 +615,7 @@
       const price = p.priceKnown ? '<span class="' + (p.dPrice > 0.005 ? 'pup' : p.dPrice < -0.005 ? 'pdown' : '') + '">' + (p.dPrice > 0.005 ? '▲ ' : p.dPrice < -0.005 ? '▼ ' : '') + money(p.dPrice) + '</span>' : '<span class="note">price n/a</span>';
       const i = X.impact.indexOf(p);
       const acts = '<div class="sw-acts"><button type="button" class="small primary" data-sw="accept" data-i="' + i + '">Accept</button><button type="button" class="small" data-sw="deny" data-i="' + i + '">Deny</button></div>';
-      return '<tr' + (alt ? ' class="alt"' : '') + '><td><div class="sw">' + (alt ? '<span class="note">or, instead of the swap above:</span>' : '<span class="out">− ' + esc(p.cut.n) + '</span>') + '<span class="in">+ ' + (p.add.uri ? '<a href="' + esc(p.add.uri) + '" target="_blank" rel="noopener">' + esc(p.add.n) + '</a>' : esc(p.add.n)) + (mine && mine.has(p.add.n) ? ' <span class="chip">owned</span>' : '') + '</span></div><div class="note">' + esc(p.reason) + (p.tag ? ' · ' + esc(p.tag) : '') + '</div></td><td class="n nw">' + price + '</td><td><div class="eff">' + (eff.length ? eff.join(' ') : '<span class="note">no measurable change</span>') + '</div>' + acts + '</td></tr>';
+      return '<tr' + (alt ? ' class="alt"' : '') + '><td><div class="sw">' + (alt ? '<span class="note">or, instead of the swap above:</span>' : '<span class="out">− ' + cardLink(p.cut) + '</span>') + '<span class="in">+ ' + cardLink(p.add) + '</span></div><div class="note">' + esc(p.reason) + (p.tag ? ' · ' + esc(p.tag) : '') + '</div></td><td class="n nw">' + price + '</td><td><div class="eff">' + (eff.length ? eff.join(' ') : '<span class="note">no measurable change</span>') + '</div>' + acts + '</td></tr>';
     }).join(''); };
     const weakHTML = weak || App.showWeak ? '<p class="note">' + (App.showWeak ? 'Showing every suggestion.' : weak + ' more suggestion' + (weak === 1 ? '' : 's') + ' hidden: gains below ' + Deep.MIN_GAIN + ' (0.1 power level), beyond the top ' + TOP_N + ' of a group, and the deep search\'s single swaps (see <button type="button" class="link" data-go="percard">By card</button> for options card by card).') + ' <button type="button" class="link" data-sw="weak">' + (App.showWeak ? 'Hide' : 'Show') + '</button></p>' : '';
     const nearHTML = X.impactDone && !shown.length ? '<p class="note"><b>Near optimal.</b> No measured change gains ' + Deep.MIN_GAIN + ' or more on this list; Deep search measures several hundred more.</p>' : '';
@@ -695,7 +741,7 @@
       (rest.length ? '<details class="an-more"><summary class="note">' + rest.length + ' minor note' + (rest.length === 1 ? '' : 's') + ' (low and info)</summary><ol class="recs" start="' + (top.length + 1) + '">' + rest.map(li).join('') + '</ol></details>' : '') + '</div>';
   }
   // Analysis and Improve share one analysis (App.AN)
-  function renderAnView() { if (App.tab === 'easy') renderEasy(); else if (App.tab === 'changes') renderChanges(); else if (App.tab === 'percard') renderPerCard(); else if (App.tab === 'analysis') renderAnalysis(); }
+  function renderAnView() { if (App.tab === 'changes') renderChanges(); else if (App.tab === 'percard') renderPerCard(); else if (App.tab === 'analysis') renderAnalysis(); }
   function renderChanges() {
     if (App.anSource === 'compare') { $('view').innerHTML = '<p class="note">Suggested swaps apply to one list. On <button type="button" class="link" data-go="analysis">Analysis</button>, choose the deck or a pasted list instead of Compare.</p>'; return; }
     App.recsShown = true; // opening Changes is asking for them
@@ -738,8 +784,8 @@
     const deck = X.inp ? X.inp.deck : [], has = c => deck.some(e => e.c === c || e.c.n === c.n);
     const rows = res.rows.filter(r => has(r.cut)).map(r => Object.assign({}, r, { opts: r.opts.filter(o => !has(o.add)) })).filter(r => r.opts.length);
     App.pcRows = rows;
-    const body = rows.map((r, i) => '<tr><td><b>' + esc(r.cut.n) + '</b><div class="note">' + money(r.price) + (r.roles.length ? ' · ' + r.roles.map(k => esc(Engine.SLOT_LABEL[k] || k)).join(', ') : '') + '</div></td>' +
-      '<td><div class="pc-opts">' + r.opts.map((o, j) => '<div class="pc-opt"><span class="note">' + BL[o.band] + '</span> <span class="in">+ ' + (o.add.uri ? '<a href="' + esc(o.add.uri) + '" target="_blank" rel="noopener">' + esc(o.add.n) + '</a>' : esc(o.add.n)) + '</span> <span class="note">' + money(o.price) + ' · gain ' + (Math.round(o.g * 10) / 10) + (o.d && o.d.pl ? ' · power ' + (o.d.pl > 0 ? '+' : '') + o.d.pl : '') + '</span> <button type="button" class="small" data-pc="swap" data-i="' + i + '" data-j="' + j + '">Swap</button></div>').join('') + '</div></td></tr>').join('');
+    const body = rows.map((r, i) => '<tr><td><b>' + cardLink(r.cut) + '</b><div class="note">' + money(r.price) + (r.roles.length ? ' · ' + r.roles.map(k => esc(Engine.SLOT_LABEL[k] || k)).join(', ') : '') + '</div></td>' +
+      '<td><div class="pc-opts">' + r.opts.map((o, j) => '<div class="pc-opt"><span class="note">' + BL[o.band] + '</span> <span class="in">+ ' + cardLink(o.add) + '</span> <span class="note">' + money(o.price) + ' · gain ' + (Math.round(o.g * 10) / 10) + (o.d && o.d.pl ? ' · power ' + (o.d.pl > 0 ? '+' : '') + o.d.pl : '') + '</span> <button type="button" class="small" data-pc="swap" data-i="' + i + '" data-j="' + j + '">Swap</button></div>').join('') + '</div></td></tr>').join('');
     $('view').innerHTML = bar + '<div class="an-card wide"><div class="scroll"><table class="t compact swaps"><thead><tr><th>Card</th><th>Better options</th></tr></thead><tbody>' + (body || '<tr><td colspan="2" class="note">No card has a better option that gains ' + Deep.MIN_GAIN / 2 + ' or more.</td></tr>') + '</tbody></table></div>' + (res.none ? '<p class="note">' + res.none + ' other nonland cards have no better option in the loaded data.</p>' : '') + '</div>';
   }
   // Analysis, in order: overview, problems, counts against real decks, measured swaps, detail. One page for checking a list
@@ -750,19 +796,18 @@
     const C = countsHTML(R, App.anSource === 'paste' || X.inp.asIs ? X.power.minBracket : null);
     return '<div class="an-card wide" id="anCounts"><div class="an-top wrap"><h3>Counts against real decks</h3>' + C.seg + '</div>' + C.html + '</div>';
   }
-  function anChangesHTML(X) {
-    const views = (App.anSource === 'paste' ? [['changes', 'Deep search'], ['percard', 'By card']] : [['changes', 'Deep search'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]);
-    const more = '<div class="an-imp"><span class="note">More on Improve:</span>' + views.map(([v, l]) => '<button type="button" class="small" data-go="' + v + '">' + l + ' ›</button>').join('') + '</div>';
-    const o = ownedCards(), empty = ownOnly() && o && !o.set.size;
-    const body = X.stale ? '<p class="note">Re-analyzing with the change…</p>' : empty ? '<p class="note">Add your collection above to get suggestions from it, or switch to All cards.</p>' :
-      X.held ? '<div class="an-go"><p>' + X.plans.length + ' candidate swap' + (X.plans.length === 1 ? '' : 's') + ' for this list. Measuring each one takes a few seconds of simulated games.</p><button type="button" class="small primary" data-an="swaps">Measure swaps</button></div>' :
-      '<div id="anSwaps">' + swapsHTML(X) + '</div>';
-    return '<div class="an-card wide" id="anChanges"><h3>Recommended changes</h3>' + ownBarHTML() + body + more + '</div>';
+  // the end of Analysis: hand-off to Improve, where the swaps are measured
+  function anNextHTML(X) {
+    if (App.anSource === 'paste') return '';
+    const o = ownedCards(), mine = ownOnly() && o && o.set.size, own = ownSumHTML();
+    const what = X.plans.length ? X.plans.length + ' candidate swap' + (X.plans.length === 1 ? '' : 's') + ' for the problems above' : 'No obvious swaps; deep search and budget upgrades look further';
+    return '<div class="next-tile" id="anNext"><div><p><b>Next: Improve.</b> ' + what + ', measured with simulated games, from ' + (mine ? 'your collection (' + o.set.size.toLocaleString() + ' cards)' : 'all cards') + '.</p>' + (own ? '<p>' + own + '</p>' : '') + '</div><button type="button" class="primary" data-go="changes">Improve this deck ›</button></div>';
   }
   function renderAnalysis() {
     const X = App.AN;
-    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">' + (App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck') + '</button><button type="button" data-an="src-paste" aria-pressed="' + (App.anSource === 'paste') + '">Pasted list</button><button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
+    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">' + (App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'This deck') + '</button>' + (App.anSource === 'paste' ? '<button type="button" data-an="src-paste" aria-pressed="true">Pasted list</button>' : '') + '<button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
       (App.anSource === 'paste' || App.anSource === 'compare' ? '<label class="f" style="margin-top:8px">' + (App.anSource === 'compare' ? 'List to compare against the generated deck. ' : '') + 'Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="anText" rows="8" spellcheck="false">' + esc(App.anText || '') + '</textarea></label>' : '');
+    if (!X && !App.R && App.anSource !== 'compare') { $('view').innerHTML = '<div class="next-tile"><p><b>No deck yet.</b> Build one or import your list on Start, and its analysis opens here.</p><button type="button" class="primary" data-go="setup">Start ›</button></div>'; return; }
     if (!X) { $('view').innerHTML = src + '<p class="note" style="margin-top:10px">Scores speed, mana, card advantage, interaction, resilience, synergy, consistency and win pressure from card data, exact probabilities and a seeded goldfish simulation. Runs entirely in this page.</p>'; return; }
     if (X.error) { $('view').innerHTML = src + '<div class="msg err" style="margin-top:10px">' + esc(X.error) + (X.unknown && X.unknown.length ? '<br>Unknown names: ' + esc(X.unknown.join(', ')) : '') + '</div>'; return; }
     if (X.compare) { $('view').innerHTML = src + compareHTML(X); return; }
@@ -848,7 +893,7 @@
     const stats = !own && App.R && App.R.stats;
     const SUBS = [['turns', 'Turn by turn'], ['power', 'Power'], ['fund', 'Fundamentals'], ['mana', 'Mana & interaction'], ['synergy', 'Synergy']].concat(stats ? [['stats', 'Deck stats']] : []).concat([['method', 'Method']]);
     const sub = SUBS.some(x => x[0] === App.anSub) ? App.anSub : 'turns';
-    const overview = recs + anCountsHTML(X) + anChangesHTML(X);
+    const overview = recs + anCountsHTML(X) + anNextHTML(X);
     const adv = '<div class="an-adv"><button type="button" class="small" data-an="adv" aria-expanded="' + !!App.anAdv + '">' + (App.anAdv ? 'Hide detail' : 'Show detail: turn by turn, power, fundamentals, mana, synergy' + (stats ? ', deck stats' : '') + ', method') + '</button></div>';
     const nav = App.anAdv ? '<div class="subtabs" role="tablist" aria-label="Analysis detail">' + SUBS.map(([k, l]) => '<button type="button" role="tab" data-ansub="' + k + '" aria-selected="' + (k === sub) + '">' + l + '</button>').join('') + '</div>' : '';
     const body = !App.anAdv ? '' : {
@@ -860,7 +905,7 @@
       synergy: synergy,
       method: method.replace('<details class="an-method">', '<details class="an-method" open>')
     }[sub];
-    const jump = '<div class="an-jump" role="group" aria-label="Go to">' + [['anProblems', 'Problems'], ['anCounts', 'Counts'], ['anChanges', 'Changes'], ['anDetail', 'Detail']].map(([id, l]) => '<button type="button" class="small" data-jump="' + id + '">' + l + '</button>').join('') + '</div>';
+    const jump = '<div class="an-jump" role="group" aria-label="Go to">' + (App.anSource === 'paste' ? '' : '<button type="button" class="small primary" data-go="changes">Improve ›</button>') + [['anProblems', 'Problems'], ['anCounts', 'Counts'], ['anDetail', 'Detail']].map(([id, l]) => '<button type="button" class="small" data-jump="' + id + '">' + l + '</button>').join('') + '</div>';
     $('view').innerHTML = src + jump + head + overview + '<div id="anDetail">' + adv + nav + body + '</div>';
   }
 
@@ -882,8 +927,8 @@
   function emptyView() {
     const about = '<p>Builds a legal 100-card Commander deck from every card in the Scryfall file, then optimises it. A first pass fills lands, role slots (ramp, draw, removal, wipes, protection, recursion, win conditions) and your themes. The optimiser then scores every card in the deck against every legal candidate and keeps making the best swap until no swap raises the deck score, staying inside your bracket, budget and filters. Analysis rates the result (power level, speed, consistency, interaction, mana) with 100,000 simulated games, and Compare scores any other list the same way.</p>';
     if (App.bulk) return '<div class="empty"><h2>No deck yet</h2><p>' + App.bulk.all.length.toLocaleString() + ' unique cards loaded from ' + esc(App.bulk.meta.file || 'stored data') + '. Pick a commander, a budget and a plan on Start, then Generate deck.</p><div class="row"><button type="button" class="primary" data-goto="setup">Go to Start</button></div>' + about + '</div>';
-    return '<div class="empty"><h2>Card data</h2>' + about + (window.EDH_SITE ? '<p>Card data loads from this site automatically. If it does not appear, load a Scryfall bulk file under Data source.</p>' :
-      '<ol><li>Download <b>Oracle Cards</b> from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a> (.json, .jsonl or .gz).</li><li>Load it under Data source. It is read in this browser and kept for the next visit.</li><li>Pick a commander, then Generate deck.</li></ol>') + '</div>';
+    return '<div class="empty"><h2>Card data</h2>' + about + (window.EDH_SITE ? '<p>Card data loads from this site automatically. If it does not appear, load a Scryfall bulk file under Start, Card data.</p>' :
+      '<ol><li>Download <b>Oracle Cards</b> from <a href="https://scryfall.com/docs/api/bulk-data" target="_blank" rel="noopener">scryfall.com/docs/api/bulk-data</a> (.json, .jsonl or .gz).</li><li>Load it under Start, Card data. It is read in this browser and kept for the next visit.</li><li>Pick a commander, then Generate deck.</li></ol>') + '</div>';
   }
   function deckRows(entries, groupKey) {
     const R = App.R;
@@ -920,7 +965,7 @@
     const order = byRole ? ['include', 'locked', 'land', 'basic', 'ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon', 'combo', 'synergy', 'flex'] : ['Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Land', 'Other'];
     const key = byRole ? (e => Engine.SLOT_LABEL[e.slot] || e.slot) : (e => Engine.typeGroup(e.c));
     const sorted = R.deck.slice().sort((a, b) => { const ka = byRole ? order.indexOf(a.slot) : order.indexOf(Engine.typeGroup(a.c)); const kb = byRole ? order.indexOf(b.slot) : order.indexOf(Engine.typeGroup(b.c)); return ka - kb; });
-    return '<div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="note">' + sourceLine(R) + '</span></div>' +
+    return '<div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="note">' + sourceLine(R) + '</span>' + ownSumHTML() + '</div>' +
       '<div class="scroll"><table class="t deck"><thead>' + head + '</thead><tbody><tr class="grp"><td colspan="4">Commander (' + R.commanders.length + ')</td></tr>' + cmdRows + deckRows(sorted, key) + '</tbody></table></div>';
   }
   function curveSVG(curve) {
@@ -975,7 +1020,7 @@
     const sum = low || high ? (low ? low + ' below' : '') + (low && high ? ', ' : '') + (high ? high + ' above' : '') + ' the typical range' : 'Every category is inside the typical range';
     return { seg, html: '<p><b>' + esc(sum) + '</b> <span class="note">for ' + (b ? 'Bracket ' + b : 'all brackets') + ' (' + ref.n + ' reference decks).</span></p>' +
       '<div class="scroll"><table class="t mrows counts"><thead><tr><th>Category</th><th class="n">Deck</th><th class="n">Typical</th><th class="n">Median</th><th>Range</th><th>Status</th><th>Cards</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<p class="note">Typical is the middle half (25th to 75th percentile) of ' + ref.n + ' Archidekt decklists' + (b ? ' tagged Bracket ' + b : '') + ' in data/reference, counted with the same rules as the generator; counterspells use only the ' + ref.nU + ' blue decks. The shaded band on each bar is that range and the mark is this deck. A card counts in every category it matches, and the commander is not counted. It describes what players build, not an optimum. Tag rules are under Start › Fine-tune › Advanced.</p>' };
+      '<p class="note">Typical is the middle half (25th to 75th percentile) of ' + ref.n + ' Archidekt decklists' + (b ? ' tagged Bracket ' + b : '') + ' in data/reference, counted with the same rules as the generator; counterspells use only the ' + ref.nU + ' blue decks. The shaded band on each bar is that range and the mark is this deck. A card counts in every category it matches, and the commander is not counted. It describes what players build, not an optimum.</p>' };
   }
   function renderCounts() {
     const R = App.R, C = countsHTML(R);
@@ -983,78 +1028,6 @@
   }
   const fmtR = v => String(v).replace(/\.5$/, '½');
 
-  /* ---------- Easy mode: one screen. Paste or build a list, then its snapshot, role counts and a quick analysis
-     (EASY_GAMES simulated games) with the top swaps. Same functions and numbers as Normal's Counts, Analysis and
-     Suggested swaps; Normal runs more games by default. ---------- */
-  const EASY_GAMES = 1500;
-  function ezTop(X) {
-    if (!X || !X.impactDone) return [];
-    return compatible(X.impact.filter(p => p.g != null && p.g >= Deep.MIN_GAIN).sort((a, b) => b.g - a.g)).slice(0, 3);
-  }
-  function ezSwapsHTML(X) {
-    if (!X || X.error || !X.sim) return '<p class="note">Waiting for the analysis.</p>';
-    if (!X.plans.length) return '<p class="note">No swaps suggested: role targets are met and no costly card has a cheaper same-role replacement.</p>';
-    if (!X.impactDone) return '<p class="note">Measuring ' + X.plans.length + ' candidate swaps with simulated games: ' + X.impact.length + '/' + X.plans.length + '…</p>';
-    const top = ezTop(X), cur = X.cur || 'usd';
-    const log = (App.accepted || []).filter(a => a.src === 'deck');
-    const acc = log.length ? '<p class="note">Accepted: ' + log.map(a => '− ' + esc(a.cut.n) + ' + ' + esc(a.add.n) + ' <button type="button" class="link" data-sw="undo" data-i="' + App.accepted.indexOf(a) + '">undo</button>').join(' · ') + '</p>' : '';
-    if (!top.length) return acc + '<p class="note"><b>Near optimal.</b> None of the ' + X.impact.length + ' measured swaps gains ' + Deep.MIN_GAIN + ' power or more.</p>';
-    return acc + '<ol class="ez-list">' + top.map(p => '<li><div class="sw"><span class="out">− ' + esc(p.cut.n) + '</span><span class="in">+ ' + esc(p.add.n) + '</span></div><div class="note">' + esc(p.reason) + ' · power +' + (p.g / 10).toFixed(2) +
-      (p.priceKnown ? ' · ' + (p.dPrice >= 0 ? '+' : '−') + Engine.fmt(Math.abs(p.dPrice), cur) : '') + '</div><div class="sw-acts"><button type="button" class="small primary" data-sw="accept" data-i="' + X.impact.indexOf(p) + '">Accept</button></div></li>').join('') + '</ol>';
-  }
-  function renderEasy() {
-    const R = App.R && App.R.stats ? App.R : null, X = App.AN && !App.AN.error && !App.AN.compare && App.AN.sim ? App.AN : null;
-    const b = App.S.bracket;
-    const input = '<div class="ez-in">' +
-      '<div class="an-card"><h3>Review my deck</h3><label class="f">Paste a decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="impText" rows="7" spellcheck="false" placeholder="// COMMANDER&#10;1 Galadriel, Light of Valinor&#10;&#10;1 Arcane Signet&#10;26 Forest&#10;...">' + esc(App.impText || '') + '</textarea></label>' +
-      '<div class="row"><button type="button" class="primary" id="impBtn">Review deck</button><span class="note" id="impNote">' + esc(App.impNote || '') + '</span></div></div>' +
-      '<div class="an-card"><h3>Build a new deck</h3><div class="ac"><label class="f">Commander<input type="search" id="ezCmd" data-k="commanders.0" autocomplete="off" placeholder="Start typing a name" value="' + esc(App.S.commanders[0] || '') + '"></label><ul class="hidden" role="listbox" id="ezCmdL"></ul></div>' +
-      '<label class="f">Power (Commander Bracket)<select id="ezBr">' + [1, 2, 3, 4, 5].map(k => '<option value="' + k + '"' + (k === +b ? ' selected' : '') + '>' + k + ' · ' + esc(Engine.BRACKETS[k].name) + '</option>').join('') + '</select></label>' +
-      '<div class="row"><button type="button" class="primary" data-ez="build"' + (App.busy ? ' disabled' : '') + '>Build deck</button><span class="note">Budget, themes and the rest are in Normal, on Start.</span></div></div></div>' +
-      (App.bulk ? '' : '<p class="note">Loading card data… If it never finishes, switch to Normal and load a file under Start, Card data.</p>');
-    if (!R) { $('view').innerHTML = input; setupAC('ezCmd', 'ezCmdL'); return; }
-    const s = R.stats, C = countsHTML(R, R.asIs && X ? X.power.minBracket : null), cur = R.settings.budget.cur, n = R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0);
-    const lands = R.deck.reduce((a, e) => a + (Engine.analyze(e.c).isLand ? e.qty : 0), 0);
-    const P = X && X.power, minB = P ? P.minBracket : null;
-    const snap = '<div class="an-card"><h3>' + R.commanders.map(c => esc(c.n)).join(' + ') + ' ' + pipsHTML(R.CI) + '</h3><div class="ez-snap">' + [
-      ['Cards', n + (n !== 100 ? ' <span class="st fail">≠100</span>' : '')],
-      ['Lands', lands],
-      ['Avg MV', s.avgMV.toFixed(2)],
-      ['Price', Engine.fmt(s.total, cur)],
-      ['Power', P ? P.pl.toFixed(1) + '<span class="note"> /10</span>' : '…'],
-      ['Bracket', P ? 'B' + minB + '<span class="note"> ' + esc(Engine.BRACKETS[minB].name) + '</span>' : '…'],
-      ['Win turn', P ? 'T' + P.win.typical : '…'],
-      ['Fundamentals', X ? X.overall + '<span class="note"> /100</span>' : '…']
-    ].map(([k, v]) => '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>').join('') + '</div>' + curveSVG(s.curve) + '</div>';
-    let review = '<p class="note">Analyzing (' + EASY_GAMES.toLocaleString() + ' simulated games)…</p>';
-    if (App.AN && App.AN.error) review = '<div class="msg err">' + esc(App.AN.error) + '</div>';
-    else if (X) {
-      const sm = X.sim, low = X.axes.slice().sort((a, c) => a.score - c.score)[0], sevLabel = { high: 'High', med: 'Medium', low: 'Low', info: 'Info' };
-      const probs = rankedRecs(X).filter(r => r.sev !== 'info').slice(0, 3);
-      review = '<table class="t compact"><tbody>' + [
-        ['Keepable opening 7', pct(sm.keep7)],
-        ['Missed a land drop by turn 4', pct(sm.missLandDropT4)],
-        ['Commander cast on curve', sm.cmdOnCurve == null ? '—' : pct(sm.cmdOnCurve)],
-        ['Weakest area', esc(low.label) + ' ' + low.score + '/100']
-      ].map(r => '<tr><td>' + r[0] + '</td><td class="n">' + r[1] + '</td></tr>').join('') + '</tbody></table>' +
-        '<h4 class="an-sub">Main problems</h4>' + (probs.length ? '<ol class="ez-list">' + probs.map(r => '<li><span class="chip sev-' + r.sev + '">' + sevLabel[r.sev] + '</span> ' + esc(r.text.replace(/\s*[^.]*:$/, '') || r.text) + '</li>').join('') + '</ol>' : '<p class="note">No gaps against the benchmarks.</p>') +
-        '<h4 class="an-sub">Top swaps</h4><div id="ezSwaps">' + ezSwapsHTML(X) + '</div>' +
-        '<p class="note">' + X.sim.games.toLocaleString() + ' simulated games. Normal runs up to 100,000 and shows every factor.</p>';
-    }
-    const next = '<div class="ez-next"><button type="button" data-ez="copy">Copy list</button><span class="note" id="ezNote"></span><span class="note" style="margin-left:auto">Go deeper:</span>' +
-      [['analysis', 'Full analysis'], ['changes', 'All swaps'], ['deck', 'Cards'], ['primer', 'Primer'], ['export', 'Export']].map(([v, l]) => '<button type="button" class="small" data-ezgo="' + v + '">' + l + ' ›</button>').join('') + '</div>';
-    $('view').innerHTML = '<details class="ez-again"' + (App.ezOpen ? ' open' : '') + '><summary class="note">Review another list or build another deck</summary>' + input + '</details>' +
-      '<div class="ez-grid">' + snap + '<div class="an-card"><h3>Quick review</h3>' + review + '</div></div>' +
-      '<div class="an-card" style="margin-top:14px"><div class="row" style="justify-content:space-between;align-items:center;gap:10px"><h3>Counts</h3>' + C.seg + '</div>' + C.html + '</div>' + next;
-    setupAC('ezCmd', 'ezCmdL');
-  }
-  // Easy ↔ Normal; the choice is kept in this browser, and #easy / #normal in the address sets it
-  function setMode(easy, quiet) {
-    App.easy = !!easy; document.body.dataset.mode = App.easy ? 'easy' : 'normal'; LS.set('edhgen.mode', App.easy ? 'easy' : 'normal');
-    $('modeSeg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', (b.dataset.mode === 'easy') === App.easy));
-    if (quiet) return;
-    if (App.easy) { App.anSource = 'deck'; go('easy'); } else go(App.R && App.R.stats ? 'analysis' : 'setup');
-  }
   function renderValidation() {
     const R = App.R;
     $('view').innerHTML = '<p class="note">' + sourceLine(R) + ' Checked ' + new Date(R.validation.at).toLocaleString() + '.</p><div class="scroll"><table class="t"><thead><tr><th>Rule</th><th>Result</th><th>Detail</th></tr></thead><tbody>' +
@@ -1084,37 +1057,37 @@
   }
   /* ---------- pages: five in the rail (plus More), each holding one or more views; App.tab is the current view ---------- */
   const PAGES = {
-    start: ['Start', [['setup', 'New deck'], ['import', 'Import a list'], ['find', 'Find a commander']]],
+    start: ['Start', [['setup', 'Build a deck'], ['import', 'Import my deck'], ['find', 'Find a commander']]],
+    collection: ['Collection', []],
     deck: ['Deck', [['cards', 'Cards'], ['counts', 'Counts'], ['hand', 'Sample hand'], ['export', 'Export']]],
     analysis: ['Analysis', []],
     improve: ['Improve', [['changes', 'Suggested swaps'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]],
     primer: ['Primer', []],
-    more: ['More', []],
-    easy: ['Quick review', []]
+    more: ['More', []]
   };
-  const PAGE_OF = { setup: 'start', import: 'start', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more', easy: 'easy' };
+  const PAGE_OF = { setup: 'start', import: 'start', collection: 'collection', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
   const FIND = [['commanders', 'Browse'], ['inspire', 'Quiz'], ['surprise', 'Random']];
   const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
   const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
   const lastView = {};
   // opens a view (or a page's last view), as a click in the rail would
   function go(v) {
-    if (PAGES[v] && v !== 'analysis' && v !== 'primer' && v !== 'easy') v = lastView[v] || viewOf(PAGES[v][1][0][0]);
+    if (PAGES[v] && PAGES[v][1].length) v = lastView[v] || viewOf(PAGES[v][1][0][0]);
     if (!PAGE_OF[v]) return;
-    hidePop(); App.tab = v; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 });
-    if ((v === 'analysis' && App.anSource !== 'paste' || v === 'easy') && App.R && App.R.stats) runAnalysis();
+    hidePop(); if (!App.busy) $('status').textContent = ''; App.tab = v; renderView(); if (window.scrollY > 200) window.scrollTo({ top: 0 });
+    if (v === 'analysis' && App.anSource !== 'paste' && App.R && App.R.stats) runAnalysis();
   }
   const VIEW_NOTE = {
-    setup: 'Choose a commander, a budget and a plan. Generate scores every legal card in the data and optimises the list inside your bracket and budget.',
-    import: 'Paste your current list to analyze it as it is. Swaps are measured when you ask for them, from all cards or only your collection.',
+    setup: 'Add your collection if you like, then build a deck or import yours. Analysis checks it; Improve finds measured upgrades.',
+    collection: 'Paste or load the cards you own. Every card you own gets a green dot, and you choose whether new decks and suggestions use only your cards.',
+    import: 'Paste your current list. It is kept exactly as pasted and opens on Analysis; Improve then measures swaps, from all cards or only your collection.',
     commanders: 'Every legal commander in the card data, by colour, theme and popularity.', inspire: 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.', surprise: 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.',
     deck: 'Tap a card for its text and its actions: lock, swap or remove.', role: 'Grouped by the role slot each card fills. Tap a card for its actions.', valid: 'Every deck-building rule and whether this list passes it.',
     counts: 'How many cards the deck has for each job (lands, ramp, draw, removal, wipes and more) next to what real decks of the same bracket run.',
     hand: 'Draw opening hands from this list, mulligan and draw on.', export: 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.',
-    analysis: 'Power, mana and problems from simulated games, the role counts against real decks, and measured swaps, on one page.',
-    changes: 'Cuts and adds for the analyzed list, each scored with simulated games.', percard: 'Each card in the list with up to three better cards at different prices, each measured as a swap. You choose.', upgrade: 'Set an amount to spend. The best set of swaps that fits it, each add Commander-legal and in your colours, measured with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
+    analysis: 'How good the deck is: power, speed and mana from simulated games, its main problems, and its role counts against real decks.',
+    changes: 'Cuts and adds for the deck, each measured with simulated games. Accept the ones you want.', percard: 'Each card in the list with up to three better cards at different prices, each measured as a swap. You choose.', upgrade: 'Set an amount to spend. The best set of swaps that fits it, each add Commander-legal and in your colours, measured with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
     primer: 'How to play this list, from its own simulation and card roles.',
-    easy: 'Paste your list or build one. You get its counts against real decks, a quick analysis and the top swaps. Normal has every page and setting.',
     history: 'The last 25 decks and revisions in this browser. Tick two to compare them.', log: 'Each step the generator and optimiser took.', tests: 'Checks the generator against the loaded card data.'
   };
   function pageHeadHTML(page) {
@@ -1125,7 +1098,20 @@
     let nav = views.length ? '<div class="subtabs" role="tablist" aria-label="' + esc(title) + ' views">' + views.map(([k, l]) => pill(k, l, sub)).join('') + '</div>' : '';
     if (sub === 'find') nav += '<div class="seg pgseg" role="group" aria-label="Find a commander">' + FIND.map(([k, l]) => opt(k, l, v)).join('') + '</div>';
     if (sub === 'cards' && v !== 'valid') nav += '<div class="seg pgseg" role="group" aria-label="Group cards by">' + [['deck', 'By type'], ['role', 'By role']].map(([k, l]) => opt(k, l, v)).join('') + '</div>';
-    return '<h2>' + esc(title) + '</h2><p class="note">' + (VIEW_NOTE[v] || '') + '</p>' + (nav ? '<div class="pgnav">' + nav + '</div>' : '') + (page === 'improve' && App.bulk ? ownBarHTML() : '');
+    return '<h2>' + esc(title) + '</h2><p class="note">' + (VIEW_NOTE[v] || '') + '</p>' + (page === 'start' ? stepsHTML() : '') + (nav ? '<div class="pgnav">' + nav + '</div>' : '') + (page === 'improve' && App.bulk ? ownBarHTML() : '');
+  }
+  // Start: the four steps as tiles, each with where it stands and a link to its page
+  function stepsHTML() {
+    const o = ownedCards(), n = o ? o.set.size : 0, R = App.R && App.R.stats ? App.R : null, q = R ? quickStats() : null;
+    const X = App.AN && App.AN.sim && !App.AN.error && !App.AN.compare ? App.AN : null, worthN = X && X.impactDone ? X.impact.filter(worth).length : null;
+    const ML = { off: 'marked', prefer: 'preferred in builds', only: 'only these used' };
+    const S = [
+      ['collection', 'Collection', n ? n.toLocaleString() + ' cards · ' + ML[App.S.owned.mode || 'off'] : 'Optional. Mark the cards you own, or build only from them.', n ? 'Edit ›' : 'Add ›', n ? 'done' : ''],
+      [R ? 'deck' : 'setup', 'Deck', R ? R.commanders.map(c => esc(c.n)).join(' + ') + ' · ' + Engine.fmt(R.stats.total, R.settings.budget.cur) : 'Build one below, or import your list.', R ? 'View ›' : '', R ? 'done' : 'next'],
+      ['analysis', 'Analysis', q ? 'Power ' + q.pl.toFixed(1) + ' · plays like B' + q.minB + ' · wins T' + q.win : 'How good the deck is, after you have one.', R ? 'Open ›' : '', !R ? 'off' : X ? 'done' : 'next'],
+      ['changes', 'Improve', worthN != null ? worthN + ' measured swap' + (worthN === 1 ? '' : 's') + ' worth making' : 'Measured swaps, budget upgrades and combos' + (ownOnly() && n ? ', from your cards' : '') + '.', R ? 'Open ›' : '', !R ? 'off' : X ? 'next' : '']
+    ];
+    return '<nav class="steps" aria-label="Steps">' + S.map(([g, l, sub, act, cls], i) => '<button type="button" class="step ' + cls + '" data-go="' + g + '"' + (!R && i > 1 ? ' disabled' : '') + '><span class="sh"><span class="sn">' + (cls === 'done' ? '✓' : i + 1) + '</span>' + l + '</span><span class="ss">' + sub + '</span>' + (act ? '<span class="sg">' + act + '</span>' : '') + '</button>').join('') + '</nav>';
   }
   function renderView() {
     const page = PAGE_OF[App.tab] || 'start';
@@ -1141,7 +1127,8 @@
     $('summary').classList.toggle('hidden', !(App.tab === 'deck' || App.tab === 'role' || App.tab === 'valid') || !App.R || !App.R.stats);
     $('testBtn').classList.toggle('hidden', App.tab !== 'tests'); syncActions(); syncMini();
     $('pageHead').classList.remove('hidden'); $('pageHead').innerHTML = pageHeadHTML(page);
-    if (setup) { $('view').innerHTML = ''; return; } // a hidden Easy form left in #view would overwrite Start's commander on readForm()
+    if (setup) { $('view').innerHTML = ''; renderOwnTile(); return; } // a dynamic form left in #view must not hold data-k fields read by readForm()
+    if (App.tab === 'collection') return renderCollection();
     if (App.tab === 'tests') return renderTests();
     if (App.tab === 'analysis') return renderAnalysis();
     if (App.tab === 'changes') return renderChanges();
@@ -1154,7 +1141,6 @@
     if (App.tab === 'inspire') return renderInspire();
     if (App.tab === 'surprise') return renderSurprise();
     if (App.tab === 'import') return renderImport();
-    if (App.tab === 'easy') return renderEasy();
     if (App.tab === 'hand') return renderHand();
     if (!App.R || !App.R.stats) { $('view').innerHTML = emptyView(); return; }
     switch (App.tab) {
@@ -1498,7 +1484,7 @@
   }
   // compact copy of the KPI cards that pins to the top once the cards scroll out of view
   let kpiVisible = true;
-  function syncMini() { $('scorebar').classList.toggle('hidden', kpiVisible || $('kpis').classList.contains('hidden')); }
+  function syncMini() { $('scorebar').classList.toggle('hidden', $('kpis').classList.contains('hidden') || (document.body.dataset.page === 'analysis' && kpiVisible)); }
   if ('IntersectionObserver' in window) new IntersectionObserver(es => { kpiVisible = es[0].isIntersecting; syncMini(); }, { rootMargin: '-60px 0px 0px 0px' }).observe($('kpis'));
   function renderAll() { renderSummary(); renderScorebar(); renderView(); $('regenBtn').disabled = !App.R || !App.R.stats || App.busy; syncActions(); }
 
@@ -1522,7 +1508,7 @@
   /* ---------- generation ---------- */
   async function getDB() {
     if (App.bulk) return App.bulk;
-    throw new Error('No card data loaded. Load a Scryfall bulk JSON file under Data source.');
+    throw new Error('No card data loaded. Load a Scryfall bulk JSON file under Start, Card data.');
   }
   async function runGenerate(opts) {
     if (App.busy) return;
@@ -1545,7 +1531,7 @@
       else if (R.errors.length) { App.R = null; showMsgs(R.errors, R.warnings); setStatus('Not generated.'); }
       else {
         App.R = R; built = true; App.openSwap = null; App.QS = null; App.base = R.deck.map(e => [e.c.n, e.qty]); App.UP = null; if (App.anSource !== 'paste') App.AN = null;
-        if (App.tab === 'setup' && !App.restoring) { App.tab = viewOf('cards'); window.scrollTo({ top: 0 }); }
+        if (App.tab === 'setup' && !App.restoring) { App.tab = 'analysis'; window.scrollTo({ top: 0 }); } // the next step after building is checking the deck
         if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans, imported: env.imported, asIs: env.asIs }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
         const O = R.optimize;
@@ -1555,7 +1541,7 @@
     App.busy = false; setProg(null); renderSources(); renderAll();
     if (built && opts.onBuilt) opts.onBuilt(App.R);
     if (built && !App.restoring) histPush('generate', opts.asIs ? 'Imported deck' : opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
-    if ((App.tab === 'analysis' || App.tab === 'changes' || App.tab === 'percard' || App.tab === 'easy') && App.anSource !== 'paste' && App.R && !opts.asIs) runAnalysis(); // an import runs its own
+    if ((App.tab === 'analysis' || App.tab === 'changes' || App.tab === 'percard') && App.anSource !== 'paste' && App.R && !opts.asIs) runAnalysis(); // an import runs its own
   }
 
   /* ---------- import: a pasted list becomes the working deck exactly as pasted, every card locked ---------- */
@@ -1596,7 +1582,7 @@
       (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
       (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
     say(msg); setStatus(msg);
-    App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = App.easy ? 'easy' : 'analysis'; App.ezOpen = false; renderView(); window.scrollTo({ top: 0 });
+    App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
     runAnalysis();
   }
 
@@ -1666,7 +1652,7 @@
   const IMG_BASE = 'https://cards.scryfall.io/normal/';
   const imgOn = () => App.img === 'on';
   const imgTag = (c, cls) => imgOn() && c && c.img ? '<img class="' + (cls || 'cimg') + '" src="' + IMG_BASE + esc(c.img) + '" alt="' + esc(c.n) + '" loading="lazy" referrerpolicy="no-referrer">' : '';
-  const cardLink = (c, label) => '<a class="cl" href="' + esc((c && c.uri) || '#') + '" target="_blank" rel="noopener" data-card="' + esc(c ? c.n : label) + '">' + esc(label || (c && c.n) || '') + '</a>';
+  const cardLink = (c, label) => { const own = c && ownSet() && ownSet().has(c.n); return '<a class="cl' + (own ? ' own' : '') + '" href="' + esc((c && c.uri) || '#') + '" target="_blank" rel="noopener" data-card="' + esc(c ? c.n : label) + '"' + (own ? ' title="In your collection"' : '') + '>' + esc(label || (c && c.n) || '') + '</a>'; };
   const nameLink = n => { const c = App.bulk && Engine.lookup(App.bulk, n); return c ? cardLink(c, n) : esc(n); };
   function popHTML(c) {
     const R = App.R, a = Engine.analyze(c), e = R && R.deck ? R.deck.find(x => x.c.n === c.n) : null, p = c.p[(R ? R.settings : App.S).budget.cur];
@@ -1676,6 +1662,7 @@
     return imgTag(c) + '<div class="cp-h"><b>' + esc(c.n) + '</b><span class="cost">' + manaHTML(c.mc) + '</span><button type="button" class="iconx" data-popx="1" aria-label="Close">✕</button></div>' +
       '<div class="note">' + esc(c.tl) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
       (c.ot ? '<div class="cp-ot">' + manaHTML(c.ot).replace(/\n/g, '<br>') + '</div>' : '') +
+      (ownSet() && !Engine.isBasic(c) ? '<div class="cp-m">' + (ownSet().has(c.n) ? '<span class="ownmk"></span> In your collection' : 'Not in your collection') + '</div>' : '') +
       '<div class="cp-m">' + (p != null ? fmtP(p) : 'no price') + (c.rank ? ' · EDHREC #' + c.rank.toLocaleString() : '') + (c.leg !== 'legal' ? ' · <span class="pup">' + esc(c.leg.replace('_', ' ')) + ' in Commander</span>' : '') + '</div>' +
       (chips ? '<div>' + chips + '</div>' : '') +
       (isCmd ? '<div class="cp-why"><b>Commander</b></div>' : e ? '<div class="cp-why"><b>Why it is in the deck:</b> ' + esc(e.why || Engine.SLOT_LABEL[e.slot] || e.slot || '') + (e.locked ? ' (locked)' : '') + '</div>' : '') +
@@ -1683,12 +1670,26 @@
       '<div class="row"><a href="card.html#' + encodeURIComponent(c.n) + '" target="_blank" rel="noopener">Similar cards and combos ↗</a>' + (c.uri ? '<a href="' + esc(c.uri) + '" target="_blank" rel="noopener">Scryfall ↗</a>' : '') + '</div>';
   }
   let popT = 0, popFor = null, popPinned = false;
+  // beside the card name when there is room (so it covers neither the name nor the rows around it), else below or
+  // above it; placed again once the picture loads. Phones get a bottom sheet from CSS.
   function showPop(el, pinned) {
     const c = App.bulk && Engine.lookup(App.bulk, el.dataset.card); if (!c) return;
-    const pop = $('cardPop'); pop.innerHTML = popHTML(c); pop.classList.remove('hidden'); popFor = el; popPinned = !!pinned;
-    const r = el.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
-    let y = r.bottom + 6; if (y + h > innerHeight - 8) y = Math.max(8, r.top - h - 6);
-    pop.style.left = Math.min(Math.max(8, r.left), innerWidth - w - 8) + 'px'; pop.style.top = y + 'px';
+    const pop = $('cardPop'); pop.innerHTML = popHTML(c); pop.classList.remove('hidden'); popFor = el; popPinned = !!pinned; pop.scrollTop = 0; pop.classList.toggle('wimg', !!pop.querySelector('img'));
+    const place = () => {
+      if (popFor !== el) return;
+      if (matchMedia('(max-width:640px)').matches) { pop.style.left = pop.style.top = ''; return; }
+      const r = el.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight, m = 8, vw = innerWidth, vh = innerHeight;
+      const midY = Math.min(Math.max(m, r.top + r.height / 2 - h / 2), vh - h - m);
+      let x, y;
+      if (r.right + 14 + w <= vw - m) { x = r.right + 14; y = midY; }
+      else if (r.bottom + 6 + h <= vh - m) { x = r.left; y = r.bottom + 6; }
+      else if (r.top - 6 - h >= m) { x = r.left; y = r.top - 6 - h; }
+      else if (r.left - 14 - w >= m) { x = r.left - 14 - w; y = midY; }
+      else { x = r.left; y = midY; }
+      pop.style.left = Math.min(Math.max(m, x), vw - w - m) + 'px'; pop.style.top = Math.max(m, y) + 'px';
+    };
+    place();
+    const img = pop.querySelector('img'); if (img && !img.complete) img.addEventListener('load', place, { once: true });
   }
   function hidePop() { const p = $('cardPop'); if (p) p.classList.add('hidden'); popFor = null; popPinned = false; }
 
@@ -1995,7 +1996,7 @@
   }
 
   /* ---------- keyboard shortcuts ---------- */
-  const KEYS_HELP = 'Keys: 1–5 open Start, Deck, Analysis, Improve and Primer · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
+  const KEYS_HELP = 'Keys: 1–6 open Start, Collection, Deck, Analysis, Improve and Primer · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
 
   function wire() {
     document.querySelector('.settings').addEventListener('input', onFormChange);
@@ -2007,7 +2008,6 @@
       const z = () => f.stream().pipeThrough(new DecompressionStream('gzip'));
       loadBulk({ name: f.name, size: f.size * 8, lastModified: f.lastModified, stream: z, text: () => new Response(z()).text() });
     });
-    $('oFile').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; $('oList').value = await f.text(); App.S.owned.list = $('oList').value; persistSettings(); });
     $('forgetBtn').addEventListener('click', async () => { await IDB.del('bulk'); await IDB.del('combos'); $('idbNote').textContent = 'Stored data removed.'; });
     $('seedBtn').addEventListener('click', () => { const s = Math.random().toString(36).slice(2, 10); $('seed').value = s; App.S.seed = s; App.S.reroll = 0; persistSettings(); });
     $('genBtn').addEventListener('click', () => { App.S.reroll = 0; runGenerate(); });
@@ -2040,9 +2040,9 @@
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }
       if (a === 'clear-deny') { App.denied.clear(); anStale(); renderAnView(); runAnalysis(); return; }
       if (a === 'weak') { App.showWeak = !App.showWeak; renderSwaps(); return; }
-      if (a === 'accept-all' || a === 'accept-group') { const G = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'], sh = X.shownNow || X.impact.filter(worth); const list = compatible(a === 'accept-all' ? G.flatMap(g => sh.filter(p => p.group === g)) : sh.filter(p => p.group === b.dataset.g)); if (!list.length) return; document.querySelectorAll('#anSwaps button').forEach(x => { x.disabled = true; }); await acceptMany(list); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
-      if (a === 'accept') { App.acceptNote = ''; const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
-      if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); }
+      if (a === 'accept-all' || a === 'accept-group') { const G = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'], sh = X.shownNow || X.impact.filter(worth); const list = compatible(a === 'accept-all' ? G.flatMap(g => sh.filter(p => p.group === g)) : sh.filter(p => p.group === b.dataset.g)); if (!list.length) return; document.querySelectorAll('#anSwaps button').forEach(x => { x.disabled = true; }); await acceptMany(list); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
+      if (a === 'accept') { App.acceptNote = ''; const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
+      if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); }
     });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
     $('view').addEventListener('click', e => {
@@ -2059,7 +2059,7 @@
         if (k === 'copy') return copyText(buyList(App.UP.res.swaps.map(x => ({ c: x.add, qty: 1 }))), null, $('upCopyNote'));
       }
     });
-    document.querySelector('.results').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { if (App.easy) setMode(false, true); App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
+    document.querySelector('.results').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-hist]'); if (!b) return;
       const v = b.dataset.hist, h = await histLoad();
@@ -2080,19 +2080,7 @@
       if (t && App.SH && App.SH.need) { e.stopPropagation(); e.preventDefault(); const S = App.SH, c = S.hand.splice(+t.dataset.hc, 1)[0]; if (c) { S.bottom.push(c); S.lib.push(c); S.need--; } hidePop(); renderHand(); }
     });
     wireDiscover();
-    $('modeSeg').addEventListener('click', e => { const b = e.target.closest('button[data-mode]'); if (b && (b.dataset.mode === 'easy') !== App.easy) setMode(b.dataset.mode === 'easy'); });
-    $('view').addEventListener('click', e => { const t = e.target.closest('button[data-cb]'); if (!t) return; App.countsB = +t.dataset.cb; if (App.tab === 'easy') renderEasy(); else if (App.tab === 'analysis') renderAnalysis(); else renderCounts(); });
-    $('view').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('ez-again')) App.ezOpen = e.target.open; }, true);
-    $('view').addEventListener('click', e => {
-      const g = e.target.closest('button[data-ezgo]'); if (g) { setMode(false, true); go(g.dataset.ezgo); return; }
-      const b = e.target.closest('button[data-ez]'); if (!b) return;
-      if (b.dataset.ez === 'copy' && App.R) copyText(Engine.exportDeck(App.R, 'plain'), null, $('ezNote'));
-      if (b.dataset.ez === 'build') {
-        const name = ($('ezCmd').value || '').trim(); if (!name) { $('ezCmd').focus(); return; }
-        App.S.commanders = [name, '']; App.S.bracket = +$('ezBr').value; App.S.reroll = 0; writeForm(App.S); persistSettings();
-        App.ezOpen = false; App.anSource = 'deck'; runGenerate();
-      }
-    });
+    $('view').addEventListener('click', e => { const t = e.target.closest('button[data-cb]'); if (!t) return; App.countsB = +t.dataset.cb; if (App.tab === 'analysis') renderAnalysis(); else renderCounts(); });
     let cbrT = 0;
     $('view').addEventListener('input', e => { if (e.target.id === 'cbrQ' && App.cbr) { App.cbr.q = e.target.value; App.cbr.n = 50; clearTimeout(cbrT); cbrT = setTimeout(renderCmdResults, 150); } });
     $('view').addEventListener('change', e => { const F = App.cbr, k = { cbrMode: 'mode', cbrTheme: 'theme', cbrSort: 'sort' }[e.target.id]; if (F && k) { F[k] = e.target.value; F.n = 50; renderCmdResults(); } });
@@ -2107,21 +2095,27 @@
       else if (pr) pr.dataset.print === 'proxies' ? printProxies() : printPrimer();
     });
     $('view').addEventListener('click', e => { const b = e.target.closest('button[data-jump]'), t = b && $(b.dataset.jump); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
-    // Suggest cards from: all cards or the collection (on Analysis and in the Improve page header)
+    // collection: the list (Collection page), how it is used (Start tile, Collection page) and the Improve header switch
+    const saveOwn = t => {
+      App.ownDraft = null;
+      if (t === App.S.owned.list) { App.collNote = 'No change.'; renderView(); return; }
+      App.S.owned.list = t; persistSettings();
+      const o = ownedCards(); App.collNote = o ? 'Saved: ' + o.set.size.toLocaleString() + ' cards recognised' + (o.miss ? ', ' + o.miss + ' not found' : '') + '.' : 'Saved.';
+      ownChanged();
+    };
     document.querySelector('.results').addEventListener('click', e => {
+      const m = e.target.closest('button[data-ownmode]'); if (m) { setOwnMode(m.dataset.ownmode); return; }
       const b = e.target.closest('[data-own]'); if (!b) return;
       const v = b.dataset.own;
-      if (v === 'all' || v === 'only') { if (ownOnly() === (v === 'only')) return; App.impOwn = v; LS.set('edhgen.impOwn', v); ownChanged(); }
-      else if (v === 'edit') { App.ownEdit = !App.ownEdit; App.ownDraft = null; renderView(); }
-      else if (v === 'close') { App.ownEdit = false; App.ownDraft = null; renderView(); }
-      else if (v === 'save') {
-        const t = $('ownList') ? $('ownList').value : App.S.owned.list; App.ownEdit = false; App.ownDraft = null;
-        if (t === App.S.owned.list) { renderView(); return; }
-        App.S.owned.list = t; if ($('oList')) $('oList').value = t; persistSettings(); ownChanged();
-      }
+      if (v === 'all' || v === 'only') { if (ownOnly() === (v === 'only')) return; setOwnMode(v === 'only' ? 'only' : LS.get('edhgen.ownPrev') || 'off'); }
+      else if (v === 'save') saveOwn($('collList') ? $('collList').value : App.S.owned.list);
+      else if (v === 'clear') { if (confirm('Clear your collection list?')) saveOwn(''); }
+      else if (v === 'buy') { const D = deckOwned(); if (D) copyText(buyList(D.miss), null, $('buyNote')); }
     });
-    document.querySelector('.results').addEventListener('input', e => { if (e.target.id === 'ownList') App.ownDraft = e.target.value; });
-    document.querySelector('.results').addEventListener('change', async e => { if (e.target.id !== 'ownFile') return; const f = e.target.files[0]; if (!f) return; const t = await f.text(); App.ownDraft = t; if ($('ownList')) $('ownList').value = t; });
+    document.querySelector('.results').addEventListener('input', e => { if (e.target.id === 'collList') { App.ownDraft = e.target.value; App.collNote = ''; } });
+    document.querySelector('.results').addEventListener('change', async e => { if (e.target.id !== 'ownFile') return; const f = e.target.files[0]; if (!f) return; saveOwn(await f.text()); });
+    // links between pages from the step tiles, the Start tiles and the page headers
+    for (const id of ['pageHead', 'setupView']) $(id).addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) { e.preventDefault(); go(g.dataset.go); } });
     $('view').addEventListener('click', e => { const b = e.target.closest('button[data-ansub]'); if (!b) return; App.anSub = b.dataset.ansub; try { localStorage.setItem('edhgen.anSub', App.anSub); } catch (x) { } renderAnalysis(); });
     $('view').addEventListener('click', e => {
       const b = e.target.closest('button[data-an]'); if (!b) return;
@@ -2167,8 +2161,8 @@
       if (!confirm('Start over? This clears the current deck and all settings. History, card data and appearance are kept.')) return;
       App.R = null; App.AN = null; App.QS = null; App.PR = null; App.SH = null; App.hsel = []; App.hdiff = false; App.chain = null; App.accepted = []; App.denied = new Set(); App.anText = ''; App.anSource = 'deck'; App.openSwap = null; App.cbQ = ''; App.cbN = '';
       applySettings({}); try { history.replaceState(null, '', location.pathname + location.search); } catch (x) { }
-      showMsgs([], []); App.tab = App.easy ? 'easy' : 'setup'; renderAll(); setStatus('Cleared. Pick a commander to start a new deck.'); window.scrollTo({ top: 0 });
-      $(App.easy ? 'ezCmd' : 'cmd1').focus();
+      showMsgs([], []); App.tab = 'setup'; renderAll(); setStatus('Cleared. Pick a commander to start a new deck.'); window.scrollTo({ top: 0 });
+      $('cmd1').focus();
     });
     const pop = $('appearance'), setPop = open => { pop.classList.toggle('hidden', !open); $('themeBtn').setAttribute('aria-expanded', open); };
     $('themeBtn').addEventListener('click', e => { e.stopPropagation(); setPop(pop.classList.contains('hidden')); });
@@ -2196,14 +2190,13 @@
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && k.toLowerCase() === 'z') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } return; }
       if (e.ctrlKey || e.metaKey) return;
       const tabs = [...document.querySelectorAll('.tabs button[data-page]')];
-      if (App.easy && (/^[1-9]$/.test(k) || k === '/' || k === 'g' || k === 'G')) return;
       if (/^[1-9]$/.test(k)) { const b = tabs[+k - 1]; if (b) { e.preventDefault(); b.click(); } }
       else if (k === 'g' || k === 'G') { if (!$('genBtn').disabled) { e.preventDefault(); $('genBtn').click(); } }
       else if (k === 'u' || k === 'U') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } }
       else if (k === '/') { e.preventDefault(); let f = $('cbQ') || $('cbrQ'); if (!f || f.offsetParent === null) { App.tab = 'setup'; renderView(); f = $('cmd1'); } f.focus(); }
       else if (k === '?') { e.preventDefault(); setStatus(KEYS_HELP); }
     });
-    App.impOwn = LS.get('edhgen.impOwn') || ''; App.anGames = +(LS.get('edhgen.anGames') || 100000); App.anSub = LS.get('edhgen.anSub') || 'turns'; App.anAdv = !!LS.get('edhgen.anAdv');
+    App.anGames = +(LS.get('edhgen.anGames') || 100000); App.anSub = LS.get('edhgen.anSub') || 'turns'; App.anAdv = !!LS.get('edhgen.anAdv');
     setupAC('cmd1', 'cmd1L'); setupAC('cmd2', 'cmd2L');
     wireQuick(); syncQuick(App.S);
   }
@@ -2229,9 +2222,8 @@
     if (!S || S.weightsV !== 3) { App.S.weights = uiDefaults().weights; App.S.variance = 0; App.S.reroll = 0; App.S.weightsV = 3; } // v2: weights recalibrated on real data; v3: no random variance, so a rebuild is identical
     if (App.S.bl && ({ 1: 2, 2: 3, 3: 6 })[App.S.bracket] === +App.S.bl.tutor) App.S.bl.tutor = 999; // old defaults; tutor limits were removed Oct 21 2025
     writeForm(App.S); updateShareToken();
-    const mh = /^(easy|normal)$/i.test(hash) ? hash.toLowerCase() : null;
-    if (mh) { try { history.replaceState(null, '', location.pathname + location.search); } catch (x) { } }
-    wire(); setMode((mh || LS.get('edhgen.mode') || 'easy') === 'easy', true); if (App.easy) App.tab = 'easy';
+    if (/^(easy|normal)$/i.test(hash)) { try { history.replaceState(null, '', location.pathname + location.search); } catch (x) { } } // old Easy / Normal links
+    wire();
     renderSources(); renderAll();
     autoload();
   }

@@ -25,9 +25,9 @@ No account, server or install. Nothing you enter leaves your browser. The only o
 ## Quick start
 
 1. Open the [deck generator](https://broken-stuff.github.io/edh-generator/). Card data loads on its own the first time (a few seconds) and is kept in your browser after that.
-2. On **Start**, type a commander under **New deck**, or use **Find a commander** (browse, a quiz, or random picks).
-3. Choose a bracket, budget and game plan, then press **Generate deck** (or `G`).
-4. Read the deck on **Deck**, check it on **Analysis**, take scored fixes on **Improve**, and read the play guide on **Primer**. Copy the list from **Deck**, **Export**.
+2. Optional: on **Collection**, paste or load the cards you own. Every card you own gets a green dot, and you can have new decks and suggestions use only your cards.
+3. On **Start**, fill the tiles (commander, power, budget, game plan) and press **Generate deck** (or `G`), or paste your own list under **Import my deck**. **Find a commander** helps you pick one (browse, a quiz, or random picks).
+4. Check the deck on **Analysis**, take measured fixes on **Improve**, and read the play guide on **Primer**. Copy the list from **Deck**, **Export**.
 
 The two pages link to each other. In the generator, a card's popup has **Similar cards and combos ↗**, which opens that card in the explorer. In the explorer, a card that can be a commander has **Build a deck with it**, which opens the generator with that commander filled in.
 
@@ -49,15 +49,15 @@ Each card is weighed on:
 
 Analysis, Improve and deep search on a mechanics-only deck use the same quality model in place of EDHREC rank. Standard builds are unchanged.
 
-**Easy and Normal.** The header has an **Easy | Normal** switch. Easy is one screen: paste a list (or pick a commander and bracket and build one), then read its snapshot (cards, lands, average mana value, price, power, bracket, win turn, curve), a quick analysis of 1,500 simulated games (keepable hands, missed land drops, commander on curve, weakest area, the three main problems, the three best measured swaps with Accept) and the role counts against real decks. For an imported list the counts compare with the bracket the list plays at. **Go deeper** opens the matching Normal page. Normal is the full app described below. The choice is kept in your browser; a link ending in `#easy` or `#normal` opens in that mode. Easy is the default on a first visit. Both modes use the same functions, so at the same number of games they give the same numbers.
-
-The five pages are in the left menu (a bar at the bottom on phones): **Start**, **Deck**, **Analysis**, **Improve** and **Primer**. **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title.
+The pages are in the left menu (a bar at the bottom on phones) and follow the order you use them in: **Start**, **Collection**, **Deck**, **Analysis**, **Improve** and **Primer** (under More on phones). **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title. The KPI tiles (power, bracket, win turn, price) show on Analysis; the other deck pages show the same numbers in one line.
 
 ### Start
 
-- **New deck:** commander (and partner), bracket, budget, game plan, themes and creature types. **Save, load, share** saves settings as a JSON file, loads one back, or gives a share token: add it to the page address as `#token` and anyone who opens that link gets the same settings.
-- **Import a list:** paste your current list (Moxfield, Archidekt, MTGO, CSV or plain `1 Name`; set codes, collector numbers, `*F*`/`*E*`, Archidekt `[Category]` and `^Tag^`, and Moxfield `#tags` are ignored; Archidekt maybeboard and sideboard cards are left out). The commander is read from a `Commander` or `// COMMANDER` header, a `[Commander]`, `#!Commander` or `*CMDR*` tag, or a `SB:` line. Without one, the importer looks where exports put it: the last block after a blank line, the sideboard, a first block of its own, or the first or last card of a 100-card list; it says where it found it, and if it finds none it lists the legendary cards to pick from. Double-faced and split cards match by either face or with `/`, `//` or `///`; Universes Beyond flavour names (such as Secret Lair printings) match their Oracle card through `data/aliases.json`. The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first, with the deck's problems, role counts and a **Measure swaps** button for scored cuts and adds. Rule problems, such as a deck that isn't 100 cards, show under **Rules** on Deck. Deck, Swap, Combos, Primer and Export work on the imported list too.
-- **Find a commander**, three ways. Each sends a pick to New deck with **Build**.
+Four step tiles at the top show where you are: **Collection**, **Deck**, **Analysis** and **Improve**, each with its status (cards in the collection, the deck's commander and price, its power and win turn, the measured swaps worth making) and a link to its page.
+
+- **Build a deck:** tiles for the commander (and partner), power (Commander Bracket), budget and your collection (mark, prefer or only), then game plan and themes; creature types, deck type and card choice are folded under the plan. **More settings** holds include and exclude lists, price settings and save, load and share. **Save, load, share** saves settings as a JSON file, loads one back, or gives a share token: add it to the page address as `#token` and anyone who opens that link gets the same settings.
+- **Import my deck:** paste your current list (Moxfield, Archidekt, MTGO, CSV or plain `1 Name`; set codes, collector numbers, `*F*`/`*E*`, Archidekt `[Category]` and `^Tag^`, and Moxfield `#tags` are ignored; Archidekt maybeboard and sideboard cards are left out). The commander is read from a `Commander` or `// COMMANDER` header, a `[Commander]`, `#!Commander` or `*CMDR*` tag, or a `SB:` line. Without one, the importer looks where exports put it: the last block after a blank line, the sideboard, a first block of its own, or the first or last card of a 100-card list; it says where it found it, and if it finds none it lists the legendary cards to pick from. Double-faced and split cards match by either face or with `/`, `//` or `///`; Universes Beyond flavour names (such as Secret Lair printings) match their Oracle card through `data/aliases.json`. The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first, with the deck's problems and role counts; Improve measures cuts and adds. Rule problems, such as a deck that isn't 100 cards, show under **Rules** on Deck. Deck, Swap, Combos, Primer and Export work on the imported list too.
+- **Find a commander**, three ways. Each sends a pick to Build a deck with **Build**.
   - **Browse:** every legal commander. Filter by name, text, colour or theme.
   - **Quiz:** a seven-question quiz (colours, play style, creature type, themes, power, popularity, commander price). Every legal commander gets a match score and its reasons:
     - **Play style** (Aggressive, Control, Combo, Value engine, Go big) reads the commander's rules text, such as attack triggers, counterspells, board wipes, untap effects or cost reduction. Combo also counts the commander's Commander Spellbook combos.
@@ -65,6 +65,15 @@ The five pages are in the left menu (a bar at the bottom on phones): **Start**, 
     - **Themes** use the same synergy tags as New deck. **Power** looks at Game Changer status, infinite combos and the card-power estimate. **Popularity** is EDHREC rank among commanders.
     - Match is the weighted share of your answers it meets: play style 3, creature type 3, themes 2, power 1, popularity 1.
   - **Random:** three random commanders, filtered by colours, popularity (top 500, or outside the top 1,000) and price. Each shows its rules text and the play styles and themes it leans toward. Reroll any one.
+
+### Collection
+
+Paste the cards you own (one per line, `1 Card Name` or just the name, or a CSV export with a Name column from Moxfield, Archidekt, Deckbox or ManaBox), or load a file. Names not in the card data are listed. Then choose how to use it:
+- **Mark the cards I own:** a green dot after every card you own, everywhere a card name is shown, and "In your collection" in its popup. Builds and suggestions use all cards.
+- **Prefer cards I own:** new decks favour your cards (the Owned bonus weight).
+- **Only cards I own:** new decks and every suggestion on Analysis and Improve (suggested swaps, deep search, By card, Budget upgrades, combos one card away) use only your cards. Basic lands are always allowed.
+
+With a deck loaded the page shows how many of its nonbasic cards you own and what the rest cost, with **Copy the cards to get** for a store's mass entry. The list is kept in your browser with your settings.
 
 ### Deck
 
@@ -75,18 +84,18 @@ The five pages are in the left menu (a bar at the bottom on phones): **Start**, 
 
 ### Analysis
 
-Scores any deck, generated, imported or pasted, or compares two. The top of the page shows fundamentals, balance, lands against the curve estimate, cards that are hard to cast on curve, the commander turn, the simulated combo turn, and where the win turn comes from. Below that, on the same page:
+Scores the current deck, generated or imported, or compares it with another list. The top of the page shows fundamentals, balance, lands against the curve estimate, cards that are hard to cast on curve, the commander turn, the simulated combo turn, and where the win turn comes from. Below that, on the same page:
 - **Problems**, high and medium first; low and info notes are folded away.
 - **Counts against real decks**, the same table as Deck › Counts.
-- **Recommended changes**, the same measured swaps as Improve › Suggested swaps, with Accept, Deny and Accept all. For an imported deck they are measured when you press **Measure swaps**. Links lead to the slower searches on Improve.
+- **Next: Improve**, with the number of candidate swaps, where they come from (all cards or your collection) and how much of the deck you own.
 
-Buttons under the source switch jump to each section. Accepting a swap keeps the page in place while it re-analyzes.
+Buttons under the source switch jump to each section. **Compare** scores another pasted list against the deck.
 
 **Show detail** opens turn-by-turn odds and the goldfish simulation (1,500 to 100,000 games), the power level from 1 to 10 with its five vectors and combos, the eight fundamentals, mana base and interaction, synergy themes, deck stats (mana curve, colour pips against sources, roles against targets, price, Game Changers) and the method.
 
 ### Improve
 
-**Suggest cards from** (on Analysis and at the top of every Improve view): **All cards**, or **My collection**, which takes every add in suggested swaps, candidate cards, deep search, By card, Budget upgrades and combos one card away only from your collection list. Basic lands are always allowed. It uses the list under Start › Fine-tune › Collection, which you can also paste or load from a file right there (one card per line, or a CSV export with a Name column). The choice is kept in this browser and starts as My collection when the collection mode is **Owned only**. With **All cards**, adds you own are marked "owned".
+**Suggest cards from** (at the top of every Improve view): **All cards**, or **My collection**, the same switch as **Only cards I own** on Collection. It takes every add in suggested swaps, candidate cards, deep search, By card, Budget upgrades and combos one card away only from your collection list. Basic lands are always allowed. With **All cards**, adds you own carry the green dot.
 
 - **Suggested swaps:** recommended cuts and adds for the analyzed list, each scored with simulated games. Accept or deny them one at a time, by group or all at once. Candidate cards for each problem are under the list. **Deep search** (10–30 s, runs in background workers, with a progress bar and Cancel) screens several hundred candidate adds at 1,500 simulated games, confirms the best 60 at 5,000, includes cards and pairs that complete Commander Spellbook combos, and builds a package of swaps chosen one after another on the list as changed so far, so synergy between the added cards counts. A refinement pass then retries each package swap against other adds and cuts, or without it. **Thorough** (~1 min on 4 cores) screens more cards and cuts, confirms 80, and builds the package with a three-wide beam search. Its swaps join the list for you to accept or deny. Candidates are ordered by EDHREC play rate first and theme fit second, plus the best-fitting cards by theme alone. Each swap must gain at least 1 (0.1 power level) and the package at least 3 (0.3 power level); below that the list is shown as near optimal, since accepting and re-running would keep finding ever smaller gains. Each group shows its best 3; gap and upgrade suggestions that measure below 1, the rest of each group and the deep search's single swaps are behind Show. A card cut by an accepted swap is not suggested again, and a card it added is not cut, so swaps cannot go back and forth.
 - **By card:** every nonland card in the list with up to three better cards, one per price band (up to the card's price or $1, up to 3× it or $5, above), each measured as a swap at 1,500 games (~20 s in background workers). Options that gain less than 0.5 are left out, and one card is offered for at most two cards in the list. Swap applies one.
@@ -105,8 +114,8 @@ A play guide built from the deck's own numbers: table talk for the pre-game conv
 
 ### Anywhere in the generator
 
-- **Hover or tap a card name** for its cost, text, price, roles and why it is in the deck.
-- **Keys:** `1`–`5` open Start, Deck, Analysis, Improve and Primer, `G` generates, `/` jumps to search, `U` or `Ctrl/Cmd+Z` undoes, `Esc` closes popups, `?` lists the keys.
+- **Hover or tap a card name** for its cost, text, price, roles, whether you own it and why it is in the deck. On a computer it opens beside the name; on a phone it slides up from the bottom. With card images on, the picture sits left of the text.
+- **Keys:** `1`–`6` open Start, Collection, Deck, Analysis, Improve and Primer, `G` generates, `/` jumps to search, `U` or `Ctrl/Cmd+Z` undoes, `Esc` closes popups, `?` lists the keys.
 - **Clear** (top right) starts over. History, card data and appearance are kept.
 
 ## Card explorer

@@ -100,13 +100,14 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 .rail .morelist{display:flex;flex-direction:column;gap:2px;margin-top:2px}
 .rail .morelist.hidden{display:none}
 .rail .morelist button{padding-left:22px}
-.rail .morelist a.mlink{display:none}
+.rail .morelist a.mlink,.rail .morelist .mprimer{display:none}
 .pgnav{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:8px}
 .pgnav .subtabs{margin:0}
 .pgseg button{padding:5px 12px;font-size:calc(12.5px*var(--fz))}
 .st.stbtn{cursor:pointer;border:0;font:inherit;font-size:calc(11.5px*var(--fz))}
-body[data-page="start"] #kpis,body[data-page="start"] #scorebar,body[data-page="more"] #kpis,body[data-page="more"] #scorebar{display:none}
+body[data-page="start"] #kpis,body[data-page="start"] #scorebar,body[data-page="collection"] #kpis,body[data-page="collection"] #scorebar,body[data-page="more"] #kpis,body[data-page="more"] #scorebar{display:none}
 body[data-view="setup"] #genBtn{display:none}
+body:not([data-page="analysis"]) #kpis{display:none}
 .results{min-width:0;display:flex;flex-direction:column;gap:14px}
 /* KPI cards */
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
@@ -332,7 +333,8 @@ table.swaps td{vertical-align:top}
   /* the rail becomes a bottom tab bar: five pages and More */
   body[data-page]{padding-bottom:calc(68px + env(safe-area-inset-bottom))}
   .rail{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:40;flex-direction:row;justify-content:space-around;max-height:none;overflow:visible;padding:4px 4px calc(4px + env(safe-area-inset-bottom));border-radius:0;border-width:1px 0 0;gap:0}
-  .rail .hello{display:none}
+  .rail .hello,.rail>button.rprimer{display:none}
+  .rail .morelist button.mprimer{display:flex}
   .rail>button,.rail .morebtn{flex:1 1 0;flex-direction:column;gap:2px;padding:7px 2px;border-radius:10px;font-size:calc(11px*var(--fz));justify-content:center}
   .rail .morewrap{flex:1 1 0;display:flex;margin:0;padding:0;border:0}
   .rail .morelist{position:absolute;right:4px;bottom:calc(100% + 6px);min-width:180px;padding:6px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--pop-shadow)}
@@ -355,6 +357,9 @@ table.swaps td{vertical-align:top}
   .actions{border-radius:16px}
   .page-h h2{font-size:calc(24px*var(--fz))}
   .seg.wide button,.chips button{min-height:40px}
+  .subtabs{flex-wrap:wrap;overflow:visible}
+  .gen-row{position:sticky;bottom:calc(72px + env(safe-area-inset-bottom));z-index:20;background:var(--bg);padding:8px 0;margin:0 -2px}
+  .gen-row .note{display:none}
   /* header fits one row: no logo, short Generate label; in Normal the card explorer link moves to More */
   .bar{flex-wrap:wrap;justify-content:flex-end;gap:6px}
   .bar .brand,.bar .gl,#clearBtn span{display:none}
@@ -362,8 +367,8 @@ table.swaps td{vertical-align:top}
   #clearBtn{width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center}
   #clearBtn svg{display:block}
   .bar #genBtn{padding:8px 14px}
-  body[data-mode="normal"] .bar .sitenav{display:none}
-  body[data-mode="normal"] .rail .morelist a.mlink{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:11px;color:var(--muted);font-weight:500;font-size:calc(13.5px*var(--fz))}
+  .bar .sitenav{display:none}
+  .rail .morelist a.mlink{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:11px;color:var(--muted);font-weight:500;font-size:calc(13.5px*var(--fz))}
   .rail .morelist a.mlink svg{width:18px;height:18px;flex:none}
   .rail .morelist a.mlink:hover{background:var(--card-2);color:var(--ink);text-decoration:none}
 }
@@ -371,11 +376,18 @@ table.swaps td{vertical-align:top}
 /* card names, popover, sample hand, commander browser, print */
 a.cl{color:inherit;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;cursor:pointer}
 a.cl:hover{text-decoration-color:currentColor}
-#cardPop{position:fixed;z-index:60;width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--pop-shadow,0 16px 48px -10px rgba(16,24,40,.25));padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:calc(13px*var(--fz))}
-#cardPop .cimg{width:100%;aspect-ratio:488/680;border-radius:10px;background:var(--card-2);object-fit:cover}
+#cardPop{position:fixed;z-index:60;width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);overflow-x:hidden;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--pop-shadow,0 16px 48px -10px rgba(16,24,40,.25));padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:calc(13px*var(--fz))}
+#cardPop .cimg{height:min(340px,42vh);width:auto;max-width:100%;aspect-ratio:488/680;align-self:center;border-radius:10px;background:var(--card-2);object-fit:cover}
 #cardPop .cp-h{display:flex;gap:8px;align-items:baseline}#cardPop .cp-h b{flex:1}
 #cardPop .iconx{border:0;background:none;padding:0 2px;color:var(--muted);font-size:calc(13px*var(--fz));cursor:pointer;min-height:0}
-#cardPop .cp-ot{white-space:normal;line-height:1.45}
+#cardPop .cp-ot{white-space:normal;line-height:1.45;overflow-wrap:anywhere;min-width:0}
+#cardPop .cp-ot .mcost{white-space:normal}
+/* with the picture on: picture left, text right, so the popover stays short */
+#cardPop.wimg{width:min(600px,calc(100vw - 16px));display:grid;grid-template-columns:240px minmax(0,1fr);column-gap:16px;row-gap:6px;align-content:start}
+#cardPop.wimg>*{grid-column:2;min-width:0}
+#cardPop.wimg>.cimg{grid-column:1;grid-row:1/span 12;height:auto;width:100%;align-self:start} /* rules text wraps; only mana costs stay on one line */
+#cardPop .iconx{min-width:32px;min-height:32px}
+@media (max-width:640px){#cardPop{left:8px;right:8px;top:auto;bottom:calc(76px + env(safe-area-inset-bottom));width:auto;max-height:70dvh;box-shadow:0 -8px 40px rgba(0,0,0,.25)}#cardPop .cimg{height:min(260px,32dvh)}#cardPop.wimg{display:flex}#cardPop.wimg>.cimg{height:min(260px,32dvh);width:auto}}
 #cardPop .cp-m{color:var(--muted)}
 #cardPop .cp-why{border-top:1px solid var(--line);padding-top:6px}
 .hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px;margin:14px 0}
@@ -473,24 +485,51 @@ ul.dl{margin:4px 0;padding-left:18px;columns:2;column-gap:20px}
 .ins-card .cp-ot{font-size:calc(12.5px*var(--fz));line-height:1.45;color:var(--ink);background:var(--card-2);border-radius:10px;padding:8px 10px}
 .ins-card .row{margin-top:auto}
 .ins-card a.small{font-size:calc(12px*var(--fz))}
-/* Easy mode: one screen (input, snapshot, counts, quick review); the rail, header KPIs and Generate button belong to Normal */
-body[data-mode="easy"] .rail,body[data-mode="easy"] #kpis,body[data-mode="easy"] #scorebar,body[data-mode="easy"] #genBtn,body[data-mode="easy"] #regenBtn{display:none}
-body[data-mode="easy"] .wrap{grid-template-columns:minmax(0,1fr)}
-body[data-mode="easy"] .results{max-width:1100px;width:100%;margin:0 auto}
-@media (max-width:900px){body[data-mode="easy"][data-page]{padding-bottom:16px}}
-.modeseg button{padding:5px 12px}
-.ez-in{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px}
-.ez-in .an-card{display:flex;flex-direction:column;gap:8px}
-.ez-in textarea{min-height:150px}
-.ez-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:14px}
-.ez-snap{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px 16px}
-.ez-snap .kv b{font-size:calc(17px*var(--fz))}
-.ez-list{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
-.ez-next{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
-details.ez-again{margin-bottom:14px}
-details.ez-again>summary{cursor:pointer}
-@media (max-width:700px){.ez-in{grid-template-columns:minmax(0,1fr)}.ez-grid{grid-template-columns:minmax(0,1fr)}}
-@media (max-width:440px){.modeseg button{padding:5px 9px}}
+/* tiles: Start's settings and the step strip (Collection, Deck, Analysis, Improve) */
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:stretch}
+@media (min-width:1400px){.tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.tile.wide{grid-column:1/-1}
+.tile-h{display:flex;align-items:center;gap:10px;min-width:0}
+.tile-h h3{margin:0;font-size:calc(15px*var(--fz))}
+.tile-h .hint{margin-left:auto;color:var(--muted);font-size:calc(12px*var(--fz));text-align:right}
+.tile-h .si,.step .si{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--card-2);color:var(--ink);flex:none}
+.tile-h .si svg{width:16px;height:16px}
+.tdet>summary{cursor:pointer;padding:2px 0}
+.tdet[open]>summary{margin-bottom:8px}
+.body0{display:flex;flex-direction:column;gap:10px}
+.gen-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.gen-row button.block{width:auto;min-width:260px;margin:0;padding-left:28px;padding-right:28px}
+.sub{display:flex;flex-direction:column;gap:10px;min-width:0}
+.sub h4{margin:0;font-size:calc(13px*var(--fz))}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0 2px}
+.step{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;border-radius:var(--r);padding:12px 14px;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);min-width:0;font-weight:400}
+.step:hover{border-color:var(--line-strong);background:var(--card)}
+.step .sh{display:flex;align-items:center;gap:8px;font-weight:600;font-size:calc(14px*var(--fz))}
+.step .sn{width:22px;height:22px;border-radius:50%;display:inline-grid;place-items:center;font-size:calc(11.5px*var(--fz));font-weight:700;background:var(--card-2);color:var(--muted);flex:none}
+.step .ss{color:var(--muted);font-size:calc(12.5px*var(--fz));line-height:1.35;overflow-wrap:anywhere}
+.step .sg{margin-top:auto;padding-top:4px;font-size:calc(12.5px*var(--fz));font-weight:600;color:var(--accent)}
+:root:not([data-accent]) .step .sg{color:var(--focus)}
+.step.done .sn{background:var(--ok-soft);color:var(--ok)}
+.step.next{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),var(--shadow)}
+.step.next .sn{background:var(--accent);color:var(--accent-ink)}
+.step.off{opacity:.62}
+.step[aria-current="page"]{background:var(--card-2)}
+/* owned cards: a green dot after the name, everywhere a card name is shown */
+a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-left:5px;vertical-align:1px;box-shadow:0 0 0 2px var(--ok-soft)}
+.own-sum{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.coll-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px;align-items:start}
+.coll-grid .tile textarea{min-height:220px}
+.own-modes{display:flex;flex-direction:column;gap:8px}
+.own-modes button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border-radius:12px;padding:10px 12px}
+.own-modes button span{font-size:calc(12px*var(--fz));color:var(--muted);font-weight:400}
+.own-modes button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+.own-modes button[aria-pressed="true"] span{color:inherit;opacity:.85}
+.next-tile{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding:14px 16px;border-radius:14px;border:1px solid var(--accent);background:var(--accent-soft)}
+.next-tile p{margin:0}
+@media (max-width:900px){.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.coll-grid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:640px){.tiles{grid-template-columns:minmax(0,1fr)}.tile{padding:14px}.steps{gap:8px}.step{padding:10px 12px}.gen-row button.block{width:100%;min-width:0}}
+@media (pointer:coarse){button.small,.subtabs button,.seg button,.step{min-height:40px}button.link{min-height:32px;padding:4px 2px}}
 @media (max-width:374px){.mini{position:static}}
 </style>
 
@@ -502,7 +541,6 @@ details.ez-again>summary{cursor:pointer}
     <h1>broken-stuff<small>EDH generator</small></h1>
   </div>
   <nav class="sitenav" aria-label="Site"><a href="./" aria-current="page"><span class="sn-l">Deck generator</span><span class="sn-s">Decks</span></a><a href="card.html"><span class="sn-l">Card explorer</span><span class="sn-s">Cards</span></a></nav>
-  <div class="seg modeseg" id="modeSeg" role="group" aria-label="Interface"><button type="button" data-mode="easy" aria-pressed="true" title="One screen: counts, a quick analysis and the top swaps">Easy</button><button type="button" data-mode="normal" aria-pressed="false" title="Every page and setting">Normal</button></div>
   <div class="sources" id="sources" aria-live="polite">
     <span class="pill" id="pBulk"><span class="dot"></span>Cards: not loaded</span>
     <span class="pill hidden" id="pCombo"><span class="dot"></span></span>
@@ -517,7 +555,7 @@ details.ez-again>summary{cursor:pointer}
       <div><h3>Text size</h3><div class="seg" id="apSize"><button type="button" data-v="0.93">S</button><button type="button" data-v="1">M</button><button type="button" data-v="1.12">L</button><button type="button" data-v="1.25">XL</button></div></div>
       <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
       <div><h3>Card images</h3><div class="seg" id="apImg"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div><p class="note" style="margin-top:4px">On loads pictures from cards.scryfall.io when a card is shown. Everything else stays on this site.</p></div>
-      <p class="note">Keys: 1–5 pages · G generate · / search · U undo · ? help</p>
+      <p class="note">Keys: 1–6 pages · G generate · / search · U undo · ? help</p>
     </div>
   </div>
   <button type="button" id="clearBtn" title="Clear the deck and settings and start over" aria-label="Clear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Clear</span></button>
@@ -528,13 +566,15 @@ details.ez-again>summary{cursor:pointer}
 <nav class="tabs rail" role="tablist" aria-label="Pages" aria-orientation="vertical">
   <div class="hello">Commander<br>deck builder</div>
   <button role="tab" aria-selected="true" data-page="start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Start</span></button>
+  <button role="tab" aria-selected="false" data-page="collection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg><span>Collection</span></button>
   <button role="tab" aria-selected="false" data-page="deck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg><span>Deck</span></button>
   <button role="tab" aria-selected="false" data-page="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analysis</span></button>
   <button role="tab" aria-selected="false" data-page="improve"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg><span>Improve</span></button>
-  <button role="tab" aria-selected="false" data-page="primer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
+  <button role="tab" aria-selected="false" data-page="primer" class="rprimer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
   <div class="morewrap">
     <button type="button" id="moreBtn" class="morebtn" aria-expanded="false" aria-controls="moreList"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/></svg><span>More</span></button>
     <div class="morelist hidden" id="moreList">
+      <button type="button" data-tab="primer" class="mprimer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
       <button type="button" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg><span>History</span></button>
       <button type="button" data-tab="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>Build log</span></button>
       <a class="mlink" href="card.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>Card explorer</span></a>
@@ -558,29 +598,39 @@ details.ez-again>summary{cursor:pointer}
   <div id="pageHead" class="page-h hidden"></div>
 
   <section class="settings" id="setupView" aria-label="Deck settings">
-    <div class="setup-grid">
-      <div class="col">
-<details class="sec" open><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4 4 5-7 5 7 4-4-2 11H5z"/></svg></span>Commander<span class="hint"></span></summary><div class="body">
+    <div class="tiles">
+<div class="tile" id="tCmd"><div class="tile-h"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4 4 5-7 5 7 4-4-2 11H5z"/></svg></span><h3>Commander</h3></div>
   <div class="ac"><label class="f">Commander <input type="search" id="cmd1" data-k="commanders.0" autocomplete="off" placeholder="Start typing a name" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd1L"></ul></div>
-  <div class="ac"><label class="f">Second commander (Partner, Partner with, Friends forever, Background, Doctor's companion)<input type="search" id="cmd2" data-k="commanders.1" autocomplete="off" placeholder="Optional" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd2L"></ul></div>
+  <details class="tdet" id="cmd2Det"><summary class="note">Second commander (Partner, Background, Doctor's companion)</summary>
+  <div class="ac"><label class="f">Second commander<input type="search" id="cmd2" data-k="commanders.1" autocomplete="off" placeholder="Optional" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd2L"></ul></div></details>
   <div class="note" id="cmdNote"></div>
-</div></details>
-<details class="sec" open id="secBudget"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/></svg></span>Budget <span class="hint" id="budHint"></span></summary><div class="body">
+  <div class="note">No idea yet? <button type="button" class="link" data-view="find">Find a commander</button></div>
+</div>
+<div class="tile" id="tPower"><div class="tile-h"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><h3>Power</h3><span class="hint" id="brHint"></span></div>
+  <div class="chips" id="qBracket" role="radiogroup" aria-label="Commander Bracket"><button type="button" data-br="1" title="Casual, theme first; games end turn 9 or later">1 Exhibition</button><button type="button" data-br="2" title="About a preconstructed deck">2 Core</button><button type="button" data-br="3" title="Tuned, up to 3 Game Changers">3 Upgraded</button><button type="button" data-br="4" title="High power, no limits but the ban list">4 Optimized</button><button type="button" data-br="5" title="Competitive">5 cEDH</button></div>
+  <label class="f hidden">Commander Bracket
+      <select id="bracket" data-k="bracket" data-type="num">
+        <option value="1">1 · Exhibition</option><option value="2">2 · Core</option><option value="3">3 · Upgraded</option><option value="4">4 · Optimized</option><option value="5">5 · cEDH</option>
+      </select></label>
+</div>
+<div class="tile" id="tBudget"><div class="tile-h"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/></svg></span><h3>Budget</h3><span class="hint" id="budHint"></span></div>
   <div class="chips" id="qBudget" role="group" aria-label="Budget presets"><button type="button" data-b="25">$25</button><button type="button" data-b="50">$50</button><button type="button" data-b="100">$100</button><button type="button" data-b="250">$250</button><button type="button" data-b="500">$500</button><button type="button" data-b="">No limit</button></div>
   <div class="grid2">
     <label class="f">Total cap<input type="number" min="0" step="0.01" id="bTotal" data-k="budget.total" placeholder="none"></label>
     <label class="f">Per-card cap<input type="number" min="0" step="0.01" id="bPer" data-k="budget.perCard" placeholder="none"></label>
-    <label class="f">Currency / price source
-      <select id="bCur" data-k="budget.cur"><option value="usd">USD (Scryfall prices.usd)</option><option value="eur">EUR (prices.eur)</option><option value="tix">TIX (prices.tix)</option></select></label>
-    <label class="f">Cards with no price
-      <select id="bUnk" data-k="budget.unknown"><option value="exclude">Exclude when a cap is set</option><option value="allow">Allow (count as 0)</option></select></label>
   </div>
-  <label class="c"><input type="checkbox" id="bBasics" data-k="budget.inclBasics"> Include basic lands in total</label>
-  <div class="note">The total is a hard cap: the optimiser never exceeds it and spends it where it raises the deck score most. Commanders count toward the total but not the per-card cap.</div>
-</div></details>
-      </div>
-      <div class="col">
-<details class="sec" open id="secQuick"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2M15 10V8M11 6h2M17 6h2M4 20 14 10"/><path d="m18 13 .7 1.3L20 15l-1.3.7L18 17l-.7-1.3L16 15l1.3-.7z"/></svg></span>Game plan and themes <span class="hint" id="brHint"></span></summary><div class="body">
+</div>
+<div class="tile" id="tOwn"><div class="tile-h"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg></span><h3>Collection</h3><span class="hint" id="ownHint"></span></div>
+  <div id="ownTile"></div>
+</div>
+<div class="tile wide" id="tPlan"><div class="tile-h"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2M15 10V8M11 6h2M17 6h2M4 20 14 10"/><path d="m18 13 .7 1.3L20 15l-1.3.7L18 17l-.7-1.3L16 15l1.3-.7z"/></svg></span><h3>Game plan and themes</h3></div>
+  <div class="f"><span>Game plan</span><div class="seg wide" id="qPlan" role="radiogroup" aria-label="Game plan">
+    <button type="button" data-plan="balanced">Balanced</button><button type="button" data-plan="fast">Fast</button><button type="button" data-plan="late">Late game</button><button type="button" data-plan="control">Control</button>
+  </div><div class="note" id="qPlanNote"></div></div>
+  <div class="f"><span>Themes <span class="note">(optional; pick any number, slots are shared evenly)</span></span><div class="chips" id="qThemes"></div></div>
+  <details class="tdet"><summary class="note">Creature types, deck type and card choice</summary><div class="body0">
+  <label class="f">Creature types and other themes<input type="text" id="tags" data-k="tags" placeholder="e.g. Angel, Human, o:proliferate"></label>
+  <div class="note" id="tagNote"></div>
   <div class="grid2">
     <label class="f">Deck type
       <select id="archetype" data-k="archetype">
@@ -590,41 +640,32 @@ details.ez-again>summary{cursor:pointer}
       <select id="mode" data-k="mode">
         <option value="">Standard (synergy + EDHREC popularity)</option><option value="mech">Mechanics only (no popularity)</option>
       </select></label>
-    <label class="f">Power (Commander Bracket)
-      <select id="bracket" data-k="bracket" data-type="num">
-        <option value="1">1 · Exhibition</option><option value="2">2 · Core</option><option value="3">3 · Upgraded</option><option value="4">4 · Optimized</option><option value="5">5 · cEDH</option>
-      </select></label>
-  </div>
-  <div class="f"><span>Game plan</span><div class="seg wide" id="qPlan" role="radiogroup" aria-label="Game plan">
-    <button type="button" data-plan="balanced">Balanced</button><button type="button" data-plan="fast">Fast</button><button type="button" data-plan="late">Late game</button><button type="button" data-plan="control">Control</button>
-  </div><div class="note" id="qPlanNote"></div></div>
-  <div class="f"><span>Themes <span class="note">(pick any number; slots are shared evenly)</span></span><div class="chips" id="qThemes"></div></div>
-  <label class="f">Creature types and other themes<input type="text" id="tags" data-k="tags" placeholder="e.g. Angel, Human, o:proliferate"></label>
-  <div class="note" id="tagNote"></div>
-  <button type="button" class="primary block" id="qGen">Generate deck</button>
-</div></details>
-      </div>
+  </div></div></details>
+</div>
     </div>
-    <div class="side-h">Fine-tune</div>
+    <div class="gen-row"><button type="button" class="primary block" id="qGen">Generate deck</button><span class="note">Same settings, same deck. Keyboard: G.</span></div>
+    <details class="sec" id="secMore"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></span>More settings<span class="hint">include and exclude, prices, save and share, card data</span></summary><div class="body">
     <div class="setup-more">
-<details class="sec"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg></span>Include / exclude<span class="hint"></span></summary><div class="body">
+<div class="sub"><h4>Include / exclude</h4>
   <label class="f">Must include (one per line, "N Name" allowed)<textarea id="incl" data-k="include" placeholder="1 Sol Ring"></textarea></label>
     <label class="f">Exclude<textarea id="excl" data-k="exclude"></textarea></label>
   <div class="note">Includes count toward category targets and are never auto-removed.</div>
-</div></details>
-<details class="sec"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg></span>Collection<span class="hint"></span></summary><div class="body">
-  <div class="grid2">
-    <label class="f">Mode<select id="oMode" data-k="owned.mode"><option value="off">Off</option><option value="prefer">Prefer owned</option><option value="only">Owned only</option></select></label>
-  </div>
-  <label class="f">Collection list (paste, or load a .txt/.csv)<textarea id="oList" data-k="owned.list"></textarea></label>
-  <input type="file" id="oFile" accept=".txt,.csv,text/plain,text/csv" aria-label="Load collection file">
-</div></details>
-<details class="sec"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg></span>Save, load, share<span class="hint"></span></summary><div class="body">
+</div>
+<div class="sub"><h4>Prices</h4>
+  <label class="f">Currency / price source
+      <select id="bCur" data-k="budget.cur"><option value="usd">USD (Scryfall prices.usd)</option><option value="eur">EUR (prices.eur)</option><option value="tix">TIX (prices.tix)</option></select></label>
+  <label class="f">Cards with no price
+      <select id="bUnk" data-k="budget.unknown"><option value="exclude">Exclude when a cap is set</option><option value="allow">Allow (count as 0)</option></select></label>
+  <label class="c"><input type="checkbox" id="bBasics" data-k="budget.inclBasics"> Include basic lands in total</label>
+  <div class="note">The total is a hard cap: the optimiser never exceeds it and spends it where it raises the deck score most. Commanders count toward the total but not the per-card cap.</div>
+</div>
+<div class="sub"><h4>Save, load, share</h4>
   <div class="row"><button type="button" class="small" id="saveSet">Save settings JSON</button><label class="small" style="font-size:12px">Load <input type="file" id="loadSet" accept=".json,application/json" style="width:180px"></label></div>
   <label class="f">Share token (append to the page URL as #token, or paste here)<textarea id="shareTok" rows="2" spellcheck="false"></textarea></label>
   <div class="row"><button type="button" class="small" id="copyTok">Copy token</button><button type="button" class="small" id="applyTok">Apply pasted token</button><button type="button" class="small" id="resetSet">Reset to defaults</button></div>
-</div></details>
+</div>
     </div>
+</div></details>
 <details class="sec" id="secData"><summary><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></span>Card data <span class="hint" id="dataHint"></span></summary><div class="body">
   <div class="note">The site loads the newest Scryfall file in its data folder automatically. You can also load your own; it is read in this browser and nothing is sent anywhere.</div>
   <label class="f">Scryfall bulk file (Oracle Cards or Default Cards; .json, .jsonl or .gz)
