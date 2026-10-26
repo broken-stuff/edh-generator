@@ -37,3 +37,9 @@ assert(bare.length / top.length <= 0.2, 'EDHREC top 500: ' + bare.length + ' of 
   assert(pure.every(c => !rc.removal.cards.includes(c)), 'counts: pure counterspells are not spot removal');
   assert([0, 1, 2, 3, 4, 5].every(b => An.ROLE_RANGES[b] && An.COUNT_CATS.every(([k]) => An.ROLE_RANGES[b][k][0] <= An.ROLE_RANGES[b][k][2])), 'counts: reference ranges for every bracket and category');
 }
+// a name shared by a real card and a playtest or Un card (Mystery Booster 2's Pick Your Poison, Dragon Egg) looks up the Commander-legal one
+{
+  const shared = new Map(); for (const c of db.all) { const k = c.n.toLowerCase(); shared.set(k, (shared.get(k) || []).concat(c)); }
+  const wrong = [...shared.values()].filter(l => l.length > 1 && l.some(c => c.leg === 'legal') && E.lookup(db, l[0].n).leg !== 'legal').map(l => l[0].n);
+  assert(E.lookup(db, 'Pick Your Poison').leg === 'legal' && !wrong.length, 'shared names look up the legal card' + (wrong.length ? '; wrong: ' + wrong.slice(0, 10).join(', ') : ''));
+}
