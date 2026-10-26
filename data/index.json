@@ -7,14 +7,14 @@
    "sha256": "87c6bd7a54012efae1f40a75c5ebf3764f36662bdfff20427483ce4f7e842838"
   },
   {
-   "name": "oracle-cards-20261021090159.jsonl.gz",
-   "size": 7093468,
-   "sha256": "0df00741a9d213698c9fb3e6d505360001cde54df7bee3c10b108bc4db1f9ad0"
+   "name": "oracle-cards-20261025210154.jsonl.gz",
+   "size": 7105227,
+   "sha256": "43a2a9c7eb7a6e3e2b7002430d5b45b668ddb3c84a7cb2c6b6fec0f3429c51a4"
   }
  ],
  "spellbook": {
   "manifest": "spellbook/manifest.json",
-  "variants": 113961,
-  "timestamp": "2026-10-21T21:12:24.862187+00:00"
+  "variants": 114115,
+  "timestamp": "2026-10-26T05:13:05.264415+00:00"
  }
 }

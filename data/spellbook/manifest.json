@@ -1,52 +1,52 @@
 {
  "format": "edhgen-spellbook/1",
  "source": "https://json.commanderspellbook.com/variants.json",
- "timestamp": "2026-10-21T21:12:24.862187+00:00",
- "version": "7.3.0",
- "variants": 113961,
- "read": 115797,
+ "timestamp": "2026-10-26T05:13:05.264415+00:00",
+ "version": "7.3.1",
+ "variants": 114115,
+ "read": 115954,
  "skipped": {
   "status": 0,
-  "legality": 1836,
+  "legality": 1839,
   "noCards": 0
  },
- "cards": 7372,
+ "cards": 7370,
  "features": 1094,
  "templates": 176,
  "tables": {
   "file": "tables.json",
-  "bytes": 217582
+  "bytes": 217549
  },
  "shards": [
   {
    "file": "variants-000.json",
    "count": 20000,
-   "bytes": 1518061
+   "bytes": 1510144
   },
   {
    "file": "variants-001.json",
    "count": 20000,
-   "bytes": 1534905
+   "bytes": 1526914
   },
   {
    "file": "variants-002.json",
    "count": 20000,
-   "bytes": 1516687
+   "bytes": 1507723
   },
   {
    "file": "variants-003.json",
    "count": 20000,
-   "bytes": 1508587
+   "bytes": 1506415
   },
   {
    "file": "variants-004.json",
    "count": 20000,
-   "bytes": 1521056
+   "bytes": 1512708
   },
   {
    "file": "variants-005.json",
-   "count": 13961,
-   "bytes": 1063141
+   "count": 14115,
+   "bytes": 1069334
   }
  ]
 }
