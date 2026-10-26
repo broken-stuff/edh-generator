@@ -337,6 +337,42 @@
     return 'Prices (' + R.settings.budget.cur.toUpperCase() + '), legality, Game Changer flags and EDHREC ranks: ' + esc(m.source || '') + (m.file ? ' "' + esc(m.file) + '"' : '') + (t ? ', ' + esc(t) : '') + '.';
   }
 
+  /* ---------- collection for suggestions: every add on Analysis and Improve comes from all cards or only from the
+     collection list (the one under Start › Fine-tune › Collection). The choice is kept in this browser, apart from the
+     settings so it doesn't change a generated deck's seed; until it is set it follows the collection mode (Owned only). ---------- */
+  let ownC = null;
+  function ownedCards() {
+    if (!App.bulk) return null;
+    const l = App.S.owned.list || '';
+    if (!ownC || ownC.l !== l || ownC.db !== App.bulk) {
+      const set = new Set(); let miss = 0;
+      for (const it of Engine.parseList(l)) { const c = Engine.lookup(App.bulk, it.name); if (c) set.add(c.n); else miss++; }
+      ownC = { l, db: App.bulk, set, miss, key: Engine.hashStr(l) };
+    }
+    return ownC;
+  }
+  const ownOnly = () => App.impOwn ? App.impOwn === 'only' : App.S.owned.mode === 'only';
+  const ownOpt = () => { const o = ownOnly() && ownedCards(); return o ? o.set : null; }; // Analysis.run opts.owned
+  const ownKey = () => ownOnly() ? 'own:' + (ownedCards() || {}).key : 'all';
+  function ownBarHTML() {
+    const o = ownedCards(), on = ownOnly(), n = o ? o.set.size : 0, open = App.ownEdit || (on && !n);
+    const seg = '<div class="seg" role="group" aria-label="Suggest cards from"><button type="button" data-own="all" aria-pressed="' + !on + '">All cards</button><button type="button" data-own="only" aria-pressed="' + on + '">My collection</button></div>';
+    const note = (n ? n.toLocaleString() + ' card' + (n === 1 ? '' : 's') + ' in your collection' + (o.miss ? ', ' + o.miss + ' not found' : '') : 'No collection list yet') + ' · <button type="button" class="link" data-own="edit" aria-expanded="' + !!open + '">' + (n ? 'edit' : 'add one') + '</button>';
+    const box = !open ? '' : '<div class="own-box"><label class="f">Your collection: one card per line ("1 Card Name" or just the name), or a CSV export with a Name column (Moxfield, Archidekt, Deckbox)<textarea id="ownList" rows="6" spellcheck="false" placeholder="1 Sol Ring&#10;1 Swords to Plowshares&#10;...">' + esc(App.ownDraft != null ? App.ownDraft : App.S.owned.list || '') + '</textarea></label>' +
+      '<div class="row"><button type="button" class="small primary" data-own="save">Use this list</button>' + (n ? '<button type="button" class="small" data-own="close">Cancel</button>' : '') + '<label class="small own-file">Load a file <input type="file" id="ownFile" accept=".txt,.csv,text/plain,text/csv"></label></div>' +
+      '<p class="note">The same list as Start › Fine-tune › Collection, kept in this browser. Basic lands are always allowed.</p></div>';
+    return '<div class="own-bar"><span class="note">Suggest cards from</span>' + seg + '<span class="note">' + note + '</span></div>' + box;
+  }
+  // the suggestion source or the collection changed: measured results no longer apply
+  function ownChanged() {
+    App.DEEP = null; App.PC = null; App.UP = null; App.PX = null;
+    anStale(); renderView();
+    if (App.AN && App.AN.stale) runAnalysis(); // Suggested swaps and By card start their own
+  }
+  // the analysed list or the suggestion source changed: on Analysis the page stays up, marked stale, until the new
+  // analysis replaces it (so the page doesn't jump); elsewhere the analysis is dropped
+  function anStale() { if (App.tab === 'analysis' && App.AN && App.AN.sim) App.AN.stale = true; else App.AN = null; }
+
   /* ---------- analysis tab ---------- */
   function analysisInput(forcePaste) {
     if (forcePaste || App.anSource === 'paste') {
@@ -359,8 +395,8 @@
     if (App.anSource === 'compare') return runCompare();
     const inp = analysisInput();
     if (inp.error) { App.AN = { error: inp.error, unknown: inp.unknown || [] }; renderAnView(); return; }
-    const key = App.anSource + '|' + inp.cmds.map(c => c.n).join('+') + '|' + inp.deck.map(e => e.qty + e.c.n).join(',') + '|' + JSON.stringify(App.S.targets) + App.S.bracket + '|' + anGames() + '|' + JSON.stringify(App.S.budget) + '|' + [...(App.denied || [])].join(',');
-    if (App.AN && App.AN.key === key) { renderAnView(); return; }
+    const key = App.anSource + '|' + inp.cmds.map(c => c.n).join('+') + '|' + inp.deck.map(e => e.qty + e.c.n).join(',') + '|' + JSON.stringify(App.S.targets) + App.S.bracket + '|' + anGames() + '|' + JSON.stringify(App.S.budget) + '|' + [...(App.denied || [])].join(',') + '|' + ownKey();
+    if (App.AN && App.AN.key === key && !App.AN.stale) { renderAnView(); return; }
     setStatus('Analyzing (' + anGames().toLocaleString() + ' simulated games)…'); await new Promise(r => setTimeout(r, 30));
     let combos = inp.combos || null, almost = null;
     const cp = comboProvider();
@@ -369,14 +405,14 @@
       try {
         if (!combos || App.anSource === 'paste') combos = await cp.find(names, inp.cmds.map(c => c.n));
         const CI = 'WUBRG'.split('').filter(x => inp.cmds.some(c => c.ci.includes(x))).join('');
-        const poolNames = App.bulk.all.filter(c => c.leg === 'legal' && [...c.ci].every(x => CI.includes(x))).map(c => c.n);
+        const own = ownOpt(), poolNames = App.bulk.all.filter(c => c.leg === 'legal' && [...c.ci].every(x => CI.includes(x)) && (!own || own.has(c.n) || Engine.isBasic(c))).map(c => c.n);
         almost = (await cp.almost(names, poolNames)).filter(x => x.missing.length === 1).slice(0, 8).map(x => ({ cards: x.v.c, missing: x.missing, produces: x.v.p }));
       } catch (e) { }
     }
     const t0 = performance.now();
     App.denied = App.denied || new Set();
-    const X = Analysis.run(App.bulk, inp.deck, inp.cmds, { settings: App.S, combos, almost, games: anGames(), deny: [...App.denied] });
-    X.inp = inp;
+    const X = Analysis.run(App.bulk, inp.deck, inp.cmds, { settings: App.S, combos, almost, games: anGames(), deny: [...App.denied], owned: ownOpt() });
+    X.inp = inp; X.combosIn = combos;
     X.key = key; X.label = inp.label; X.unknown = inp.unknown; X.cmds = inp.cmds; X.comboLoaded = !!cp;
     App.AN = X;
     setStatus('Analysis done in ' + ((performance.now() - t0) / 1000).toFixed(2) + ' s (' + X.sim.games.toLocaleString() + ' simulated games).');
@@ -384,7 +420,12 @@
     X.held = App.tab !== 'easy' && !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
     renderAnView();
     if (!X.plans.length || X.held) { if (!X.held && App.DEEP) { deepMerge(X); renderSwaps(); } return; }
-    // swap impact: one plan per tick so the page stays responsive
+    return scoreSwaps(X);
+  }
+  // swap impact: one plan per tick so the page stays responsive
+  async function scoreSwaps(X) {
+    if (X.scoring) return; X.scoring = true;
+    const inp = X.inp, combos = X.combosIn, cp = comboProvider();
     const names = inp.cmds.map(c => c.n).concat(inp.deck.map(e => e.c.n));
     const combosFor = (cut, add) => {
       let out = (combos || []).filter(v => !v.c.some(n => Engine.nameKey(n) === Engine.nameKey(cut.n)));
@@ -501,11 +542,13 @@
     const shownSet = new Set(['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'].flatMap(capped)), shown = X.shownNow = X.impact.filter(p => shownSet.has(p)), weak = X.impact.length - shown.length;
     const groups = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'], inOrder = groups.flatMap(g => shown.filter(p => p.group === g)), allSet = compatible(inOrder);
     const all = X.impactDone && allSet.length ? '<button type="button" class="small primary" data-sw="accept-all">Accept all (' + allSet.length + ')</button>' : '';
-    const head = '<div class="an-top"><h3>Recommended changes</h3><span class="note">' + (X.impactDone ? X.impact.length + ' evaluated' : 'evaluating ' + X.impact.length + '/' + X.plans.length + '…') + '</span>' + all + '</div>' + (App.acceptNote ? '<p class="note">' + esc(App.acceptNote) + '</p>' : '');
+    const head = '<div class="an-top sw-head"><span class="note">' + (X.impactDone ? X.impact.length + ' evaluated' : 'evaluating ' + X.impact.length + '/' + X.plans.length + '…') + '</span>' + all + '</div>' + (App.acceptNote ? '<p class="note">' + esc(App.acceptNote) + '</p>' : '');
     const log = (App.accepted || []).filter(a => a.src === App.anSource);
     const logHTML = log.length ? '<div class="accepted"><span class="note">Accepted:</span> ' + log.map((a, j) => '<span class="chip">− ' + esc(a.cut.n) + ' + ' + esc(a.add.n) + ' <button type="button" class="link" data-sw="undo" data-i="' + (App.accepted.indexOf(a)) + '" aria-label="Undo">undo</button></span>').join(' ') + '</div>' : '';
     const denN = App.denied && App.denied.size ? '<span class="note"> · ' + App.denied.size + ' denied <button type="button" class="link" data-sw="clear-deny">reset</button></span>' : '';
-    if (!X.plans.length) return head + logHTML + denN + '<p class="note">No changes suggested: targets are met and no costly card has a cheaper same-role replacement in the loaded data.</p>';
+    const own = ownOnly() && ownedCards(), mine = !own && ownedCards() && ownedCards().set.size ? ownedCards().set : null;
+    if (own && !own.set.size) return '<p class="note">Add your collection above to get suggestions from it, or switch to All cards.</p>';
+    if (!X.plans.length) return head + logHTML + denN + '<p class="note">' + (own && !own.set.size ? 'Add your collection above to get suggestions from it.' : own ? 'No changes from your collection: none of its cards in your colours fills a gap, upgrades a weak area or replaces a costly card for less.' : 'No changes suggested: targets are met and no costly card has a cheaper same-role replacement in the loaded data.') + '</p>';
     // rows with the same cut sit together; after the first, a row is an alternative ("or + card") for that cut
     const byCut = list => { const order = [...new Set(list.map(p => p.cut))]; return order.flatMap(c => list.filter(p => p.cut === c)); };
     const rows = g => { const seenCut = new Set(); return byCut(shown.filter(p => p.group === g)).map(p => {
@@ -526,12 +569,12 @@
       const price = p.priceKnown ? '<span class="' + (p.dPrice > 0.005 ? 'pup' : p.dPrice < -0.005 ? 'pdown' : '') + '">' + (p.dPrice > 0.005 ? '▲ ' : p.dPrice < -0.005 ? '▼ ' : '') + money(p.dPrice) + '</span>' : '<span class="note">price n/a</span>';
       const i = X.impact.indexOf(p);
       const acts = '<div class="sw-acts"><button type="button" class="small primary" data-sw="accept" data-i="' + i + '">Accept</button><button type="button" class="small" data-sw="deny" data-i="' + i + '">Deny</button></div>';
-      return '<tr' + (alt ? ' class="alt"' : '') + '><td><div class="sw">' + (alt ? '<span class="note">or, instead of the swap above:</span>' : '<span class="out">− ' + esc(p.cut.n) + '</span>') + '<span class="in">+ ' + (p.add.uri ? '<a href="' + esc(p.add.uri) + '" target="_blank" rel="noopener">' + esc(p.add.n) + '</a>' : esc(p.add.n)) + '</span></div><div class="note">' + esc(p.reason) + (p.tag ? ' · ' + esc(p.tag) : '') + '</div></td><td class="n nw">' + price + '</td><td><div class="eff">' + (eff.length ? eff.join(' ') : '<span class="note">no measurable change</span>') + '</div>' + acts + '</td></tr>';
+      return '<tr' + (alt ? ' class="alt"' : '') + '><td><div class="sw">' + (alt ? '<span class="note">or, instead of the swap above:</span>' : '<span class="out">− ' + esc(p.cut.n) + '</span>') + '<span class="in">+ ' + (p.add.uri ? '<a href="' + esc(p.add.uri) + '" target="_blank" rel="noopener">' + esc(p.add.n) + '</a>' : esc(p.add.n)) + (mine && mine.has(p.add.n) ? ' <span class="chip">owned</span>' : '') + '</span></div><div class="note">' + esc(p.reason) + (p.tag ? ' · ' + esc(p.tag) : '') + '</div></td><td class="n nw">' + price + '</td><td><div class="eff">' + (eff.length ? eff.join(' ') : '<span class="note">no measurable change</span>') + '</div>' + acts + '</td></tr>';
     }).join(''); };
     const weakHTML = weak || App.showWeak ? '<p class="note">' + (App.showWeak ? 'Showing every suggestion.' : weak + ' more suggestion' + (weak === 1 ? '' : 's') + ' hidden: gains below ' + Deep.MIN_GAIN + ' (0.1 power level), beyond the top ' + TOP_N + ' of a group, and the deep search\'s single swaps (see <button type="button" class="link" data-go="percard">By card</button> for options card by card).') + ' <button type="button" class="link" data-sw="weak">' + (App.showWeak ? 'Hide' : 'Show') + '</button></p>' : '';
     const nearHTML = X.impactDone && !shown.length ? '<p class="note"><b>Near optimal.</b> No measured change gains ' + Deep.MIN_GAIN + ' or more on this list; Deep search measures several hundred more.</p>' : '';
     return head + logHTML + denN + nearHTML + weakHTML + groups.filter(g => X.plans.some(p => p.group === g) && (!X.impactDone || shown.some(p => p.group === g))).map(g => '<h4 class="an-sub">' + g + (GSUB[g] || '') + (X.impactDone && shown.some(p => p.group === g) ? ' <button type="button" class="small" data-sw="accept-group" data-g="' + g + '">Accept ' + compatible(shown.filter(p => p.group === g)).length + '</button>' : '') + '</h4><div class="scroll"><table class="t compact swaps"><thead><tr><th>Change</th><th class="n">Price</th><th>Projected effect</th></tr></thead><tbody>' + (rows(g) || '<tr><td colspan="3" class="note">evaluating…</td></tr>') + '</tbody></table></div>').join('') +
-      '<p class="note">Each change is applied alone and the whole analysis is re-run with 5,000 simulated games on the same shuffles as the current list, so differences come from the swap, not from random variation. Cuts are the lowest-value cards whose removal keeps every role at or above target (value = synergy links + 2×roles + Game Changer/fast/tutor bonus + EDHREC popularity). Adds come from the loaded card data within your color identity, bracket limits and per-card budget cap. Price is the difference in ' + cur.toUpperCase() + ' between the added and removed card.</p>';
+      '<p class="note">Each change is applied alone and the whole analysis is re-run with 5,000 simulated games on the same shuffles as the current list, so differences come from the swap, not from random variation. Cuts are the lowest-value cards whose removal keeps every role at or above target (value = synergy links + 2×roles + Game Changer/fast/tutor bonus + EDHREC popularity). Adds come from ' + (own ? 'your collection (' + own.set.size.toLocaleString() + ' cards; basic lands always)' : 'the loaded card data') + ' within your color identity, bracket limits and per-card budget cap. Price is the difference in ' + cur.toUpperCase() + ' between the added and removed card.</p>';
   }
   // header-sized radar: no labels, the scores are in the tooltip
   function miniRadarSVG(axes, size) {
@@ -638,11 +681,18 @@
   // gaps against the benchmarks; with cards, each gap also lists candidate cards to add (Improve)
   const SEV = { high: 0, med: 1, low: 2, info: 3 };
   const rankedRecs = X => X.recs.slice().sort((a, b) => SEV[a.sev] - SEV[b.sev]);
+  // on Analysis (no cards) high and medium problems are listed and the rest folded away
   function findingsHTML(X, cards) {
     const sevLabel = { high: 'High', med: 'Medium', low: 'Low', info: 'Info' };
-    return '<div class="an-card wide"><h3>' + (cards ? 'Candidate cards by problem' : 'Problems, most serious first') + '</h3>' + (X.recs.length ? '<ol class="recs">' + rankedRecs(X).map(r => '<li><span class="chip sev-' + r.sev + '">' + sevLabel[r.sev] + '</span> ' + esc(cards ? r.text : (r.text.replace(/\s*[^.]*:$/, '') || r.text)) +
+    const li = r => '<li><span class="chip sev-' + r.sev + '">' + sevLabel[r.sev] + '</span> ' + esc(cards ? r.text : (r.text.replace(/\s*[^.]*:$/, '') || r.text)) +
       (!cards ? '' : r.cards.length ? '<div class="recc">' + r.cards.map(c => '<span class="chip">' + (c.uri ? '<a href="' + esc(c.uri) + '" target="_blank" rel="noopener">' + esc(c.n) + '</a>' : esc(c.n)) + (c.price != null ? ' · ' + fmtP(c.price) : '') + (c.rank ? ' · #' + c.rank : '') + '</span>').join('') + '</div>' : '') +
-      (r.combos && cards ? '<div class="recc">' + r.combos.map(v => '<span class="chip">+ ' + esc(v.missing.join(', ')) + ' → ' + esc(v.cards.join(' + ')) + (v.produces.length ? ' (' + esc(v.produces[0]) + ')' : '') + '</span>').join('') + '</div>' : '') + '</li>').join('') + '</ol>' : '<p class="note">No gaps against the benchmarks.</p>') + '</div>';
+      (r.combos && cards ? '<div class="recc">' + r.combos.map(v => '<span class="chip">+ ' + esc(v.missing.join(', ')) + ' → ' + esc(v.cards.join(' + ')) + (v.produces.length ? ' (' + esc(v.produces[0]) + ')' : '') + '</span>').join('') + '</div>' : '') + '</li>';
+    const list = rankedRecs(X);
+    if (!list.length) return '<div class="an-card wide"' + (cards ? '' : ' id="anProblems"') + '><h3>' + (cards ? 'Candidate cards by problem' : 'Problems') + '</h3><p class="note">No gaps against the benchmarks.</p></div>';
+    if (cards) return '<div class="an-card wide"><h3>Candidate cards by problem</h3><ol class="recs">' + list.map(li).join('') + '</ol></div>';
+    const top = list.filter(r => r.sev === 'high' || r.sev === 'med'), rest = list.slice(top.length);
+    return '<div class="an-card wide" id="anProblems"><h3>Problems, most serious first</h3>' + (top.length ? '<ol class="recs">' + top.map(li).join('') + '</ol>' : '<p class="note">No high or medium problems.</p>') +
+      (rest.length ? '<details class="an-more"><summary class="note">' + rest.length + ' minor note' + (rest.length === 1 ? '' : 's') + ' (low and info)</summary><ol class="recs" start="' + (top.length + 1) + '">' + rest.map(li).join('') + '</ol></details>' : '') + '</div>';
   }
   // Analysis and Improve share one analysis (App.AN)
   function renderAnView() { if (App.tab === 'easy') renderEasy(); else if (App.tab === 'changes') renderChanges(); else if (App.tab === 'percard') renderPerCard(); else if (App.tab === 'analysis') renderAnalysis(); }
@@ -650,11 +700,12 @@
     if (App.anSource === 'compare') { $('view').innerHTML = '<p class="note">Suggested swaps apply to one list. On <button type="button" class="link" data-go="analysis">Analysis</button>, choose the deck or a pasted list instead of Compare.</p>'; return; }
     App.recsShown = true; // opening Changes is asking for them
     const X = App.AN;
-    if (!X || X.held) { $('view').innerHTML = '<p class="note">Analyzing…</p>'; App.AN = null; runAnalysis(); return; }
+    if (!X || X.stale) { $('view').innerHTML = '<p class="note">Analyzing…</p>'; App.AN = null; runAnalysis(); return; }
     if (X.error) { $('view').innerHTML = '<div class="msg err">' + esc(X.error) + '</div>'; return; }
+    if (X.held) { X.held = false; setTimeout(() => scoreSwaps(X), 0); }
     const who = X.label + ': ' + X.cmds.map(c => esc(c.n)).join(' + ') + ' · power ' + X.power.pl.toFixed(1) + ' · fundamentals ' + X.overall + '/100';
     $('view').innerHTML = '<p class="note">' + who + '. Each change is scored alone against the current list. Accept applies it; Deny hides that card.</p>' +
-      deepBarHTML(X) + '<div class="an-card wide" id="anSwaps">' + swapsHTML(X) + '</div>' + (X.recs.length ? '<details class="an-more"><summary class="note">More candidate cards for each problem (' + X.recs.length + ')</summary>' + findingsHTML(X, true) + '</details>' : '');
+      deepBarHTML(X) + '<div class="an-card wide"><h3>Recommended changes</h3><div id="anSwaps">' + swapsHTML(X) + '</div></div>' + (X.recs.length ? '<details class="an-more"><summary class="note">More candidate cards for each problem (' + X.recs.length + ')</summary>' + findingsHTML(X, true) + '</details>' : '');
   }
   /* ---------- By card (Improve): up to three better cards for each card, one per price band, each measured as a swap ---------- */
   async function perCardRun() {
@@ -677,7 +728,7 @@
   function renderPerCard() {
     if (App.anSource === 'compare') { $('view').innerHTML = '<p class="note">By card applies to one list. On <button type="button" class="link" data-go="analysis">Analysis</button>, choose the deck or a pasted list instead of Compare.</p>'; return; }
     const X = App.AN;
-    if (!X || X.held) { $('view').innerHTML = '<p class="note">Analyzing…</p>'; App.AN = null; runAnalysis(); return; }
+    if (!X || X.stale) { $('view').innerHTML = '<p class="note">Analyzing…</p>'; App.AN = null; runAnalysis(); return; }
     if (X.error) { $('view').innerHTML = '<div class="msg err">' + esc(X.error) + '</div>'; return; }
     const PC = App.PC, busy = PC && PC.busy, res = PC && !busy ? PC.res : null, cur = X.cur || 'usd', money = v => Engine.fmt(v, cur);
     const BL = { budget: 'Budget', mid: 'Mid', premium: 'Premium' };
@@ -690,6 +741,23 @@
     const body = rows.map((r, i) => '<tr><td><b>' + esc(r.cut.n) + '</b><div class="note">' + money(r.price) + (r.roles.length ? ' · ' + r.roles.map(k => esc(Engine.SLOT_LABEL[k] || k)).join(', ') : '') + '</div></td>' +
       '<td><div class="pc-opts">' + r.opts.map((o, j) => '<div class="pc-opt"><span class="note">' + BL[o.band] + '</span> <span class="in">+ ' + (o.add.uri ? '<a href="' + esc(o.add.uri) + '" target="_blank" rel="noopener">' + esc(o.add.n) + '</a>' : esc(o.add.n)) + '</span> <span class="note">' + money(o.price) + ' · gain ' + (Math.round(o.g * 10) / 10) + (o.d && o.d.pl ? ' · power ' + (o.d.pl > 0 ? '+' : '') + o.d.pl : '') + '</span> <button type="button" class="small" data-pc="swap" data-i="' + i + '" data-j="' + j + '">Swap</button></div>').join('') + '</div></td></tr>').join('');
     $('view').innerHTML = bar + '<div class="an-card wide"><div class="scroll"><table class="t compact swaps"><thead><tr><th>Card</th><th>Better options</th></tr></thead><tbody>' + (body || '<tr><td colspan="2" class="note">No card has a better option that gains ' + Deep.MIN_GAIN / 2 + ' or more.</td></tr>') + '</tbody></table></div>' + (res.none ? '<p class="note">' + res.none + ' other nonland cards have no better option in the loaded data.</p>' : '') + '</div>';
+  }
+  // Analysis, in order: overview, problems, counts against real decks, measured swaps, detail. One page for checking a list
+  // and fixing it; Improve keeps the slower searches (deep search, by card, budget upgrades, combos).
+  function anCountsHTML(X) {
+    const R = App.anSource === 'paste' ? { deck: X.inp.deck, CI: X.CI, settings: App.S } : App.R;
+    if (!R || !R.deck) return '';
+    const C = countsHTML(R, App.anSource === 'paste' || X.inp.asIs ? X.power.minBracket : null);
+    return '<div class="an-card wide" id="anCounts"><div class="an-top wrap"><h3>Counts against real decks</h3>' + C.seg + '</div>' + C.html + '</div>';
+  }
+  function anChangesHTML(X) {
+    const views = (App.anSource === 'paste' ? [['changes', 'Deep search'], ['percard', 'By card']] : [['changes', 'Deep search'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]);
+    const more = '<div class="an-imp"><span class="note">More on Improve:</span>' + views.map(([v, l]) => '<button type="button" class="small" data-go="' + v + '">' + l + ' ›</button>').join('') + '</div>';
+    const o = ownedCards(), empty = ownOnly() && o && !o.set.size;
+    const body = X.stale ? '<p class="note">Re-analyzing with the change…</p>' : empty ? '<p class="note">Add your collection above to get suggestions from it, or switch to All cards.</p>' :
+      X.held ? '<div class="an-go"><p>' + X.plans.length + ' candidate swap' + (X.plans.length === 1 ? '' : 's') + ' for this list. Measuring each one takes a few seconds of simulated games.</p><button type="button" class="small primary" data-an="swaps">Measure swaps</button></div>' :
+      '<div id="anSwaps">' + swapsHTML(X) + '</div>';
+    return '<div class="an-card wide" id="anChanges"><h3>Recommended changes</h3>' + ownBarHTML() + body + more + '</div>';
   }
   function renderAnalysis() {
     const X = App.AN;
@@ -780,8 +848,7 @@
     const stats = !own && App.R && App.R.stats;
     const SUBS = [['turns', 'Turn by turn'], ['power', 'Power'], ['fund', 'Fundamentals'], ['mana', 'Mana & interaction'], ['synergy', 'Synergy']].concat(stats ? [['stats', 'Deck stats']] : []).concat([['method', 'Method']]);
     const sub = SUBS.some(x => x[0] === App.anSub) ? App.anSub : 'turns';
-    const nSw = X.plans ? X.plans.length : 0;
-    const overview = recs + '<div class="an-card wide an-go"><p>' + (nSw ? nSw + ' suggested swap' + (nSw === 1 ? '' : 's') + ' for this list, each scored with simulated games.' : 'No swaps suggested for this list.') + '</p><button type="button" class="small primary" data-go="changes">Open Improve</button></div>';
+    const overview = recs + anCountsHTML(X) + anChangesHTML(X);
     const adv = '<div class="an-adv"><button type="button" class="small" data-an="adv" aria-expanded="' + !!App.anAdv + '">' + (App.anAdv ? 'Hide detail' : 'Show detail: turn by turn, power, fundamentals, mana, synergy' + (stats ? ', deck stats' : '') + ', method') + '</button></div>';
     const nav = App.anAdv ? '<div class="subtabs" role="tablist" aria-label="Analysis detail">' + SUBS.map(([k, l]) => '<button type="button" role="tab" data-ansub="' + k + '" aria-selected="' + (k === sub) + '">' + l + '</button>').join('') + '</div>' : '';
     const body = !App.anAdv ? '' : {
@@ -793,7 +860,8 @@
       synergy: synergy,
       method: method.replace('<details class="an-method">', '<details class="an-method" open>')
     }[sub];
-    $('view').innerHTML = src + head + overview + adv + nav + body;
+    const jump = '<div class="an-jump" role="group" aria-label="Go to">' + [['anProblems', 'Problems'], ['anCounts', 'Counts'], ['anChanges', 'Changes'], ['anDetail', 'Detail']].map(([id, l]) => '<button type="button" class="small" data-jump="' + id + '">' + l + '</button>').join('') + '</div>';
+    $('view').innerHTML = src + jump + head + overview + '<div id="anDetail">' + adv + nav + body + '</div>';
   }
 
   /* ---------- views ---------- */
@@ -1038,12 +1106,12 @@
   }
   const VIEW_NOTE = {
     setup: 'Choose a commander, a budget and a plan. Generate scores every legal card in the data and optimises the list inside your bracket and budget.',
-    import: 'Paste your current list to analyze it as it is. Suggested swaps come after, on Improve, when you ask for them.',
+    import: 'Paste your current list to analyze it as it is. Swaps are measured when you ask for them, from all cards or only your collection.',
     commanders: 'Every legal commander in the card data, by colour, theme and popularity.', inspire: 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.', surprise: 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.',
     deck: 'Tap a card for its text and its actions: lock, swap or remove.', role: 'Grouped by the role slot each card fills. Tap a card for its actions.', valid: 'Every deck-building rule and whether this list passes it.',
     counts: 'How many cards the deck has for each job (lands, ramp, draw, removal, wipes and more) next to what real decks of the same bracket run.',
     hand: 'Draw opening hands from this list, mulligan and draw on.', export: 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.',
-    analysis: 'Power, speed, mana and problems from simulated games. Fixes are on Improve.',
+    analysis: 'Power, mana and problems from simulated games, the role counts against real decks, and measured swaps, on one page.',
     changes: 'Cuts and adds for the analyzed list, each scored with simulated games.', percard: 'Each card in the list with up to three better cards at different prices, each measured as a swap. You choose.', upgrade: 'Set an amount to spend. The best set of swaps that fits it, each add Commander-legal and in your colours, measured with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
     primer: 'How to play this list, from its own simulation and card roles.',
     easy: 'Paste your list or build one. You get its counts against real decks, a quick analysis and the top swaps. Normal has every page and setting.',
@@ -1057,7 +1125,7 @@
     let nav = views.length ? '<div class="subtabs" role="tablist" aria-label="' + esc(title) + ' views">' + views.map(([k, l]) => pill(k, l, sub)).join('') + '</div>' : '';
     if (sub === 'find') nav += '<div class="seg pgseg" role="group" aria-label="Find a commander">' + FIND.map(([k, l]) => opt(k, l, v)).join('') + '</div>';
     if (sub === 'cards' && v !== 'valid') nav += '<div class="seg pgseg" role="group" aria-label="Group cards by">' + [['deck', 'By type'], ['role', 'By role']].map(([k, l]) => opt(k, l, v)).join('') + '</div>';
-    return '<h2>' + esc(title) + '</h2><p class="note">' + (VIEW_NOTE[v] || '') + '</p>' + (nav ? '<div class="pgnav">' + nav + '</div>' : '');
+    return '<h2>' + esc(title) + '</h2><p class="note">' + (VIEW_NOTE[v] || '') + '</p>' + (nav ? '<div class="pgnav">' + nav + '</div>' : '') + (page === 'improve' && App.bulk ? ownBarHTML() : '');
   }
   function renderView() {
     const page = PAGE_OF[App.tab] || 'start';
@@ -1232,10 +1300,10 @@
   // analysis of the current deck for the swap planner: imported cards may be cut, cards the user locked may not
   function plannerX() {
     const R = App.R; if (!R || !R.stats || !App.bulk) return null;
-    const key = deckKey(R) + '|' + JSON.stringify(R.settings.targets) + R.settings.bracket + '|' + [...(App.denied || [])].join(',');
+    const key = deckKey(R) + '|' + JSON.stringify(R.settings.targets) + R.settings.bracket + '|' + [...(App.denied || [])].join(',') + '|' + ownKey();
     if (App.PX && App.PX.key === key) return App.PX.X;
     const deck = R.deck.map(e => e.imp ? Object.assign({}, e, { locked: false }) : e);
-    const X = Analysis.run(App.bulk, deck, R.commanders, { settings: R.settings, combos: R.combos, games: 1500, deny: [...(App.denied || [])] });
+    const X = Analysis.run(App.bulk, deck, R.commanders, { settings: R.settings, combos: R.combos, games: 1500, deny: [...(App.denied || [])], owned: ownOpt() });
     App.PX = { key, X, deck }; return X;
   }
   // Add a combo's missing card(s): each goes in place of the card the planner picks (Analysis.pairCuts: lowest value,
@@ -1356,12 +1424,12 @@
       const names = R.commanders.map(c => c.n).concat(R.deck.map(e => e.c.n)), cmds = R.commanders.map(c => c.n);
       const found = (await cb.find(names, cmds)).sort((a, b) => (b.pop || 0) - (a.pop || 0));
       const CI = R.CI, inCI = c => [...c.ci].every(x => CI.includes(x)), have = new Set(names);
-      const pool = n => { if (have.has(n)) return false; const c = Engine.lookup(App.bulk, n); return !!c && c.leg === 'legal' && inCI(c); };
+      const own = ownOpt(), pool = n => { if (have.has(n)) return false; const c = Engine.lookup(App.bulk, n); return !!c && c.leg === 'legal' && inCI(c) && (!own || own.has(c.n) || Engine.isBasic(c)); };
       // combos the bracket allows come first; 2-card infinites over the bracket limit go last
       const lim2 = R.lim ? R.lim.combo2 : 999, two = (R.combos || []).filter(x => x.inf && x.c.length <= 2).length, barredNow = v => v.inf && v.c.length <= 2 && two >= lim2 ? 1 : 0;
       const near = (await cb.almost(names, pool, 2)).filter(x => !x.v.cmd.length || x.v.cmd.every(n => cmds.includes(n))).sort((a, b) => barredNow(a.v) - barredNow(b.v) || a.missing.length - b.missing.length || (b.v.pop || 0) - (a.v.pop || 0)).slice(0, 40);
       h += '<h3 class="an-sec">In this deck (' + found.length + ')</h3>' + (found.length ? comboRows(found) : '<p class="note">No complete Spellbook combo in this list.' + (R.settings.bracket <= 2 ? ' Brackets 1–2 exclude 2-card infinite combos.' : '') + '</p>');
-      h += '<h3 class="an-sec">One or two cards away (' + near.length + (near.length === 40 ? '+' : '') + ')</h3>' + (near.length ? '<p class="note">Missing cards are in red with their price. + Add puts them in the deck, each in place of a suggested cut you can change, and locks them.</p>' + comboRows(near.map(x => ({ v: x.v })), { missing: [].concat(...near.map(x => x.missing)) }) : '<p class="note">None.</p>');
+      h += '<h3 class="an-sec">One or two cards away' + (own ? ' with your collection' : '') + ' (' + near.length + (near.length === 40 ? '+' : '') + ')</h3>' + (near.length ? '<p class="note">Missing cards are in red with their price. + Add puts them in the deck, each in place of a suggested cut you can change, and locks them.</p>' + comboRows(near.map(x => ({ v: x.v })), { missing: [].concat(...near.map(x => x.missing)) }) : '<p class="note">None.</p>');
     }
     const ci = ciOf();
     h += '<h3 class="an-sec">Search all combos</h3><div class="row" style="gap:10px;align-items:flex-end"><label class="f" style="flex:1 1 260px">Cards or results (all words must match)<input type="search" id="cbQ" placeholder="e.g. Thassa\'s Oracle, infinite mana" value="' + esc(App.cbQ || '') + '"></label>' +
@@ -1494,7 +1562,7 @@
   function renderImport() {
     $('view').innerHTML = '<label class="f">Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; the commander goes under a "Commander" or "// COMMANDER" header, or tagged [Commander])<textarea id="impText" rows="16" spellcheck="false" placeholder="// COMMANDER&#10;1 Galadriel, Light of Valinor (LTC) 498&#10;&#10;1 Arcane Signet (LTC) 273&#10;26 Forest (SOS) 280&#10;...">' + esc(App.impText || '') + '</textarea></label>' +
       '<div class="row" style="margin-top:8px"><button type="button" class="primary" id="impBtn">Import and analyze</button><span class="note" id="impNote">' + esc(App.impNote || '') + '</span></div>' +
-      '<p class="note">The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens first; suggested swaps are on Improve when you want them. Rule problems (card count, colour identity, budget) show under Rules on Deck.</p>';
+      '<p class="note">The deck is kept exactly as pasted: nothing is added, removed or swapped, and budget, bracket and include/exclude settings are not applied. Analysis opens with its problems, role counts and a Measure swaps button; swaps can come from all cards or only your collection. Rule problems (card count, colour identity, budget) show under Rules on Deck.</p>';
   }
   async function importDeck() {
     const say = t => { App.impNote = t; if ($('impNote')) $('impNote').textContent = t; };
@@ -1970,11 +2038,11 @@
       const b = e.target.closest('button[data-sw]'); if (!b || !App.AN) return;
       const X = App.AN, a = b.dataset.sw;
       if (a === 'deny') { const p = X.impact[+b.dataset.i]; if (!p) return; App.denied.add(p.add.n); X.impact.splice(+b.dataset.i, 1); X.plans = X.plans.filter(q => q.add !== p.add); renderSwaps(); return; }
-      if (a === 'clear-deny') { App.denied.clear(); App.AN = null; runAnalysis(); return; }
+      if (a === 'clear-deny') { App.denied.clear(); anStale(); renderAnView(); runAnalysis(); return; }
       if (a === 'weak') { App.showWeak = !App.showWeak; renderSwaps(); return; }
-      if (a === 'accept-all' || a === 'accept-group') { const G = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'], sh = X.shownNow || X.impact.filter(worth); const list = compatible(a === 'accept-all' ? G.flatMap(g => sh.filter(p => p.group === g)) : sh.filter(p => p.group === b.dataset.g)); if (!list.length) return; document.querySelectorAll('#anSwaps button').forEach(x => { x.disabled = true; }); await acceptMany(list); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
-      if (a === 'accept') { App.acceptNote = ''; const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
-      if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); App.AN = null; if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); }
+      if (a === 'accept-all' || a === 'accept-group') { const G = ['Package', 'Deep search', 'Fix gaps', 'Upgrades', 'Budget'], sh = X.shownNow || X.impact.filter(worth); const list = compatible(a === 'accept-all' ? G.flatMap(g => sh.filter(p => p.group === g)) : sh.filter(p => p.group === b.dataset.g)); if (!list.length) return; document.querySelectorAll('#anSwaps button').forEach(x => { x.disabled = true; }); await acceptMany(list); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
+      if (a === 'accept') { App.acceptNote = ''; const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
+      if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes' && App.tab !== 'easy') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); }
     });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
     $('view').addEventListener('click', e => {
@@ -2013,7 +2081,7 @@
     });
     wireDiscover();
     $('modeSeg').addEventListener('click', e => { const b = e.target.closest('button[data-mode]'); if (b && (b.dataset.mode === 'easy') !== App.easy) setMode(b.dataset.mode === 'easy'); });
-    $('view').addEventListener('click', e => { const t = e.target.closest('button[data-cb]'); if (!t) return; App.countsB = +t.dataset.cb; if (App.tab === 'easy') renderEasy(); else renderCounts(); });
+    $('view').addEventListener('click', e => { const t = e.target.closest('button[data-cb]'); if (!t) return; App.countsB = +t.dataset.cb; if (App.tab === 'easy') renderEasy(); else if (App.tab === 'analysis') renderAnalysis(); else renderCounts(); });
     $('view').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('ez-again')) App.ezOpen = e.target.open; }, true);
     $('view').addEventListener('click', e => {
       const g = e.target.closest('button[data-ezgo]'); if (g) { setMode(false, true); go(g.dataset.ezgo); return; }
@@ -2038,12 +2106,29 @@
       }
       else if (pr) pr.dataset.print === 'proxies' ? printProxies() : printPrimer();
     });
+    $('view').addEventListener('click', e => { const b = e.target.closest('button[data-jump]'), t = b && $(b.dataset.jump); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    // Suggest cards from: all cards or the collection (on Analysis and in the Improve page header)
+    document.querySelector('.results').addEventListener('click', e => {
+      const b = e.target.closest('[data-own]'); if (!b) return;
+      const v = b.dataset.own;
+      if (v === 'all' || v === 'only') { if (ownOnly() === (v === 'only')) return; App.impOwn = v; LS.set('edhgen.impOwn', v); ownChanged(); }
+      else if (v === 'edit') { App.ownEdit = !App.ownEdit; App.ownDraft = null; renderView(); }
+      else if (v === 'close') { App.ownEdit = false; App.ownDraft = null; renderView(); }
+      else if (v === 'save') {
+        const t = $('ownList') ? $('ownList').value : App.S.owned.list; App.ownEdit = false; App.ownDraft = null;
+        if (t === App.S.owned.list) { renderView(); return; }
+        App.S.owned.list = t; if ($('oList')) $('oList').value = t; persistSettings(); ownChanged();
+      }
+    });
+    document.querySelector('.results').addEventListener('input', e => { if (e.target.id === 'ownList') App.ownDraft = e.target.value; });
+    document.querySelector('.results').addEventListener('change', async e => { if (e.target.id !== 'ownFile') return; const f = e.target.files[0]; if (!f) return; const t = await f.text(); App.ownDraft = t; if ($('ownList')) $('ownList').value = t; });
     $('view').addEventListener('click', e => { const b = e.target.closest('button[data-ansub]'); if (!b) return; App.anSub = b.dataset.ansub; try { localStorage.setItem('edhgen.anSub', App.anSub); } catch (x) { } renderAnalysis(); });
     $('view').addEventListener('click', e => {
       const b = e.target.closest('button[data-an]'); if (!b) return;
       const a = b.dataset.an;
       if (a === 'src-deck' || a === 'src-paste' || a === 'src-compare') { App.anSource = a.slice(4) === 'deck' ? 'deck' : a.slice(4); App.AN = null; renderAnalysis(); if (App.anSource === 'deck' && App.R) runAnalysis(); }
       else if (a === 'run') runAnalysis();
+      else if (a === 'swaps') { App.recsShown = true; const X = App.AN; if (X && X.held) { X.held = false; renderAnalysis(); scoreSwaps(X); } }
       else if (a === 'adv') { App.anAdv = !App.anAdv; try { localStorage.setItem('edhgen.anAdv', App.anAdv ? '1' : ''); } catch (x) { } renderAnalysis(); }
     });
     // deck edits: from the swap rows in the list, or from a card's popover anywhere
@@ -2118,7 +2203,7 @@
       else if (k === '/') { e.preventDefault(); let f = $('cbQ') || $('cbrQ'); if (!f || f.offsetParent === null) { App.tab = 'setup'; renderView(); f = $('cmd1'); } f.focus(); }
       else if (k === '?') { e.preventDefault(); setStatus(KEYS_HELP); }
     });
-    App.anGames = +(LS.get('edhgen.anGames') || 100000); App.anSub = LS.get('edhgen.anSub') || 'turns'; App.anAdv = !!LS.get('edhgen.anAdv');
+    App.impOwn = LS.get('edhgen.impOwn') || ''; App.anGames = +(LS.get('edhgen.anGames') || 100000); App.anSub = LS.get('edhgen.anSub') || 'turns'; App.anAdv = !!LS.get('edhgen.anAdv');
     setupAC('cmd1', 'cmd1L'); setupAC('cmd2', 'cmd2L');
     wireQuick(); syncQuick(App.S);
   }

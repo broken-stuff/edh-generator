@@ -842,8 +842,8 @@ const Analysis = (function () {
     const pcap = S.budget && S.budget.perCard != null && S.budget.perCard !== '' ? +S.budget.perCard : null;
     const cur = (S.budget && S.budget.cur) || 'usd';
     const lim = Object.assign(E.bracketDefaults(S.bracket || 3), S.bl || {});
-    const denied = new Set(opts.deny || []);
-    const pool = db ? db.all.filter(c => c.leg === 'legal' && !E.isBasic(c) && !inDeck.has(c.n) && !denied.has(c.n) && [...c.ci].every(x => CI.includes(x)) && !(pcap != null && (c.p[cur] == null || c.p[cur] > pcap)) && !(c.gc && cnt.gc >= lim.gc) && !(A(c).flags.tutor && cnt.tutor >= lim.tutor) && !(A(c).flags.mld && lim.mld <= 0) && !(A(c).flags.xturn && cnt.xturn >= lim.xturn)) : [];
+    const denied = new Set(opts.deny || []), owned = opts.owned instanceof Set ? opts.owned : null; // owned: adds only from this collection
+    const pool = db ? db.all.filter(c => c.leg === 'legal' && !E.isBasic(c) && !inDeck.has(c.n) && !denied.has(c.n) && !(owned && !owned.has(c.n)) && [...c.ci].every(x => CI.includes(x)) && !(pcap != null && (c.p[cur] == null || c.p[cur] > pcap)) && !(c.gc && cnt.gc >= lim.gc) && !(A(c).flags.tutor && cnt.tutor >= lim.tutor) && !(A(c).flags.mld && lim.mld <= 0) && !(A(c).flags.xturn && cnt.xturn >= lim.xturn)) : [];
     // cards outside the deck: mechanics links estimated from the deck profile (exact pairs for the commanders),
     // scaled by this deck's ratio of exact mechanics links to profile weight
     const mRatio = (() => { if (!M) return 0; let a = 0, b = 0; for (const x of perCard) { a += x.mlinks; b += M.links(x.c, mprof, null, true).w; } return b > 0 ? a / b : 0; })();
