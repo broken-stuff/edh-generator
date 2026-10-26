@@ -773,7 +773,9 @@ const Engine = (function () {
     for (const c of cards) { if (!c) continue; const e = byOid.get(c.oid); if (e) mergeCard(e, c); else byOid.set(c.oid, c); }
     const all = [...byOid.values()].sort((a, b) => a.n < b.n ? -1 : a.n > b.n ? 1 : 0);
     const byName = new Map();
-    for (const c of all) for (const k of [c.n, c.fn]) { const key = nameKey(k); if (!byName.has(key)) byName.set(key, c); }
+    // a name shared by two cards (Mystery Booster playtest cards, Alchemy, tokens) means the real one: Commander-legal first, then not from an Un/playtest set
+    const rank = c => (c.leg === 'legal' ? 2 : 0) + (c.stype === 'funny' || c.bc === 'silver' ? 0 : 1);
+    for (const c of all) for (const k of [c.n, c.fn]) { const key = nameKey(k), e = byName.get(key); if (!e || rank(c) > rank(e)) byName.set(key, c); }
     for (const c of all) for (const k of c.n.split(' // ').slice(1).concat(c.al || [])) { const key = nameKey(k); if (!byName.has(key)) byName.set(key, c); } // back faces and printed alternate names, only where no card has that name
     return { all, byName, meta: meta || {}, _ctypes: null };
   }

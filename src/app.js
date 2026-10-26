@@ -822,7 +822,7 @@
       ['Commander', X.cmds.map(c => esc(c.n)).join(' + ') + ' ' + pipsHTML(X.CI)],
       ['Fundamentals', X.overall + '<span class="note"> / 100</span>'],
       ['Balance', '<span class="kbal">' + miniRadarSVG(X.axes, 44) + '<span class="note">lowest<br>' + esc(low.label) + ' ' + low.score + '</span></span>'],
-      ['Cards', X.deckSize + X.cmds.length + (X.deckSize + X.cmds.length !== 100 ? ' <span class="st fail">≠100</span>' : '')],
+      ['Cards', X.deckSize + X.cmds.length + (X.deckSize + X.cmds.length !== 100 ? ' <span class="st fail">≠100</span>' : '') + (!own ? fillBtnHTML() : '')],
       ['Lands', X.nLands + '<span class="note"> curve estimate ' + X.mana.landEst.lands.toFixed(1) + '</span>'],
       ['Castable on curve', castLow.length ? '<span class="pup">' + castLow.length + ' card' + (castLow.length === 1 ? '' : 's') + ' below ' + Math.round(X.mana.castOk * 100) + '%</span>' : 'all ≥ ' + Math.round(X.mana.castOk * 100) + '%'],
       ['Commander turn (median)', s.cmdMedianTurn > 8 ? '>8' : 'T' + s.cmdMedianTurn],
@@ -917,7 +917,7 @@
     const fails = v.rules.filter(r => r.pass === false).length;
     el.innerHTML = [
       ['Commander', R.commanders.map(c => esc(c.n)).join(' + ') + ' ' + pipsHTML(R.CI)],
-      ['Cards', (R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0))],
+      ['Cards', (R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0)) + fillBtnHTML()],
       ['Avg MV', s.avgMV.toFixed(2)],
       ['Unpriced', s.unknown.length],
       ['Game Changers', s.gcs.length],
@@ -1523,6 +1523,7 @@
       setProg(0.6); setStatus('Scoring and filling slots…');
       await new Promise(r => setTimeout(r, 0));
       if (opts.imported) { S.include = ''; S.exclude = ''; } // the imported list is the deck, so include/exclude lists don't apply
+      if (opts.fill) S.budget.total = null; // the kept cards may already be over the cap
       const env = { combos: comboProvider(), locks: opts.locks || [], bans: opts.bans || [], imported: !!opts.imported, asIs: !!opts.asIs };
       const R = await Engine.generate(db, S, env);
       R.dbMeta = db.meta;
@@ -1542,6 +1543,20 @@
     if (built && opts.onBuilt) opts.onBuilt(App.R);
     if (built && !App.restoring) histPush('generate', opts.asIs ? 'Imported deck' : opts.locks && opts.locks.length ? 'Rebuilt around ' + opts.locks.length + ' locked card(s)' : 'Generated');
     if ((App.tab === 'analysis' || App.tab === 'changes' || App.tab === 'percard') && App.anSource !== 'paste' && App.R && !opts.asIs) runAnalysis(); // an import runs its own
+  }
+
+  /* ---------- fill a short deck to 100: rebuild with every current card kept (locked), so the generator adds the
+     missing cards from your settings (bracket, plan, themes, collection mode). The total budget cap is left out, since
+     the kept cards alone may already be over it; the per-card cap still applies to the added cards. ---------- */
+  const deckCount = R => R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0);
+  const fillBtnHTML = () => App.R && App.R.stats && deckCount(App.R) < 100 ? ' <button type="button" class="small primary" data-fill="1" title="Keep every card and add the missing ones from your settings"' + (App.busy ? ' disabled' : '') + '>Fill to 100</button>' : '';
+  async function fillDeck() {
+    const R = App.R; if (!R || !R.stats || App.busy) return;
+    const before = deckCount(R); if (before >= 100) return;
+    const locks = R.deck.map(e => ({ name: e.c.n, slot: e.slot, qty: e.qty }));
+    let built = null;
+    await runGenerate({ locks, bans: R.bans || [], imported: !!(App.chain && App.chain.env && App.chain.env.imported), fill: true, onBuilt: x => { built = x; } });
+    if (built) { const n = deckCount(built) - before; App.accepted = []; setStatus('Filled the deck: added ' + n + ' card' + (n === 1 ? '' : 's') + ' (' + deckCount(built) + ' total). Every card you had is kept and locked.'); }
   }
 
   /* ---------- import: a pasted list becomes the working deck exactly as pasted, every card locked ---------- */
@@ -1580,7 +1595,7 @@
     const kept = built.deck.reduce((s, e) => s + e.qty, 0), total = kept + built.commanders.length;
     const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' with ' + cmds.map(c => c.n).join(' + ') + (K.how !== 'section' && K.how !== 'pick' ? ' (read as the commander from the ' + K.how + ')' : '') + ' (' + total + ' total).' +
       (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
-      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
+      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total < 100 ? ' ' + (100 - total) + ' short of 100: Fill to 100 on Analysis adds them.' : total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
     say(msg); setStatus(msg);
     App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
     runAnalysis();
@@ -2059,6 +2074,7 @@
         if (k === 'copy') return copyText(buyList(App.UP.res.swaps.map(x => ({ c: x.add, qty: 1 }))), null, $('upCopyNote'));
       }
     });
+    document.querySelector('.results').addEventListener('click', e => { if (e.target.closest('button[data-fill]')) fillDeck(); });
     document.querySelector('.results').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-hist]'); if (!b) return;
