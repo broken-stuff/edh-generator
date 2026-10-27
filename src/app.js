@@ -1072,13 +1072,14 @@
   const PAGES = {
     start: ['Start', [['setup', 'Build a deck'], ['import', 'Import my deck'], ['find', 'Find a commander']]],
     collection: ['Collection', []],
+    builder: ['Builder', []],
     deck: ['Deck', [['cards', 'Cards'], ['counts', 'Counts'], ['hand', 'Sample hand'], ['export', 'Export']]],
     analysis: ['Analysis', []],
     improve: ['Improve', [['changes', 'Suggested swaps'], ['cats', 'By category'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]],
     primer: ['Primer', []],
     more: ['More', []]
   };
-  const PAGE_OF = { setup: 'start', import: 'start', collection: 'collection', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', cats: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
+  const PAGE_OF = { setup: 'start', import: 'start', collection: 'collection', builder: 'builder', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', cats: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
   const FIND = [['commanders', 'Browse'], ['inspire', 'Quiz'], ['surprise', 'Random']];
   const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
   const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
@@ -1092,6 +1093,7 @@
   }
   const VIEW_NOTE = {
     setup: 'Add your collection if you like, then build a deck or import yours. Analysis checks it; Improve finds measured upgrades.',
+    builder: 'Your collection by role, theme, type and colour. Pick a commander, then pick cards by category, mana value and type; the tracker counts the deck against real decks of your bracket as you go.',
     collection: 'Paste or load the cards you own. Every card you own gets a green dot, and you choose whether new decks and suggestions use only your cards.',
     import: 'Paste your current list. It is kept exactly as pasted and opens on Analysis; Improve then measures swaps, from all cards or only your collection.',
     commanders: 'Every legal commander in the card data, by colour, theme and popularity.', inspire: 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.', surprise: 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.',
@@ -1142,6 +1144,7 @@
     $('pageHead').classList.remove('hidden'); $('pageHead').innerHTML = pageHeadHTML(page);
     if (setup) { $('view').innerHTML = ''; renderOwnTile(); return; } // a dynamic form left in #view must not hold data-k fields read by readForm()
     if (App.tab === 'collection') return renderCollection();
+    if (App.tab === 'builder') return renderBuilder();
     if (App.tab === 'tests') return renderTests();
     if (App.tab === 'analysis') return renderAnalysis();
     if (App.tab === 'changes') return renderChanges();
@@ -1697,6 +1700,228 @@
     runAnalysis();
   }
 
+  /* ---------- Builder: the collection by role and theme, and a deck picked by hand from it with a live tracker.
+     State (commander, bracket, themes, picks, filters, target overrides) is kept in this browser. ---------- */
+  const BL_KEY = 'edhgen.builder';
+  const BL_MV = [['0-1', '0–1', c => c.cmc <= 1], ['2', '2', c => c.cmc === 2], ['3', '3', c => c.cmc === 3], ['4', '4', c => c.cmc === 4], ['5', '5', c => c.cmc === 5], ['6+', '6+', c => c.cmc >= 6]];
+  const BL_TY = ['Creature', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Planeswalker', 'Battle', 'Land'];
+  const BL_SORT = [['rank', 'Popularity'], ['mv', 'Mana value'], ['name', 'Name'], ['price', 'Price']];
+  function blState() {
+    if (App.B) return App.B;
+    let s = null; try { s = JSON.parse(LS.get(BL_KEY) || 'null'); } catch (e) { }
+    App.B = Object.assign({ cmds: ['', ''], bracket: 3, themes: null, picks: {}, cat: 'all', mv: [], ty: [], q: '', sort: 'rank', all: false, tg: {}, n: 60, cq: '' }, s || {});
+    return App.B;
+  }
+  function blSave() { const B = App.B; LS.set(BL_KEY, JSON.stringify({ cmds: B.cmds, bracket: B.bracket, themes: B.themes, picks: B.picks, cat: B.cat, mv: B.mv, ty: B.ty, sort: B.sort, all: B.all, tg: B.tg })); }
+  const blCmds = () => blState().cmds.map(n => n && App.bulk && Engine.lookup(App.bulk, n)).filter(Boolean);
+  const blCI = cmds => 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
+  // theme keys in use: the commander's own (Builder.cmdThemes) until the user changes them
+  function blThemes(cmds) { const B = blState(); return B.themes || Builder.cmdThemes(App.bulk, cmds); }
+  // cached pool and categories for the current commander, collection, source and themes
+  function blPool() {
+    const B = blState(), cmds = blCmds(), o = ownedCards(), owned = !B.all && o && o.set.size ? o.set : null, th = blThemes(cmds);
+    const key = cmds.map(c => c.n).join('|') + '#' + (owned ? o.key : 'all') + '#' + th.join(',');
+    if (App.BC && App.BC.key === key && App.BC.db === App.bulk) return App.BC;
+    const CI = blCI(cmds), tags = th.map(Builder.themeTag).filter(Boolean), cards = Builder.pool(App.bulk, CI, owned, cmds);
+    const cats = new Map(cards.map(c => [c, Builder.cardCats(c, tags)]));
+    App.BC = { key, db: App.bulk, cmds, CI, tags, cards, cats, owned: !!owned };
+    return App.BC;
+  }
+  function blEntries() {
+    const B = blState(), out = [];
+    for (const [n, q] of Object.entries(B.picks)) { const c = Engine.lookup(App.bulk, n); if (c && q > 0) out.push({ c, qty: q }); }
+    return out;
+  }
+  function blCatList(P) {
+    return [['all', 'All']].concat(Builder.ROLE_CATS.filter(x => x.key !== 'counters' || P.CI.includes('U')).map(x => [x.key, x.label]), P.tags.map(t => [t.key, t.label]), [['other', 'No role']]);
+  }
+  const blInCat = (P, c, k) => { if (k === 'all') return true; const x = P.cats.get(c); return x.roles.includes(k) || x.themes.includes(k); };
+  // targets: the bracket's median from the reference decks, unless the user set one
+  function blTarget(T, k) { const B = blState(); if (B.tg[k] != null && B.tg[k] !== '') return +B.tg[k]; const r = T.ranges.roles[k] || T.ranges.types[k]; return r ? Math.round(r[1]) : 0; }
+  const blThemeCount = (P, k) => blEntries().filter(e => (P.cats.get(e.c) || Builder.cardCats(e.c, P.tags)).themes.includes(k)).reduce((s, e) => s + e.qty, 0);
+
+  function renderBuilder() {
+    if (!App.bulk) { $('view').innerHTML = emptyView(); return; }
+    const B = blState(), cmds = blCmds(), o = ownedCards(), n = o ? o.set.size : 0;
+    if (!cmds.length) { $('view').innerHTML = blStartHTML(o, n); return; }
+    const P = blPool();
+    const head = '<div class="bl-head"><div class="bl-cmd"><span class="note">Commander</span><b>' + cmds.map(c => cardLink(c)).join(' + ') + '</b> <span>' + pipsHTML(P.CI) + '</span> <button type="button" class="link" data-bl="cmd-change">Change</button></div>' +
+      '<div class="bl-br"><span class="note">Targets from</span><div class="seg" role="group" aria-label="Bracket for the targets">' + [1, 2, 3, 4, 5].map(b => '<button type="button" data-blbr="' + b + '" aria-pressed="' + (+B.bracket === b) + '" title="Reference decks of Bracket ' + b + '">B' + b + '</button>').join('') + '</div></div>' +
+      (n ? '<div class="seg" role="group" aria-label="Cards to offer"><button type="button" data-blall="0" aria-pressed="' + !B.all + '">My collection</button><button type="button" data-blall="1" aria-pressed="' + B.all + '">All cards</button></div>' : '') + '</div>' +
+      blThemesHTML(P);
+    $('view').innerHTML = head + '<div class="bl-grid"><section class="bl-pick" aria-label="Cards to pick"><div id="blCats" class="bl-cats">' + blCatsHTML(P) + '</div>' + blFiltersHTML() + '<div id="blList">' + blListHTML(P) + '</div></section>' +
+      '<aside class="bl-track' + (App.blOpen ? ' open' : '') + '" id="blTrack" aria-label="Deck tracker">' + blTrackHTML(P) + '</aside></div>';
+  }
+  // no commander yet: the collection breakdown and a commander picker
+  function blStartHTML(o, n) {
+    const B = blState(), idx = commanderIndex(), q = Engine.nameKey(B.cq || '');
+    let list = q.length >= 2 ? idx.filter(c => Engine.nameKey(c.n).includes(q)) : n ? idx.filter(c => o.set.has(c.n)) : idx;
+    if (n) list = list.filter(c => o.set.has(c.n)).concat(list.filter(c => !o.set.has(c.n)));
+    const ownCmd = n ? idx.filter(c => o.set.has(c.n)).length : 0;
+    const pick = '<div class="tile"><div class="tile-h"><h3>Pick a commander</h3><span class="hint">' + (n ? ownCmd + ' in your collection' : 'any legal commander') + '</span></div>' +
+      '<label class="f">Search commanders<input type="search" id="blCq" value="' + esc(B.cq || '') + '" placeholder="Start typing a name" autocomplete="off"></label>' +
+      '<div class="bl-cmdlist" id="blCmdList">' + blCmdListHTML(list, o) + '</div>' +
+      '<p class="note" style="margin:0">Only cards inside the commander\'s colour identity and legal in Commander are offered. ' + (n ? 'Your commanders are listed first.' : '') + '</p></div>';
+    let bd = '';
+    if (n) {
+      const cards = [...o.set].map(x => Engine.lookup(App.bulk, x)).filter(c => c && c.leg === 'legal'), tags = Object.keys(Engine.TAGS).map(Builder.themeTag).filter(Boolean), D = Builder.breakdown(cards, tags);
+      const bar = (v, max) => '<span class="bl-bar"><i style="width:' + (max ? Math.round(v / max * 100) : 0) + '%"></i></span>';
+      const rows = (list, max) => list.map(([l, v]) => '<div class="bl-brow"><span>' + esc(l) + '</span>' + bar(v, max) + '<b class="num">' + v + '</b></div>').join('');
+      const R = Builder.ROLE_CATS.map(x => [x.label, D.roles[x.key]]).concat([['No role (nonland)', D.roles.other]]);
+      const Th = tags.map(t => [t.label, D.themes[t.key]]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
+      const Ty = Analysis.TYPE_CATS.map(([k, l]) => [l, D.types[k]]).concat([['Lands', D.roles.lands]]);
+      const Ci = Object.entries(D.ci).sort((a, b) => b[1] - a[1]), rest = Ci.splice(10).reduce((t, x) => t + x[1], 0);
+      const mx = a => Math.max(1, ...a.map(x => x[1]));
+      bd = '<div class="tile"><div class="tile-h"><h3>Your collection by role</h3><span class="hint">' + cards.length.toLocaleString() + ' Commander-legal cards</span></div>' + rows(R, mx(R)) +
+        '<p class="note" style="margin:0">A card counts in every role it fills, with the same rules as Deck › Counts.</p></div>' +
+        '<div class="tile"><div class="tile-h"><h3>By synergy theme</h3></div>' + rows(Th, mx(Th)) + '</div>' +
+        '<div class="tile"><div class="tile-h"><h3>By card type</h3></div>' + rows(Ty, mx(Ty)) + '</div>' +
+        '<div class="tile"><div class="tile-h"><h3>By colour identity</h3></div>' + Ci.map(([k, v]) => '<div class="bl-brow"><span>' + pipsHTML(k === 'C' ? '' : k) + '</span>' + bar(v, mx(Ci)) + '<b class="num">' + v + '</b></div>').join('') + (rest ? '<div class="bl-brow"><span class="note">Other identities</span>' + bar(rest, mx(Ci)) + '<b class="num">' + rest + '</b></div>' : '') + '</div>';
+    } else bd = '<div class="tile"><div class="tile-h"><h3>Your collection</h3><span class="hint">empty</span></div><p class="note" style="margin:0">Add your cards on Collection to see them by role, theme, type and colour, and to build only from them. Without a collection every legal card is offered.</p><div class="row"><button type="button" class="small" data-go="collection">Add my collection ›</button></div></div>';
+    return '<div class="bl-start">' + pick + bd + '</div>';
+  }
+  function blCmdListHTML(list, o) {
+    const own = o && o.set.size ? o.set : null;
+    return list.length ? list.slice(0, 30).map(c => '<button type="button" class="bl-cmdbtn" data-blcmd="' + esc(c.n) + '"><span>' + esc(c.n) + (own && own.has(c.n) ? '<span class="ownmk"></span>' : '') + '</span><span>' + pipsHTML(c.ci) + '</span></button>').join('') : '<p class="note">No commander matches.</p>';
+  }
+  function blThemesHTML(P) {
+    const B = blState(), on = new Set(P.tags.map(t => t.key)), auto = Builder.cmdThemes(App.bulk, P.cmds);
+    const keys = auto.concat(Object.keys(Engine.TAGS).filter(k => !auto.includes(k))).concat([...on].filter(k => !auto.includes(k) && !Engine.TAGS[k]));
+    const chip = k => { const t = Builder.themeTag(k); return t ? '<button type="button" data-blth="' + esc(k) + '" aria-pressed="' + on.has(k) + '">' + esc(t.label) + '</button>' : ''; };
+    return '<details class="tdet bl-themes"' + (App.blThOpen ? ' open' : '') + '><summary class="note">Synergy themes: ' + (P.tags.length ? P.tags.map(t => esc(t.label)).join(', ') : 'none') + (B.themes ? '' : ' (read from the commander)') + '</summary>' +
+      '<div class="chips">' + keys.map(chip).join('') + '</div><div class="row"><label class="f" style="flex:1;margin:0">Creature type<input type="text" id="blTribe" placeholder="e.g. Elf" autocomplete="off"></label><button type="button" class="small" data-bl="tribe" style="align-self:flex-end">Add</button>' + (B.themes ? '<button type="button" class="small" data-bl="th-auto" style="align-self:flex-end">From commander</button>' : '') + '</div></details>';
+  }
+  function blCatsHTML(P) {
+    const B = blState(), T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI);
+    return blCatList(P).map(([k, l]) => {
+      const avail = k === 'all' ? P.cards.length : P.cards.filter(c => blInCat(P, c, k)).length;
+      const isRole = !!T.roles[k], have = isRole ? T.roles[k].n : k === 'all' ? T.main : null, tg = isRole ? blTarget(T, k) : k === 'all' ? T.size : null;
+      const cls = isRole && tg ? (have < (T.ranges.roles[k] || [tg])[0] ? ' low' : have >= tg ? ' met' : '') : '';
+      return '<button type="button" class="bl-cat' + cls + '" data-blcat="' + esc(k) + '" aria-pressed="' + (B.cat === k) + '"><span>' + esc(l) + '</span><small>' + (have != null ? have + '/' + tg + ' · ' : '') + avail + '</small></button>';
+    }).join('');
+  }
+  function blFiltersHTML() {
+    const B = blState();
+    return '<div class="bl-filters"><input type="search" id="blQ" value="' + esc(B.q) + '" placeholder="Search name or rules text" aria-label="Search cards" autocomplete="off">' +
+      '<div class="chips" role="group" aria-label="Mana value"><span class="note">MV</span>' + BL_MV.map(([k, l]) => '<button type="button" data-blmv="' + k + '" aria-pressed="' + B.mv.includes(k) + '">' + l + '</button>').join('') + '</div>' +
+      '<div class="chips" role="group" aria-label="Card type"><span class="note">Type</span>' + BL_TY.map(t => '<button type="button" data-blty="' + t + '" aria-pressed="' + B.ty.includes(t) + '">' + t + '</button>').join('') + '</div>' +
+      '<label class="bl-sort note">Sort <select id="blSort">' + BL_SORT.map(([k, l]) => '<option value="' + k + '"' + (B.sort === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label></div>';
+  }
+  function blFiltered(P) {
+    const B = blState(), q = B.q.trim().toLowerCase(), mv = BL_MV.filter(x => B.mv.includes(x[0])), cur = App.S.budget.cur;
+    let L = P.cards.filter(c => blInCat(P, c, B.cat) && (!mv.length || mv.some(x => x[2](c))) && (!B.ty.length || B.ty.some(t => new RegExp('\\b' + t + '\\b').test(c.ft))) && (!q || c.n.toLowerCase().includes(q) || c.low.includes(q)));
+    if (B.cat !== 'lands' && !B.ty.includes('Land')) L = L.filter(c => !Engine.isBasic(c)); // basics are on the tracker
+    if (B.sort === 'mv') L = L.slice().sort((a, b) => a.cmc - b.cmc || (a.rank || 1e9) - (b.rank || 1e9));
+    else if (B.sort === 'name') L = L.slice().sort((a, b) => a.n < b.n ? -1 : 1);
+    else if (B.sort === 'price') L = L.slice().sort((a, b) => (b.p[cur] || 0) - (a.p[cur] || 0));
+    return L;
+  }
+  function blRowHTML(P, c) {
+    const B = blState(), q = B.picks[c.n] || 0, x = P.cats.get(c) || { roles: [], themes: [] }, cur = App.S.budget.cur;
+    const RL = Object.fromEntries(Builder.ROLE_CATS.map(r => [r.key, r.label])), TL = Object.fromEntries(P.tags.map(t => [t.key, t.label]));
+    const badges = x.roles.filter(r => r !== 'other' && r !== 'lands').map(r => '<span class="bl-b">' + esc(RL[r]) + '</span>').concat(x.themes.map(t => '<span class="bl-b th">' + esc(TL[t]) + '</span>')).join('');
+    return '<li class="bl-row' + (q ? ' in' : '') + '" data-blrow="' + esc(c.n) + '"><button type="button" class="bl-add" data-bladd="' + esc(c.n) + '" aria-pressed="' + !!q + '" aria-label="' + (q ? 'Remove ' : 'Add ') + esc(c.n) + '">' + (q ? '✓' : '+') + '</button>' +
+      '<div class="bl-main"><div class="bl-l1">' + cardLink(c) + ' ' + manaHTML(c.mc) + '</div><div class="bl-l2"><span class="note">' + esc(c.ft.replace(/^Legendary /, '')) + '</span>' + badges + '</div></div>' +
+      '<span class="bl-p note num">' + (c.p[cur] != null ? Engine.fmt(c.p[cur], cur) : '') + '</span></li>';
+  }
+  function blListHTML(P) {
+    const B = blState(), L = blFiltered(P), shown = L.slice(0, B.n);
+    if (!L.length) return '<p class="note">No cards match' + (P.owned ? ' in your collection. Try All cards above, or clear a filter.' : '. Clear a filter.') + '</p>';
+    return '<p class="note bl-cnt">' + L.length.toLocaleString() + ' card' + (L.length === 1 ? '' : 's') + (P.owned ? ' from your collection' : '') + '</p><ul class="bl-list">' + shown.map(c => blRowHTML(P, c)).join('') + '</ul>' +
+      (L.length > shown.length ? '<button type="button" class="small" data-bl="more">Show ' + Math.min(60, L.length - shown.length) + ' more</button>' : '');
+  }
+  function blTrackHTML(P) {
+    const B = blState(), E = blEntries(), T = Builder.tally(E, P.cmds, B.bracket, P.CI);
+    let low = 0;
+    const row = (k, l, have, rng, tg) => {
+      const st = !rng ? '' : have < rng[0] ? 'fail' : have > rng[2] ? 'warn' : 'pass'; if (st === 'fail') low++;
+      const pct = Math.min(100, tg ? have / tg * 100 : have ? 100 : 0);
+      return '<div class="bl-tr ' + st + '"><span class="bl-tl">' + esc(l) + '</span><span class="bl-tb"><i style="width:' + pct.toFixed(0) + '%"></i></span><b class="num">' + have + '</b><span class="note">/</span><input type="number" min="0" max="99" class="bl-tg num" data-bltg="' + k + '" value="' + tg + '" aria-label="Target for ' + esc(l) + '"' + (rng ? ' title="Typical ' + fmtR(rng[0]) + '–' + fmtR(rng[2]) + ' (Bracket ' + T.b + ' reference decks)"' : '') + '></div>';
+    };
+    const roles = Builder.ROLE_CATS.filter(x => x.key !== 'counters' || P.CI.includes('U')).map(x => row(x.key, x.label, T.roles[x.key].n, T.ranges.roles[x.key], blTarget(T, x.key))).join('');
+    const types = Analysis.TYPE_CATS.map(([k, l]) => row(k, l, T.types[k], T.ranges.types[k], blTarget(T, k))).join('');
+    const themes = P.tags.map(t => { const have = blThemeCount(P, t.key); return row(t.key, t.label, have, null, B.tg[t.key] != null && B.tg[t.key] !== '' ? +B.tg[t.key] : 0); }).join('');
+    const mvR = T.ranges.types.avgMV, avg = T.types.avgMV;
+    const cols = P.CI.split(''), pt = cols.reduce((s, x) => s + T.pips[x], 0), lands = T.roles.lands.n;
+    const colour = cols.length ? '<div class="bl-col">' + cols.map(x => { const sh = pt ? T.pips[x] / pt : 0; return '<div class="bl-crow"><span class="ms ' + x + '">' + x + '</span><span class="bl-tb"><i style="width:' + (sh * 100).toFixed(0) + '%"></i></span><span class="note num">' + Math.round(sh * 100) + '% of pips</span><b class="num" title="Lands that make ' + x + '">' + T.sources[x] + '</b><span class="note">sources</span></div>'; }).join('') + '</div>' : '';
+    const bas = (P.CI ? P.CI.split('') : ['C']).map(x => { const nm = Engine.BASIC_NAMES[x], q = B.picks[nm] || 0; return '<span class="bl-bas"><span class="ms ' + x + '">' + x + '</span><button type="button" class="small" data-blbas="' + nm + '" data-d="-1" aria-label="One fewer ' + nm + '"' + (q ? '' : ' disabled') + '>−</button><b class="num">' + q + '</b><button type="button" class="small" data-blbas="' + nm + '" data-d="1" aria-label="One more ' + nm + '">+</button></span>'; }).join('');
+    const groups = {}; for (const e of E) (groups[Engine.typeGroup(e.c)] = groups[Engine.typeGroup(e.c)] || []).push(e);
+    const deckList = E.length ? Object.keys(groups).sort().map(g => '<div class="bl-dg"><b>' + esc(g) + ' (' + groups[g].reduce((s, e) => s + e.qty, 0) + ')</b>' + groups[g].sort((a, b) => a.c.cmc - b.c.cmc || (a.c.n < b.c.n ? -1 : 1)).map(e => '<span class="bl-di">' + (e.qty > 1 ? e.qty + ' ' : '') + cardLink(e.c) + '<button type="button" class="bl-x" data-bladd="' + esc(e.c.n) + '" aria-label="Remove ' + esc(e.c.n) + '">×</button></span>').join('') + '</div>').join('') : '<p class="note">Nothing picked yet.</p>';
+    const full = T.main >= T.size, over = T.main > T.size;
+    const sumBar = '<button type="button" class="bl-sum" data-bl="track" aria-expanded="' + !!App.blOpen + '"><b class="num">' + T.main + '/' + T.size + '</b><span>' + [['lands', 'Lands'], ['ramp', 'Ramp'], ['draw', 'Draw'], ['removal', 'Removal']].map(([k, l]) => l + ' ' + T.roles[k].n + '/' + blTarget(T, k)).join(' · ') + '</span><span class="bl-chev" aria-hidden="true">▾</span></button>';
+    const body = '<div class="bl-tbody">' +
+      '<div class="bl-total"><div><span class="note">Cards</span><b class="num">' + T.main + ' / ' + T.size + '</b><span class="note">+ ' + P.cmds.length + ' commander' + (P.cmds.length > 1 ? 's' : '') + '</span></div><span class="st ' + (over ? 'warn' : full ? 'pass' : 'na') + '">' + (over ? (T.main - T.size) + ' over' : full ? 'Full' : (T.size - T.main) + ' to go') + '</span></div>' +
+      '<span class="bl-tb big"><i style="width:' + Math.min(100, T.main / T.size * 100).toFixed(0) + '%"></i></span>' +
+      '<h4>Roles</h4>' + roles + (themes ? '<h4>Themes</h4>' + themes : '') + '<h4>Card types</h4>' + types +
+      '<div class="bl-tr ' + (!avg ? '' : avg < mvR[0] || avg > mvR[2] ? 'warn' : 'pass') + '"><span class="bl-tl">Average MV</span><span class="bl-tb"></span><b class="num">' + avg.toFixed(2) + '</b><span class="note" title="Typical ' + mvR[0] + '–' + mvR[2] + '">' + mvR[0] + '–' + mvR[2] + '</span></div>' +
+      '<p class="note bl-low">' + (low ? low + ' below the typical range' : 'Every role and type inside or above the typical range') + ' for Bracket ' + T.b + ' (' + T.ranges.roles.n + ' reference decks). Targets start at the median; change any number.</p>' +
+      '<h4>Mana curve</h4>' + curveSVG(T.curve) +
+      (colour ? '<h4>Colours</h4>' + colour : '') +
+      '<h4>Basic lands <span class="note">(' + lands + ' lands)</span></h4><div class="bl-basics">' + bas + '</div><button type="button" class="small" data-bl="basics">Fill basics to ' + blTarget(T, 'lands') + ' lands</button>' +
+      '<h4>Deck (' + T.main + ')</h4><div class="bl-deck">' + deckList + '</div>' +
+      '<div class="bl-act"><button type="button" class="primary" data-bl="analyze"' + (T.main ? '' : ' disabled') + '>Analyze this deck ›</button><button type="button" class="small" data-bl="copy"' + (T.main ? '' : ' disabled') + '>Copy list</button>' + (App.R && App.R.stats ? '<button type="button" class="small" data-bl="load">Load the current deck</button>' : '') + '<button type="button" class="small" data-bl="clear"' + (T.main ? '' : ' disabled') + '>Clear picks</button><span class="note" id="blNote">' + esc(App.blNote || '') + '</span></div>' +
+      '<p class="note">Analyze imports the list as it is (Analysis, Deck and Improve then work on it; under 100 cards, Fill to 100 adds the rest).</p></div>';
+    return sumBar + body;
+  }
+  // after a pick: the tracker, the category chips and that row, without redrawing the list
+  function blRefresh(name) {
+    const P = blPool();
+    if ($('blTrack')) $('blTrack').innerHTML = blTrackHTML(P);
+    if ($('blCats')) $('blCats').innerHTML = blCatsHTML(P);
+    if (name) { const c = Engine.lookup(App.bulk, name), li = c && document.querySelector('li[data-blrow="' + CSS.escape(c.n) + '"]'); if (li) li.outerHTML = blRowHTML(P, c); }
+  }
+  function blList() { const P = blPool(); if ($('blList')) $('blList').innerHTML = blListHTML(P); if ($('blCats')) $('blCats').innerHTML = blCatsHTML(P); }
+  function blToggle(name) {
+    const B = blState(), c = Engine.lookup(App.bulk, name); if (!c) return;
+    if (B.picks[c.n]) delete B.picks[c.n]; else B.picks[c.n] = 1;
+    App.blNote = ''; blSave(); blRefresh(c.n);
+  }
+  async function blAnalyze() {
+    const cmds = blCmds(), E = blEntries(); if (!cmds.length || !E.length) return;
+    App.impText = Builder.exportList(cmds, E); App.impPick = null;
+    await importDeck();
+  }
+  function blClick(e) {
+    const B = blState();
+    const t = e.target.closest('[data-bladd],[data-blcat],[data-blmv],[data-blty],[data-blth],[data-blbr],[data-blall],[data-blcmd],[data-blbas],[data-bl]'); if (!t) return;
+    const d = t.dataset;
+    if (d.bladd != null) return blToggle(d.bladd);
+    if (d.blcat != null) { B.cat = d.blcat; B.n = 60; blSave(); return blList(); }
+    if (d.blmv != null) { B.mv = B.mv.includes(d.blmv) ? B.mv.filter(x => x !== d.blmv) : B.mv.concat(d.blmv); B.n = 60; blSave(); t.setAttribute('aria-pressed', B.mv.includes(d.blmv)); return blList(); }
+    if (d.blty != null) { B.ty = B.ty.includes(d.blty) ? B.ty.filter(x => x !== d.blty) : B.ty.concat(d.blty); B.n = 60; blSave(); t.setAttribute('aria-pressed', B.ty.includes(d.blty)); return blList(); }
+    if (d.blth != null) { const cur = blThemes(blCmds()); B.themes = cur.includes(d.blth) ? cur.filter(x => x !== d.blth) : cur.concat(d.blth); if (B.cat === d.blth) B.cat = 'all'; App.blThOpen = true; blSave(); return renderBuilder(); }
+    if (d.blbr != null) { B.bracket = +d.blbr; blSave(); return renderBuilder(); }
+    if (d.blall != null) { B.all = d.blall === '1'; B.n = 60; blSave(); return renderBuilder(); }
+    if (d.blcmd != null) { B.cmds = [d.blcmd, '']; B.themes = null; B.cat = 'all'; B.cq = ''; blSave(); window.scrollTo({ top: 0 }); return renderBuilder(); }
+    if (d.blbas != null) { const q = Math.max(0, (B.picks[d.blbas] || 0) + +d.d); if (q) B.picks[d.blbas] = q; else delete B.picks[d.blbas]; blSave(); return blRefresh(); }
+    const P = blPool();
+    switch (d.bl) {
+      case 'cmd-change': B.cmds = ['', '']; blSave(); return renderBuilder();
+      case 'track': App.blOpen = !App.blOpen; $('blTrack').classList.toggle('open', App.blOpen); t.setAttribute('aria-expanded', App.blOpen); return;
+      case 'more': B.n += 60; return blList();
+      case 'th-auto': B.themes = null; App.blThOpen = true; blSave(); return renderBuilder();
+      case 'tribe': { const v = ($('blTribe').value || '').trim().toLowerCase(), T = [...Engine.creatureTypes(App.bulk)].find(x => x.toLowerCase() === v || Engine.plural(x) === v); if (!T) { $('blTribe').setCustomValidity('Not a creature type in the card data'); $('blTribe').reportValidity(); return; } const cur = blThemes(blCmds()); if (!cur.includes('tribal:' + T)) B.themes = cur.concat('tribal:' + T); App.blThOpen = true; blSave(); return renderBuilder(); }
+      case 'basics': { const T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI), noBas = blEntries().filter(e => !Engine.isBasic(e.c)); for (const x of 'WUBRGC') delete B.picks[Engine.BASIC_NAMES[x]]; const add = Builder.basicsFor(noBas, P.cmds, P.CI, blTarget(T, 'lands')); for (const [x, q] of Object.entries(add)) if (q) B.picks[Engine.BASIC_NAMES[x]] = q; blSave(); return blRefresh(); }
+      case 'analyze': t.disabled = true; return blAnalyze();
+      case 'copy': return copyText(Builder.exportList(P.cmds, blEntries()), null, $('blNote'));
+      case 'clear': if (!confirm('Remove every picked card?')) return; B.picks = {}; blSave(); return renderBuilder();
+      case 'load': { const R = App.R; B.cmds = [R.commanders[0].n, R.commanders[1] ? R.commanders[1].n : '']; B.picks = Object.fromEntries(R.deck.map(e => [e.c.n, e.qty])); B.themes = null; App.blNote = 'Loaded ' + R.deck.reduce((s, e) => s + e.qty, 0) + ' cards from the current deck.'; blSave(); return renderBuilder(); }
+    }
+  }
+  function blInput(e) {
+    const B = blState(), id = e.target.id;
+    if (id === 'blQ') { B.q = e.target.value; B.n = 60; clearTimeout(App.blT); App.blT = setTimeout(blList, 120); return; }
+    if (id === 'blCq') { B.cq = e.target.value; const o = ownedCards(), q = Engine.nameKey(B.cq), idx = commanderIndex(), own = o && o.set.size ? o.set : null; let L = q.length >= 2 ? idx.filter(c => Engine.nameKey(c.n).includes(q)) : own ? idx.filter(c => own.has(c.n)) : idx; if (own) L = L.filter(c => own.has(c.n)).concat(L.filter(c => !own.has(c.n))); $('blCmdList').innerHTML = blCmdListHTML(L, o); return; }
+    if (id === 'blTribe') { e.target.setCustomValidity(''); return; }
+    const tg = e.target.dataset && e.target.dataset.bltg;
+    if (tg) { const v = e.target.value; if (v === '') delete B.tg[tg]; else B.tg[tg] = Math.max(0, Math.min(99, Math.round(+v) || 0)); blSave(); }
+  }
+  function blChange(e) {
+    const B = blState();
+    if (e.target.id === 'blSort') { B.sort = e.target.value; blSave(); return blList(); }
+    if (e.target.dataset && e.target.dataset.bltg) blRefresh();
+  }
+
   /* ---------- acceptance tests (run against loaded data) ---------- */
   async function runTests() {
     if (App.busy) return;
@@ -2107,7 +2332,7 @@
   }
 
   /* ---------- keyboard shortcuts ---------- */
-  const KEYS_HELP = 'Keys: 1–6 open Start, Collection, Deck, Analysis, Improve and Primer · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
+  const KEYS_HELP = 'Keys: 1–7 open Start, Collection, Builder, Deck, Analysis, Improve and Primer · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
 
   function wire() {
     document.querySelector('.settings').addEventListener('input', onFormChange);
@@ -2160,6 +2385,9 @@
       const a = e.target.closest('[data-ctadd]'); if (a) { if (a.checked) T.sel.add(a.dataset.ctadd); else { T.sel.delete(a.dataset.ctadd); delete T.cutOv[a.dataset.ctadd]; } T.whole = null; return renderCats(); }
       const c = e.target.closest('[data-ctcut]'); if (c) { T.cutOv[c.dataset.ctcut] = c.value; T.whole = null; return renderCats(); }
     });
+    $('view').addEventListener('click', e => { if (App.tab === 'builder') blClick(e); });
+    $('view').addEventListener('input', e => { if (App.tab === 'builder') blInput(e); });
+    $('view').addEventListener('change', e => { if (App.tab === 'builder') blChange(e); });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
     $('view').addEventListener('click', e => {
       const a = e.target.closest('button[data-cbadd],button[data-cbaddall]'); if (a) return comboAddPanel(a);

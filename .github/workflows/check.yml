@@ -25,6 +25,7 @@ jobs:
         run: |
           node test.js
           node stest.js
+          node btest.js
           node ttest.js
       - name: Built pages match src/
         working-directory: src

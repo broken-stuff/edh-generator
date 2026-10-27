@@ -1,0 +1,25 @@
+// Builder (collection breakdown, hand-built decks) tests on the SYNTHETIC fixture. Logic tests only.
+const E = require('./engine.js'), An = require('./analysis.js'), B = require('./builder.js'), raw = require('./fixture.js');
+const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; } else console.log('pass', m); };
+const db = E.buildDB(raw.map(E.norm).filter(Boolean), {});
+const cmd = E.lookup(db, 'Synth Mono Lord');
+const all = B.pool(db, cmd.ci, null, [cmd]);
+assert(all.length > 0 && all.every(c => c.leg === 'legal' && [...c.ci].every(x => cmd.ci.includes(x))), 'pool: Commander-legal cards inside the colour identity only');
+assert(!all.includes(cmd), 'pool: the commander is left out');
+const owned = new Set(all.filter(c => !E.isBasic(c)).slice(0, 10).map(c => c.n));
+const mine = B.pool(db, cmd.ci, owned, [cmd]);
+assert(mine.filter(c => !E.isBasic(c)).length === 10 && mine.every(c => owned.has(c.n) || E.isBasic(c)), 'pool: owned cards only, basic lands always allowed');
+const th = B.cmdThemes(db, [cmd]);
+assert(th.includes('tribal:Elf'), 'themes: the Elf lord gets Tribal: Elf from its rules text (' + th.join(', ') + ')');
+const tags = th.map(B.themeTag);
+const D = B.breakdown(all, tags);
+assert(D.n === all.length && D.roles.ramp === all.filter(c => E.analyze(c).roles.ramp).length, 'breakdown: role counts match the role tagging');
+const entries = all.filter(c => !E.isBasic(c)).slice(0, 30).map(c => ({ c, qty: 1 }));
+const T = B.tally(entries, [cmd], 3, cmd.ci);
+assert(T.main === 30 && T.size === 99 && T.total === 31, 'tally: card count, deck size and total with the commander');
+assert(T.curve.reduce((s, v) => s + v, 0) === entries.filter(e => !E.analyze(e.c).isLand).length, 'tally: the curve counts every nonland card once');
+assert(T.ranges.roles === An.ROLE_RANGES[3] && T.ranges.types === An.TYPE_RANGES[3], 'tally: ranges for the chosen bracket');
+const bas = B.basicsFor(entries, [cmd], cmd.ci, 36), landsNow = entries.filter(e => E.analyze(e.c).isLand).length;
+assert(Object.values(bas).reduce((s, v) => s + v, 0) === Math.max(0, 36 - landsNow) && Object.keys(bas).every(x => cmd.ci.includes(x)), 'basics: fill to the land target in the commander\'s colours');
+const P = An.parseDecklist(B.exportList([cmd], entries)), K = An.pickCommanders(P, db);
+assert(K.cmds.length === 1 && K.cmds[0] === cmd && K.main.reduce((s, x) => s + x.qty, 0) === 30, 'export: the importer reads the commander and every card back');
