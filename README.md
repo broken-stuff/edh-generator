@@ -6,7 +6,7 @@ Commander (EDH) deck tools that run entirely in your browser, built on [Scryfall
 
 | Page | What it does |
 |---|---|
-| **Deck generator** (`index.html`) | Builds a legal 100-card deck for a commander, bracket, budget and game plan, then scores it, explains it and writes a play primer. Also helps you pick a commander. |
+| **Deck generator** (`index.html`) | Builds a legal 100-card deck for a commander, bracket, budget and game plan, then scores it, explains it and writes a play primer. Also helps you pick a commander, and has a Builder for picking a deck by hand from your collection with a live role and curve tracker. |
 | **Card explorer** (`card.html`) | Looks up any card and ranks the cards most like it, with prices and its 2-card combos. |
 
 No account, server or install. Nothing you enter leaves your browser. The only outside requests are the site's own data files and, if you turn them on, card pictures from `cards.scryfall.io`.
@@ -33,6 +33,7 @@ Open the [deck generator](https://broken-stuff.github.io/edh-generator/). Card d
 2. **Deck.** On Start, either:
    - **Build a deck:** fill the tiles (Commander, Power, Budget, Collection, Game plan and themes) and press **Generate deck** (`G`). **Find a commander** helps you pick one (Browse, Quiz, Random).
    - **Import my deck:** paste a list (Moxfield, Archidekt, MTGO, CSV or `1 Name`). It is kept exactly as pasted. If it is under 100 cards, **Fill to 100** (on Analysis and in the Deck summary) keeps every card and adds the rest from your Start settings.
+   - Or build it yourself on **Builder**: pick a commander, then pick cards from your collection by role, theme, mana value and type, with a live tracker against real decks of your bracket. **Analyze this deck** sends it to Analysis.
 3. **Analysis.** Power level, bracket, win turn, problems, and role counts against real decks of your bracket.
 4. **Improve.** Measured changes, from **All cards** or **My collection**:
    - **Suggested swaps:** cuts and adds scored with simulated games; accept or deny each. **Deep search** looks wider.
@@ -63,7 +64,7 @@ Each card is weighed on:
 
 Analysis, Improve and deep search on a mechanics-only deck use the same quality model in place of EDHREC rank. Standard builds are unchanged.
 
-The pages are in the left menu (a bar at the bottom on phones) and follow the order you use them in: **Start**, **Collection**, **Deck**, **Analysis**, **Improve** and **Primer** (under More on phones). **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title. The KPI tiles (power, bracket, win turn, price) show on Analysis; the other deck pages show the same numbers in one line.
+The pages are in the left menu (a bar at the bottom on phones) and follow the order you use them in: **Start**, **Collection**, **Builder**, **Deck**, **Analysis**, **Improve** and **Primer** (under More on phones). **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title. The KPI tiles (power, bracket, win turn, price) show on Analysis; the other deck pages show the same numbers in one line.
 
 ### Start
 
@@ -88,6 +89,16 @@ Paste the cards you own (one per line, `1 Card Name` or just the name, or a CSV 
 - **Only cards I own:** new decks and every suggestion on Analysis and Improve (suggested swaps, deep search, By card, Budget upgrades, combos one card away) use only your cards. Basic lands are always allowed.
 
 With a deck loaded the page shows how many of its nonbasic cards you own and what the rest cost, with **Copy the cards to get** for a store's mass entry. The list is kept in your browser with your settings.
+
+### Builder
+
+Build a deck by hand from your collection.
+
+- **Before a commander is picked:** your collection broken down by role (the Deck › Counts categories: lands, ramp, card draw, spot removal, counterspells, board wipes, protection, tutors, recursion, win conditions, and nonland cards with no role), by synergy theme (the generator's theme tags), by card type and by colour identity. A card counts in every role and theme it matches. Pick a commander from the list (yours first) or search any legal one.
+- **Cards offered:** Commander-legal cards inside the commander's colour identity, from **My collection** (basic lands always available) or **All cards**. Category chips (All, each role, each synergy theme, No role) show the deck's count against its target and how many cards are available. Filter by mana value (0–1 to 6+), card type and text, and sort by popularity (EDHREC rank), mana value, name or price. **+** adds a card, **✓** removes it.
+- **Synergy themes** are read from the commander's rules text the way the generator reads them (for example Tribal: Elf for Lathril); add or remove any theme, or add a creature type.
+- **Tracker** (beside the list; a bar above it on phones, tap for the full panel): cards out of 99 (98 with two commanders), each role and card type (creatures, instants, sorceries, artifacts, enchantments, planeswalkers) against a target, average mana value, the mana curve, each colour's share of the pips next to the lands that make it, basic lands (+/− per type, or **Fill basics** to the land target split by pips), and the deck grouped by type. Targets start at the median of the reference decks for the bracket you choose (B1–B5) and can be changed; a row is red below the 25th percentile, green inside the middle half, amber above it. Type and average-MV ranges come from the same 822 Archidekt decklists as Deck › Counts (`node tools/ref-roles.js` recomputes both tables).
+- **Analyze this deck** imports the list as it is, so Analysis, Deck, Improve (including **Fill to 100**) and Export work on it. **Copy list** copies it with Commander and Deck sections; **Load the current deck** brings a generated or imported deck into the builder. The builder's state is kept in your browser.
 
 ### Deck
 
@@ -130,7 +141,7 @@ A play guide built from the deck's own numbers: table talk for the pre-game conv
 ### Anywhere in the generator
 
 - **Hover or tap a card name** for its cost, text, price, roles, whether you own it and why it is in the deck. On a computer it opens beside the name; on a phone it slides up from the bottom. With card images on, the picture sits left of the text.
-- **Keys:** `1`–`6` open Start, Collection, Deck, Analysis, Improve and Primer, `G` generates, `/` jumps to search, `U` or `Ctrl/Cmd+Z` undoes, `Esc` closes popups, `?` lists the keys.
+- **Keys:** `1`–`7` open Start, Collection, Builder, Deck, Analysis, Improve and Primer, `G` generates, `/` jumps to search, `U` or `Ctrl/Cmd+Z` undoes, `Esc` closes popups, `?` lists the keys.
 - **Clear** (top right) starts over. History, card data and appearance are kept.
 
 ## Card explorer
@@ -177,6 +188,7 @@ Each page is one self-contained HTML file with no frameworks, libraries or build
 | `src/analysis.js` | Power level, bracket estimate, goldfish simulation, draw odds, recommendations |
 | `src/plan.js` | Commander plan profiles (what a commander's text asks its deck for) and the rules-text card-quality model used by Mechanics only |
 | `src/mech.js` | Mechanics graph: Oracle text parsed into what each card needs (triggers, costs, scaling) and makes (effects and the events they cause); links between cards |
+| `src/builder.js` | Builder page: collection breakdown, card pool for a commander, tracker counts and basic-land split |
 | `src/deep.js` | Deep search: wide swap screen, combo completions, sequential swap package; runs in Web Workers |
 | `src/app.js` | Deck generator interface |
 | `src/similar.js` | Card explorer similarity index and ranking |
@@ -207,6 +219,7 @@ sh build-card.sh                                                                
 cd src
 node test.js     # generator engine; exits non-zero on a failure
 node stest.js    # card explorer similarity; exits non-zero on a failure
+node btest.js    # builder: pool, themes, tracker counts, basics, export round trip
 node ttest.js    # role tagging on the real card data in data/: staples get their roles, top-500 coverage
 node atest.js    # prints analysis output for a generated deck
 node sens.js     # prints a table of how decks respond to bracket, budget and game plan

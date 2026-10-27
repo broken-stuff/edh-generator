@@ -38,6 +38,16 @@ const Analysis = (function () {
     for (const [k, label, test] of COUNT_CATS) { const cards = deck.filter(e => test(e.c)); out[k] = { key: k, label, n: cards.reduce((s, e) => s + (e.qty || 1), 0), cards: cards.map(e => e.c) }; }
     return out;
   }
+  // Card types (each nonland card once, by its first type in Engine.typeGroup order: an artifact creature is a creature)
+  // and the average mana value of nonland cards, for the deck builder's tracker.
+  const TYPE_CATS = [['creature', 'Creatures', 'Creature'], ['instant', 'Instants', 'Instant'], ['sorcery', 'Sorceries', 'Sorcery'], ['artifact', 'Artifacts', 'Artifact'], ['enchantment', 'Enchantments', 'Enchantment'], ['planeswalker', 'Planeswalkers', 'Planeswalker']];
+  function typeCounts(deck) {
+    const out = Object.fromEntries(TYPE_CATS.map(([k]) => [k, 0])), G = Object.fromEntries(TYPE_CATS.map(([k, , g]) => [g, k]));
+    let mv = 0, nl = 0;
+    for (const e of deck) { const g = E.typeGroup(e.c), q = e.qty || 1; if (G[g]) out[G[g]] += q; if (g !== 'Land') { mv += e.c.cmc * q; nl += q; } }
+    out.avgMV = nl ? mv / nl : 0;
+    return out;
+  }
   // Middle half (25th–75th percentile) and median of each count across the Archidekt reference decks in
   // data/reference/ (decks of 95+ cards, commanders excluded), by Commander Bracket; 0 = all brackets. Counterspells:
   // blue decks only (nU of n).
@@ -49,6 +59,15 @@ const Analysis = (function () {
     3: { n: 165, nU: 94, lands: [34, 36, 37], ramp: [11, 13, 17], draw: [9, 11, 15], removal: [5, 7, 9], counters: [2, 3, 5], wipes: [0, 1, 2], protection: [1, 3, 4], tutors: [0, 2, 3], recursion: [1, 2, 4], wincon: [2, 5, 8] },
     4: { n: 165, nU: 93, lands: [32, 34, 36], ramp: [12, 14, 20], draw: [8, 11, 14], removal: [5, 7, 9], counters: [2, 4, 6], wipes: [0, 1, 2], protection: [1, 2, 4], tutors: [2, 4, 6], recursion: [0, 1, 4], wincon: [2, 4, 8] },
     5: { n: 164, nU: 93, lands: [27, 30, 34], ramp: [13, 18, 22], draw: [7, 10, 13], removal: [4, 6, 8], counters: [5, 7, 10], wipes: [0, 0, 1], protection: [1, 2, 3], tutors: [4, 7, 10], recursion: [1, 2, 3], wincon: [2, 3, 5] }
+  };
+  // Same decks, TYPE_CATS counts and average nonland mana value. Regenerate with: node tools/ref-roles.js
+  const TYPE_RANGES = {
+    0: { creature: [23, 29, 34], instant: [6, 9, 14], sorcery: [4, 7, 10], artifact: [6, 9, 13], enchantment: [4, 7, 9], planeswalker: [0, 0, 1], avgMV: [2.67, 3.05, 3.52] },
+    1: { creature: [24.5, 30, 35], instant: [4, 7, 10], sorcery: [4.5, 7, 9.5], artifact: [5, 8, 12], enchantment: [4, 6, 9], planeswalker: [0, 0, 1], avgMV: [2.86, 3.3, 3.76] },
+    2: { creature: [26, 31, 35], instant: [6, 8, 10], sorcery: [5, 7, 9], artifact: [5, 8, 12], enchantment: [4, 7, 9], planeswalker: [0, 0, 1], avgMV: [2.9, 3.29, 3.69] },
+    3: { creature: [25, 30, 35], instant: [7, 9, 12], sorcery: [3, 6, 9], artifact: [5, 8, 11], enchantment: [5, 7, 9], planeswalker: [0, 0, 1], avgMV: [2.81, 3.13, 3.6] },
+    4: { creature: [23, 28, 32], instant: [8, 11, 14], sorcery: [4, 6, 9], artifact: [7, 9, 13], enchantment: [5, 7, 9], planeswalker: [0, 0, 1], avgMV: [2.54, 2.89, 3.39] },
+    5: { creature: [19, 25, 30], instant: [10, 15, 22], sorcery: [5, 8, 10], artifact: [8, 11, 15], enchantment: [5, 6.5, 9], planeswalker: [0, 0, 1], avgMV: [2.12, 2.5, 2.99] }
   };
 
   /* ---------- enabler / payoff synergy pairs ---------- */
@@ -1190,6 +1209,6 @@ const Analysis = (function () {
     return { cmds: [], how: null, main, missing: [], candidates: cand };
   }
 
-  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, catPlan, catCuts, catCounts, catRange, catsOf, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp, COUNT_CATS, roleCounts, ROLE_RANGES };
+  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, catPlan, catCuts, catCounts, catRange, catsOf, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp, COUNT_CATS, roleCounts, ROLE_RANGES, TYPE_CATS, typeCounts, TYPE_RANGES };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;

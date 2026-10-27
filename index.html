@@ -111,7 +111,7 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 .pgnav .subtabs{margin:0}
 .pgseg button{padding:5px 12px;font-size:calc(12.5px*var(--fz))}
 .st.stbtn{cursor:pointer;border:0;font:inherit;font-size:calc(11.5px*var(--fz))}
-body[data-page="start"] #kpis,body[data-page="start"] #scorebar,body[data-page="collection"] #kpis,body[data-page="collection"] #scorebar,body[data-page="more"] #kpis,body[data-page="more"] #scorebar{display:none}
+body[data-page="start"] #kpis,body[data-page="start"] #scorebar,body[data-page="collection"] #kpis,body[data-page="collection"] #scorebar,body[data-page="builder"] #kpis,body[data-page="builder"] #scorebar,body[data-page="more"] #kpis,body[data-page="more"] #scorebar{display:none}
 body[data-view="setup"] #genBtn{display:none}
 body:not([data-page="analysis"]) #kpis{display:none}
 .results{min-width:0;display:flex;flex-direction:column;gap:14px}
@@ -333,6 +333,74 @@ table.swaps td{vertical-align:top}
 .swatches{display:flex;flex-wrap:wrap;gap:8px}
 .swatches button{width:30px;height:30px;padding:0;border-radius:50%;border:2px solid var(--card);box-shadow:0 0 0 1px var(--line-strong)}
 .swatches button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+/* builder: collection breakdown, card picker and the deck tracker */
+.bl-start{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.bl-cmdlist{display:flex;flex-direction:column;gap:4px;max-height:420px;overflow:auto}
+.bl-cmdbtn{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;padding:8px 10px;border-radius:10px}
+.bl-brow{display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr) 3.5em;gap:8px;align-items:center;font-size:calc(13px*var(--fz))}
+.bl-brow b{text-align:right}
+.bl-bar,.bl-tb{display:block;height:8px;background:var(--card-2);border-radius:999px;overflow:hidden}
+.bl-bar i,.bl-tb i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.bl-tb.big{height:10px;margin:6px 0 2px}
+.bl-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-bottom:8px}
+.bl-cmd{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.bl-cmd b{font-size:calc(15px*var(--fz))}
+.bl-br{display:flex;align-items:center;gap:8px}
+.bl-themes{margin-bottom:10px}.bl-themes .chips{margin:8px 0}
+.bl-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,360px);gap:16px;align-items:start}
+.bl-pick{min-width:0}
+.bl-cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.bl-cat{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 11px;border-radius:12px;min-height:40px;font-size:calc(12.5px*var(--fz));line-height:1.2}
+.bl-cat small{font-size:calc(11px*var(--fz));color:var(--muted);font-variant-numeric:tabular-nums}
+.bl-cat.low small{color:var(--bad)}.bl-cat.met small{color:var(--ok)}
+.bl-cat[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.bl-cat[aria-pressed="true"] small{color:inherit;opacity:.85}
+.bl-filters{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.bl-filters input[type=search]{width:100%}
+.bl-filters .chips{align-items:center}.bl-filters .chips .note{min-width:2.6em}
+.bl-filters .chips button{min-height:30px;padding:4px 10px}
+.bl-sort{display:flex;align-items:center;gap:6px}.bl-sort select{width:auto}
+.bl-cnt{margin:4px 0}
+.bl-list{list-style:none;margin:0 0 10px;padding:0;border-top:1px solid var(--line)}
+.bl-row{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--line)}
+.bl-row.in{background:var(--ok-soft)}
+.bl-add{width:34px;height:34px;padding:0;border-radius:50%;font-size:18px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+.bl-add[aria-pressed="true"]{background:var(--ok);color:#fff;border-color:transparent}
+.bl-main{min-width:0}.bl-l1{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.bl-l2{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:2px}
+.bl-b{font-size:calc(10.5px*var(--fz));padding:1px 7px;border-radius:999px;background:var(--card-2);color:var(--muted);white-space:nowrap}
+.bl-b.th{background:var(--accent-soft);color:var(--ink)}
+.bl-track{position:sticky;top:76px;max-height:calc(100vh - 88px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px 16px}
+.bl-track h4{margin:14px 0 6px;font-size:calc(12px*var(--fz));text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.bl-sum{display:none}
+.bl-total{display:flex;justify-content:space-between;align-items:center;gap:8px}.bl-total>div{display:flex;align-items:baseline;gap:6px}.bl-total b{font-size:calc(20px*var(--fz))}
+.bl-tr{display:grid;grid-template-columns:minmax(0,7.5em) minmax(0,1fr) 2.2em .6em 3.6em;gap:6px;align-items:center;font-size:calc(13px*var(--fz));padding:2px 0}
+.bl-tr b{text-align:right}
+.bl-tr.pass .bl-tb i{background:var(--ok)}.bl-tr.fail .bl-tb i{background:var(--bad)}.bl-tr.warn .bl-tb i{background:var(--warn)}
+.bl-tr.fail .bl-tl{color:var(--bad)}
+.bl-track input.bl-tg{width:100%;padding:3px 6px;text-align:right;min-height:28px;height:28px;font-size:calc(13px*var(--fz));border-radius:8px}
+.bl-low{margin:8px 0 0}
+.bl-col{display:flex;flex-direction:column;gap:4px}
+.bl-crow{display:grid;grid-template-columns:22px minmax(0,1fr) 7.5em 2em 3.6em;white-space:nowrap;gap:6px;align-items:center;font-size:calc(12.5px*var(--fz))}.bl-crow b{text-align:right}
+.bl-basics{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.bl-bas{display:inline-flex;align-items:center;gap:4px}.bl-bas b{min-width:1.6em;text-align:center}
+.bl-bas button.small{padding:2px 9px}
+.bl-deck{display:flex;flex-direction:column;gap:6px;font-size:calc(12.5px*var(--fz))}
+.bl-dg{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}.bl-dg>b{flex-basis:100%;font-size:calc(12px*var(--fz));color:var(--muted)}
+.bl-di{white-space:nowrap}
+.bl-x{border:0;background:none;color:var(--muted);padding:0 3px;min-height:0;font-size:14px;cursor:pointer}
+.bl-act{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
+@media (max-width:900px){
+  .bl-start{grid-template-columns:minmax(0,1fr)}
+  .bl-grid{grid-template-columns:minmax(0,1fr)}
+  /* the tracker: a summary bar pinned above the list; tap it for the full panel */
+  .bl-track{order:-1;top:62px;z-index:30;padding:0;max-height:none;overflow:visible;border-radius:14px}
+  .bl-sum{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;padding:10px 12px;text-align:left;font-size:calc(12.5px*var(--fz));min-height:44px}
+  .bl-sum b{font-size:calc(15px*var(--fz))}.bl-sum span:not(.bl-chev){flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+  .bl-chev{transition:transform .15s}.bl-track.open .bl-chev{transform:rotate(180deg)}
+  .bl-tbody{display:none;padding:0 12px 12px;max-height:65vh;max-height:65dvh;overflow:auto;border-top:1px solid var(--line)}
+  .bl-track.open .bl-tbody{display:block}
+}
+@media (max-width:640px){.bl-cats{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.bl-cat{flex:none}.bl-filters .chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.bl-filters .chips button{flex:none}.bl-row{grid-template-columns:36px minmax(0,1fr)}.bl-p{display:none}.bl-brow{grid-template-columns:minmax(0,7.5em) minmax(0,1fr) 3em}}
 /* phone and tablet */
 @media (max-width:900px){
   .wrap{grid-template-columns:minmax(0,1fr)}
@@ -567,7 +635,7 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
       <div><h3>Text size</h3><div class="seg" id="apSize"><button type="button" data-v="0.93">S</button><button type="button" data-v="1">M</button><button type="button" data-v="1.12">L</button><button type="button" data-v="1.25">XL</button></div></div>
       <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
       <div><h3>Card images</h3><div class="seg" id="apImg"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div><p class="note" style="margin-top:4px">On loads pictures from cards.scryfall.io when a card is shown. Everything else stays on this site.</p></div>
-      <p class="note">Keys: 1–6 pages · G generate · / search · U undo · ? help</p>
+      <p class="note">Keys: 1–7 pages · G generate · / search · U undo · ? help</p>
     </div>
   </div>
   <button type="button" id="clearBtn" title="Clear the deck and settings and start over" aria-label="Clear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Clear</span></button>
@@ -579,6 +647,7 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
   <div class="hello">Commander<br>deck builder</div>
   <button role="tab" aria-selected="true" data-page="start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Start</span></button>
   <button role="tab" aria-selected="false" data-page="collection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg><span>Collection</span></button>
+  <button role="tab" aria-selected="false" data-page="builder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="10" rx="1.5"/><rect x="14" y="4" width="7" height="10" rx="1.5"/><path d="M3 19h18M7 19v-2M17 19v-2M12 19v-3"/></svg><span>Builder</span></button>
   <button role="tab" aria-selected="false" data-page="deck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg><span>Deck</span></button>
   <button role="tab" aria-selected="false" data-page="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analysis</span></button>
   <button role="tab" aria-selected="false" data-page="improve"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg><span>Improve</span></button>
@@ -2129,7 +2198,7 @@ const Engine = (function () {
 
   return { cardPower, POWER_PREF, PAIRS, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
     norm, buildDB, addAliases, lookup, nameKey, parseList, parseLine, splitCSV, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
-    spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes, STYLES, inspire, styleProfile };
+    spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes, tribalTag, plural, STYLES, inspire, styleProfile };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;
 </script>
@@ -2743,6 +2812,16 @@ const Analysis = (function () {
     for (const [k, label, test] of COUNT_CATS) { const cards = deck.filter(e => test(e.c)); out[k] = { key: k, label, n: cards.reduce((s, e) => s + (e.qty || 1), 0), cards: cards.map(e => e.c) }; }
     return out;
   }
+  // Card types (each nonland card once, by its first type in Engine.typeGroup order: an artifact creature is a creature)
+  // and the average mana value of nonland cards, for the deck builder's tracker.
+  const TYPE_CATS = [['creature', 'Creatures', 'Creature'], ['instant', 'Instants', 'Instant'], ['sorcery', 'Sorceries', 'Sorcery'], ['artifact', 'Artifacts', 'Artifact'], ['enchantment', 'Enchantments', 'Enchantment'], ['planeswalker', 'Planeswalkers', 'Planeswalker']];
+  function typeCounts(deck) {
+    const out = Object.fromEntries(TYPE_CATS.map(([k]) => [k, 0])), G = Object.fromEntries(TYPE_CATS.map(([k, , g]) => [g, k]));
+    let mv = 0, nl = 0;
+    for (const e of deck) { const g = E.typeGroup(e.c), q = e.qty || 1; if (G[g]) out[G[g]] += q; if (g !== 'Land') { mv += e.c.cmc * q; nl += q; } }
+    out.avgMV = nl ? mv / nl : 0;
+    return out;
+  }
   // Middle half (25th–75th percentile) and median of each count across the Archidekt reference decks in
   // data/reference/ (decks of 95+ cards, commanders excluded), by Commander Bracket; 0 = all brackets. Counterspells:
   // blue decks only (nU of n).
@@ -2754,6 +2833,15 @@ const Analysis = (function () {
     3: { n: 165, nU: 94, lands: [34, 36, 37], ramp: [11, 13, 17], draw: [9, 11, 15], removal: [5, 7, 9], counters: [2, 3, 5], wipes: [0, 1, 2], protection: [1, 3, 4], tutors: [0, 2, 3], recursion: [1, 2, 4], wincon: [2, 5, 8] },
     4: { n: 165, nU: 93, lands: [32, 34, 36], ramp: [12, 14, 20], draw: [8, 11, 14], removal: [5, 7, 9], counters: [2, 4, 6], wipes: [0, 1, 2], protection: [1, 2, 4], tutors: [2, 4, 6], recursion: [0, 1, 4], wincon: [2, 4, 8] },
     5: { n: 164, nU: 93, lands: [27, 30, 34], ramp: [13, 18, 22], draw: [7, 10, 13], removal: [4, 6, 8], counters: [5, 7, 10], wipes: [0, 0, 1], protection: [1, 2, 3], tutors: [4, 7, 10], recursion: [1, 2, 3], wincon: [2, 3, 5] }
+  };
+  // Same decks, TYPE_CATS counts and average nonland mana value. Regenerate with: node tools/ref-roles.js
+  const TYPE_RANGES = {
+    0: { creature: [23, 29, 34], instant: [6, 9, 14], sorcery: [4, 7, 10], artifact: [6, 9, 13], enchantment: [4, 7, 9], planeswalker: [0, 0, 1], avgMV: [2.67, 3.05, 3.52] },
+    1: { creature: [24.5, 30, 35], instant: [4, 7, 10], sorcery: [4.5, 7, 9.5], artifact: [5, 8, 12], enchantment: [4, 6, 9], planeswalker: [0, 0, 1], avgMV: [2.86, 3.3, 3.76] },
+    2: { creature: [26, 31, 35], instant: [6, 8, 10], sorcery: [5, 7, 9], artifact: [5, 8, 12], enchantment: [4, 7, 9], planeswalker: [0, 0, 1], avgMV: [2.9, 3.29, 3.69] },
+    3: { creature: [25, 30, 35], instant: [7, 9, 12], sorcery: [3, 6, 9], artifact: [5, 8, 11], enchantment: [5, 7, 9], planeswalker: [0, 0, 1], avgMV: [2.81, 3.13, 3.6] },
+    4: { creature: [23, 28, 32], instant: [8, 11, 14], sorcery: [4, 6, 9], artifact: [7, 9, 13], enchantment: [5, 7, 9], planeswalker: [0, 0, 1], avgMV: [2.54, 2.89, 3.39] },
+    5: { creature: [19, 25, 30], instant: [10, 15, 22], sorcery: [5, 8, 10], artifact: [8, 11, 15], enchantment: [5, 6.5, 9], planeswalker: [0, 0, 1], avgMV: [2.12, 2.5, 2.99] }
   };
 
   /* ---------- enabler / payoff synergy pairs ---------- */
@@ -3895,7 +3983,7 @@ const Analysis = (function () {
     return { cmds: [], how: null, main, missing: [], candidates: cand };
   }
 
-  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, catPlan, catCuts, catCounts, catRange, catsOf, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp, COUNT_CATS, roleCounts, ROLE_RANGES };
+  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, catPlan, catCuts, catCounts, catRange, catsOf, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp, COUNT_CATS, roleCounts, ROLE_RANGES, TYPE_CATS, typeCounts, TYPE_RANGES };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;
 </script>
@@ -4214,6 +4302,105 @@ const Deep = (function () {
   return { search, rows, perCard, cardOptions, evaluator, localExec, workerExec, candidates, makeInit, G1, G2, MIN_GAIN, PKG_MIN, DEF, WIDE };
 })();
 if (typeof module !== 'undefined') module.exports = Deep;
+</script>
+<script id="src-builder">
+/* ===== Builder: collection breakdown and hand-built decks (pure; uses Engine and Analysis) ===== */
+const Builder = (function () {
+  'use strict';
+  const E = (typeof Engine !== 'undefined') ? Engine : require('./engine.js');
+  const An = (typeof Analysis !== 'undefined') ? Analysis : require('./analysis.js');
+  const subsetCI = (ci, CI) => [...ci].every(x => CI.includes(x));
+  const CI_ORDER = 'WUBRG';
+
+  /* ---------- categories: the Deck › Counts roles, then the commander's synergy themes ---------- */
+  const ROLE_CATS = An.COUNT_CATS.map(([k, label, test]) => ({ key: k, label, test }));
+  // a theme tag as the generator reads it: one of Engine.TAGS, or tribal:<Type>
+  function themeTag(key) {
+    if (key.startsWith('tribal:')) { const t = E.tribalTag(key.slice(7)); return { key, label: t.label, test: t.test }; }
+    const t = E.TAGS[key]; if (!t) return null;
+    return { key, label: t.label, test: c => !!((t.re && t.re.test(c.low)) || (t.type && t.type.test(c.tl)) || (t.flag && E.analyze(c).flags[t.flag])) };
+  }
+  // themes the generator would read from the commanders' rules text (Engine.generate, "commander text" tags)
+  function cmdThemes(db, cmds) {
+    const out = [];
+    const add = k => { if (!out.includes(k)) out.push(k); };
+    for (const c of cmds) {
+      for (const k of Object.keys(E.TAGS)) if (E.TAGS[k].re && E.TAGS[k].re.test(c.low)) add(k);
+      for (const T of E.creatureTypes(db)) {
+        const lt = T.toLowerCase(); if (lt.length < 3) continue;
+        if (new RegExp('\\b(?:' + lt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '|' + E.plural(lt) + ')\\b').test(c.low)) add('tribal:' + T);
+      }
+    }
+    return out;
+  }
+  // the role and theme categories a card is in; 'other' = a nonland card with no role
+  function cardCats(c, tags) {
+    const roles = ROLE_CATS.filter(x => x.test(c)).map(x => x.key);
+    if (!roles.length) roles.push('other');
+    return { roles, themes: (tags || []).filter(t => t.test(c)).map(t => t.key) };
+  }
+
+  /* ---------- the pool: Commander-legal cards inside the colour identity, owned ones only when a set is given.
+     Basic lands are always in it. Sorted by EDHREC rank. ---------- */
+  function pool(db, CI, owned, cmds) {
+    const skip = new Set((cmds || []).map(c => c.n));
+    return db.all.filter(c => c.leg === 'legal' && !skip.has(c.n) && subsetCI(c.ci, CI) && (!owned || owned.has(c.n) || E.isBasic(c)))
+      .sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9) || (a.n < b.n ? -1 : 1));
+  }
+  // commander-eligible cards in a list
+  const commanders = cards => cards.filter(c => E.commanderEligibility(c).ok).sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9));
+
+  /* ---------- collection breakdown: per role, per theme and per colour identity ---------- */
+  function breakdown(cards, tags) {
+    const roles = Object.fromEntries(ROLE_CATS.map(x => [x.key, 0]).concat([['other', 0]]));
+    const themes = Object.fromEntries((tags || []).map(t => [t.key, 0]));
+    const types = Object.fromEntries(An.TYPE_CATS.map(([k]) => [k, 0]));
+    const G = Object.fromEntries(An.TYPE_CATS.map(([k, , g]) => [g, k]));
+    const ci = {};
+    for (const c of cards) {
+      const k = cardCats(c, tags);
+      for (const r of k.roles) if (r !== 'other' || !E.analyze(c).isLand) roles[r]++;
+      for (const t of k.themes) themes[t]++;
+      const g = G[E.typeGroup(c)]; if (g) types[g]++;
+      const id = c.ci || 'C'; ci[id] = (ci[id] || 0) + 1;
+    }
+    return { n: cards.length, roles, themes, types, ci };
+  }
+
+  /* ---------- tracker: the deck so far against the reference ranges for its bracket ---------- */
+  // entries: [{ c, qty }] without the commanders
+  function tally(entries, cmds, bracket, CI) {
+    const b = +bracket || 0, rr = An.ROLE_RANGES[b] || An.ROLE_RANGES[0], tr = An.TYPE_RANGES[b] || An.TYPE_RANGES[0];
+    const main = entries.reduce((s, e) => s + e.qty, 0);
+    const roles = An.roleCounts(entries), types = An.typeCounts(entries);
+    const curve = [0, 0, 0, 0, 0, 0, 0, 0], pips = { W: 0, U: 0, B: 0, R: 0, G: 0 }, sources = { W: 0, U: 0, B: 0, R: 0, G: 0 };
+    for (const e of entries) if (!E.analyze(e.c).isLand) curve[Math.min(7, Math.floor(e.c.cmc))] += e.qty;
+    // pips of the commanders and the nonland cards; sources = lands that make each colour (Analysis.colourCheck)
+    for (const c of cmds.concat(entries.filter(e => !E.analyze(e.c).isLand).map(e => e.c))) { const p = E.pips(c.mc); for (const x in pips) pips[x] += p[x]; }
+    Object.assign(sources, An.colourCheck(entries, cmds, CI || '').landSrc);
+    return { main, size: 100 - cmds.length, total: main + cmds.length, roles, types, curve, pips, sources, ranges: { roles: rr, types: tr }, b };
+  }
+  // basic lands to add so the deck reaches `lands` lands, split by the colour pips of its spells (Wastes when colourless)
+  function basicsFor(entries, cmds, CI, lands) {
+    const have = entries.filter(e => E.analyze(e.c).isLand).reduce((s, e) => s + e.qty, 0), need = Math.max(0, lands - have);
+    const out = {}; if (!need) return out;
+    const cols = CI.split('').filter(x => CI_ORDER.includes(x));
+    if (!cols.length) { out.C = need; return out; }
+    const p = { W: 0, U: 0, B: 0, R: 0, G: 0 };
+    for (const c of cmds.concat(entries.map(e => e.c))) { const q = E.pips(c.mc); for (const x in p) p[x] += q[x]; }
+    const tot = cols.reduce((s, x) => s + p[x], 0);
+    const share = cols.map(x => ({ x, v: tot ? p[x] / tot * need : need / cols.length }));
+    for (const s of share) out[s.x] = Math.floor(s.v);
+    let left = need - share.reduce((s, x) => s + out[x.x], 0);
+    for (const s of share.slice().sort((a, b) => (b.v - Math.floor(b.v)) - (a.v - Math.floor(a.v)))) { if (!left) break; out[s.x]++; left--; }
+    return out;
+  }
+  // "Commander" and "Deck" sections, which the importer reads
+  const exportList = (cmds, entries) => E.exportDeck({ commanders: cmds, deck: entries }, 'arena');
+
+  return { ROLE_CATS, themeTag, cmdThemes, cardCats, pool, commanders, breakdown, tally, basicsFor, exportList };
+})();
+if (typeof module !== 'undefined') module.exports = Builder;
 </script>
 <script>
 /* ===== App: data loading, UI, exports ===== */
@@ -5290,13 +5477,14 @@ if (typeof module !== 'undefined') module.exports = Deep;
   const PAGES = {
     start: ['Start', [['setup', 'Build a deck'], ['import', 'Import my deck'], ['find', 'Find a commander']]],
     collection: ['Collection', []],
+    builder: ['Builder', []],
     deck: ['Deck', [['cards', 'Cards'], ['counts', 'Counts'], ['hand', 'Sample hand'], ['export', 'Export']]],
     analysis: ['Analysis', []],
     improve: ['Improve', [['changes', 'Suggested swaps'], ['cats', 'By category'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]],
     primer: ['Primer', []],
     more: ['More', []]
   };
-  const PAGE_OF = { setup: 'start', import: 'start', collection: 'collection', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', cats: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
+  const PAGE_OF = { setup: 'start', import: 'start', collection: 'collection', builder: 'builder', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', cats: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
   const FIND = [['commanders', 'Browse'], ['inspire', 'Quiz'], ['surprise', 'Random']];
   const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
   const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
@@ -5310,6 +5498,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
   }
   const VIEW_NOTE = {
     setup: 'Add your collection if you like, then build a deck or import yours. Analysis checks it; Improve finds measured upgrades.',
+    builder: 'Your collection by role, theme, type and colour. Pick a commander, then pick cards by category, mana value and type; the tracker counts the deck against real decks of your bracket as you go.',
     collection: 'Paste or load the cards you own. Every card you own gets a green dot, and you choose whether new decks and suggestions use only your cards.',
     import: 'Paste your current list. It is kept exactly as pasted and opens on Analysis; Improve then measures swaps, from all cards or only your collection.',
     commanders: 'Every legal commander in the card data, by colour, theme and popularity.', inspire: 'Answer a few questions; every legal commander is ranked against your answers, with the reasons it fits.', surprise: 'Random commanders from the card data. Filter the draw, reroll any one, and Build the one you like.',
@@ -5360,6 +5549,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
     $('pageHead').classList.remove('hidden'); $('pageHead').innerHTML = pageHeadHTML(page);
     if (setup) { $('view').innerHTML = ''; renderOwnTile(); return; } // a dynamic form left in #view must not hold data-k fields read by readForm()
     if (App.tab === 'collection') return renderCollection();
+    if (App.tab === 'builder') return renderBuilder();
     if (App.tab === 'tests') return renderTests();
     if (App.tab === 'analysis') return renderAnalysis();
     if (App.tab === 'changes') return renderChanges();
@@ -5915,6 +6105,228 @@ if (typeof module !== 'undefined') module.exports = Deep;
     runAnalysis();
   }
 
+  /* ---------- Builder: the collection by role and theme, and a deck picked by hand from it with a live tracker.
+     State (commander, bracket, themes, picks, filters, target overrides) is kept in this browser. ---------- */
+  const BL_KEY = 'edhgen.builder';
+  const BL_MV = [['0-1', '0–1', c => c.cmc <= 1], ['2', '2', c => c.cmc === 2], ['3', '3', c => c.cmc === 3], ['4', '4', c => c.cmc === 4], ['5', '5', c => c.cmc === 5], ['6+', '6+', c => c.cmc >= 6]];
+  const BL_TY = ['Creature', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Planeswalker', 'Battle', 'Land'];
+  const BL_SORT = [['rank', 'Popularity'], ['mv', 'Mana value'], ['name', 'Name'], ['price', 'Price']];
+  function blState() {
+    if (App.B) return App.B;
+    let s = null; try { s = JSON.parse(LS.get(BL_KEY) || 'null'); } catch (e) { }
+    App.B = Object.assign({ cmds: ['', ''], bracket: 3, themes: null, picks: {}, cat: 'all', mv: [], ty: [], q: '', sort: 'rank', all: false, tg: {}, n: 60, cq: '' }, s || {});
+    return App.B;
+  }
+  function blSave() { const B = App.B; LS.set(BL_KEY, JSON.stringify({ cmds: B.cmds, bracket: B.bracket, themes: B.themes, picks: B.picks, cat: B.cat, mv: B.mv, ty: B.ty, sort: B.sort, all: B.all, tg: B.tg })); }
+  const blCmds = () => blState().cmds.map(n => n && App.bulk && Engine.lookup(App.bulk, n)).filter(Boolean);
+  const blCI = cmds => 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
+  // theme keys in use: the commander's own (Builder.cmdThemes) until the user changes them
+  function blThemes(cmds) { const B = blState(); return B.themes || Builder.cmdThemes(App.bulk, cmds); }
+  // cached pool and categories for the current commander, collection, source and themes
+  function blPool() {
+    const B = blState(), cmds = blCmds(), o = ownedCards(), owned = !B.all && o && o.set.size ? o.set : null, th = blThemes(cmds);
+    const key = cmds.map(c => c.n).join('|') + '#' + (owned ? o.key : 'all') + '#' + th.join(',');
+    if (App.BC && App.BC.key === key && App.BC.db === App.bulk) return App.BC;
+    const CI = blCI(cmds), tags = th.map(Builder.themeTag).filter(Boolean), cards = Builder.pool(App.bulk, CI, owned, cmds);
+    const cats = new Map(cards.map(c => [c, Builder.cardCats(c, tags)]));
+    App.BC = { key, db: App.bulk, cmds, CI, tags, cards, cats, owned: !!owned };
+    return App.BC;
+  }
+  function blEntries() {
+    const B = blState(), out = [];
+    for (const [n, q] of Object.entries(B.picks)) { const c = Engine.lookup(App.bulk, n); if (c && q > 0) out.push({ c, qty: q }); }
+    return out;
+  }
+  function blCatList(P) {
+    return [['all', 'All']].concat(Builder.ROLE_CATS.filter(x => x.key !== 'counters' || P.CI.includes('U')).map(x => [x.key, x.label]), P.tags.map(t => [t.key, t.label]), [['other', 'No role']]);
+  }
+  const blInCat = (P, c, k) => { if (k === 'all') return true; const x = P.cats.get(c); return x.roles.includes(k) || x.themes.includes(k); };
+  // targets: the bracket's median from the reference decks, unless the user set one
+  function blTarget(T, k) { const B = blState(); if (B.tg[k] != null && B.tg[k] !== '') return +B.tg[k]; const r = T.ranges.roles[k] || T.ranges.types[k]; return r ? Math.round(r[1]) : 0; }
+  const blThemeCount = (P, k) => blEntries().filter(e => (P.cats.get(e.c) || Builder.cardCats(e.c, P.tags)).themes.includes(k)).reduce((s, e) => s + e.qty, 0);
+
+  function renderBuilder() {
+    if (!App.bulk) { $('view').innerHTML = emptyView(); return; }
+    const B = blState(), cmds = blCmds(), o = ownedCards(), n = o ? o.set.size : 0;
+    if (!cmds.length) { $('view').innerHTML = blStartHTML(o, n); return; }
+    const P = blPool();
+    const head = '<div class="bl-head"><div class="bl-cmd"><span class="note">Commander</span><b>' + cmds.map(c => cardLink(c)).join(' + ') + '</b> <span>' + pipsHTML(P.CI) + '</span> <button type="button" class="link" data-bl="cmd-change">Change</button></div>' +
+      '<div class="bl-br"><span class="note">Targets from</span><div class="seg" role="group" aria-label="Bracket for the targets">' + [1, 2, 3, 4, 5].map(b => '<button type="button" data-blbr="' + b + '" aria-pressed="' + (+B.bracket === b) + '" title="Reference decks of Bracket ' + b + '">B' + b + '</button>').join('') + '</div></div>' +
+      (n ? '<div class="seg" role="group" aria-label="Cards to offer"><button type="button" data-blall="0" aria-pressed="' + !B.all + '">My collection</button><button type="button" data-blall="1" aria-pressed="' + B.all + '">All cards</button></div>' : '') + '</div>' +
+      blThemesHTML(P);
+    $('view').innerHTML = head + '<div class="bl-grid"><section class="bl-pick" aria-label="Cards to pick"><div id="blCats" class="bl-cats">' + blCatsHTML(P) + '</div>' + blFiltersHTML() + '<div id="blList">' + blListHTML(P) + '</div></section>' +
+      '<aside class="bl-track' + (App.blOpen ? ' open' : '') + '" id="blTrack" aria-label="Deck tracker">' + blTrackHTML(P) + '</aside></div>';
+  }
+  // no commander yet: the collection breakdown and a commander picker
+  function blStartHTML(o, n) {
+    const B = blState(), idx = commanderIndex(), q = Engine.nameKey(B.cq || '');
+    let list = q.length >= 2 ? idx.filter(c => Engine.nameKey(c.n).includes(q)) : n ? idx.filter(c => o.set.has(c.n)) : idx;
+    if (n) list = list.filter(c => o.set.has(c.n)).concat(list.filter(c => !o.set.has(c.n)));
+    const ownCmd = n ? idx.filter(c => o.set.has(c.n)).length : 0;
+    const pick = '<div class="tile"><div class="tile-h"><h3>Pick a commander</h3><span class="hint">' + (n ? ownCmd + ' in your collection' : 'any legal commander') + '</span></div>' +
+      '<label class="f">Search commanders<input type="search" id="blCq" value="' + esc(B.cq || '') + '" placeholder="Start typing a name" autocomplete="off"></label>' +
+      '<div class="bl-cmdlist" id="blCmdList">' + blCmdListHTML(list, o) + '</div>' +
+      '<p class="note" style="margin:0">Only cards inside the commander\'s colour identity and legal in Commander are offered. ' + (n ? 'Your commanders are listed first.' : '') + '</p></div>';
+    let bd = '';
+    if (n) {
+      const cards = [...o.set].map(x => Engine.lookup(App.bulk, x)).filter(c => c && c.leg === 'legal'), tags = Object.keys(Engine.TAGS).map(Builder.themeTag).filter(Boolean), D = Builder.breakdown(cards, tags);
+      const bar = (v, max) => '<span class="bl-bar"><i style="width:' + (max ? Math.round(v / max * 100) : 0) + '%"></i></span>';
+      const rows = (list, max) => list.map(([l, v]) => '<div class="bl-brow"><span>' + esc(l) + '</span>' + bar(v, max) + '<b class="num">' + v + '</b></div>').join('');
+      const R = Builder.ROLE_CATS.map(x => [x.label, D.roles[x.key]]).concat([['No role (nonland)', D.roles.other]]);
+      const Th = tags.map(t => [t.label, D.themes[t.key]]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
+      const Ty = Analysis.TYPE_CATS.map(([k, l]) => [l, D.types[k]]).concat([['Lands', D.roles.lands]]);
+      const Ci = Object.entries(D.ci).sort((a, b) => b[1] - a[1]), rest = Ci.splice(10).reduce((t, x) => t + x[1], 0);
+      const mx = a => Math.max(1, ...a.map(x => x[1]));
+      bd = '<div class="tile"><div class="tile-h"><h3>Your collection by role</h3><span class="hint">' + cards.length.toLocaleString() + ' Commander-legal cards</span></div>' + rows(R, mx(R)) +
+        '<p class="note" style="margin:0">A card counts in every role it fills, with the same rules as Deck › Counts.</p></div>' +
+        '<div class="tile"><div class="tile-h"><h3>By synergy theme</h3></div>' + rows(Th, mx(Th)) + '</div>' +
+        '<div class="tile"><div class="tile-h"><h3>By card type</h3></div>' + rows(Ty, mx(Ty)) + '</div>' +
+        '<div class="tile"><div class="tile-h"><h3>By colour identity</h3></div>' + Ci.map(([k, v]) => '<div class="bl-brow"><span>' + pipsHTML(k === 'C' ? '' : k) + '</span>' + bar(v, mx(Ci)) + '<b class="num">' + v + '</b></div>').join('') + (rest ? '<div class="bl-brow"><span class="note">Other identities</span>' + bar(rest, mx(Ci)) + '<b class="num">' + rest + '</b></div>' : '') + '</div>';
+    } else bd = '<div class="tile"><div class="tile-h"><h3>Your collection</h3><span class="hint">empty</span></div><p class="note" style="margin:0">Add your cards on Collection to see them by role, theme, type and colour, and to build only from them. Without a collection every legal card is offered.</p><div class="row"><button type="button" class="small" data-go="collection">Add my collection ›</button></div></div>';
+    return '<div class="bl-start">' + pick + bd + '</div>';
+  }
+  function blCmdListHTML(list, o) {
+    const own = o && o.set.size ? o.set : null;
+    return list.length ? list.slice(0, 30).map(c => '<button type="button" class="bl-cmdbtn" data-blcmd="' + esc(c.n) + '"><span>' + esc(c.n) + (own && own.has(c.n) ? '<span class="ownmk"></span>' : '') + '</span><span>' + pipsHTML(c.ci) + '</span></button>').join('') : '<p class="note">No commander matches.</p>';
+  }
+  function blThemesHTML(P) {
+    const B = blState(), on = new Set(P.tags.map(t => t.key)), auto = Builder.cmdThemes(App.bulk, P.cmds);
+    const keys = auto.concat(Object.keys(Engine.TAGS).filter(k => !auto.includes(k))).concat([...on].filter(k => !auto.includes(k) && !Engine.TAGS[k]));
+    const chip = k => { const t = Builder.themeTag(k); return t ? '<button type="button" data-blth="' + esc(k) + '" aria-pressed="' + on.has(k) + '">' + esc(t.label) + '</button>' : ''; };
+    return '<details class="tdet bl-themes"' + (App.blThOpen ? ' open' : '') + '><summary class="note">Synergy themes: ' + (P.tags.length ? P.tags.map(t => esc(t.label)).join(', ') : 'none') + (B.themes ? '' : ' (read from the commander)') + '</summary>' +
+      '<div class="chips">' + keys.map(chip).join('') + '</div><div class="row"><label class="f" style="flex:1;margin:0">Creature type<input type="text" id="blTribe" placeholder="e.g. Elf" autocomplete="off"></label><button type="button" class="small" data-bl="tribe" style="align-self:flex-end">Add</button>' + (B.themes ? '<button type="button" class="small" data-bl="th-auto" style="align-self:flex-end">From commander</button>' : '') + '</div></details>';
+  }
+  function blCatsHTML(P) {
+    const B = blState(), T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI);
+    return blCatList(P).map(([k, l]) => {
+      const avail = k === 'all' ? P.cards.length : P.cards.filter(c => blInCat(P, c, k)).length;
+      const isRole = !!T.roles[k], have = isRole ? T.roles[k].n : k === 'all' ? T.main : null, tg = isRole ? blTarget(T, k) : k === 'all' ? T.size : null;
+      const cls = isRole && tg ? (have < (T.ranges.roles[k] || [tg])[0] ? ' low' : have >= tg ? ' met' : '') : '';
+      return '<button type="button" class="bl-cat' + cls + '" data-blcat="' + esc(k) + '" aria-pressed="' + (B.cat === k) + '"><span>' + esc(l) + '</span><small>' + (have != null ? have + '/' + tg + ' · ' : '') + avail + '</small></button>';
+    }).join('');
+  }
+  function blFiltersHTML() {
+    const B = blState();
+    return '<div class="bl-filters"><input type="search" id="blQ" value="' + esc(B.q) + '" placeholder="Search name or rules text" aria-label="Search cards" autocomplete="off">' +
+      '<div class="chips" role="group" aria-label="Mana value"><span class="note">MV</span>' + BL_MV.map(([k, l]) => '<button type="button" data-blmv="' + k + '" aria-pressed="' + B.mv.includes(k) + '">' + l + '</button>').join('') + '</div>' +
+      '<div class="chips" role="group" aria-label="Card type"><span class="note">Type</span>' + BL_TY.map(t => '<button type="button" data-blty="' + t + '" aria-pressed="' + B.ty.includes(t) + '">' + t + '</button>').join('') + '</div>' +
+      '<label class="bl-sort note">Sort <select id="blSort">' + BL_SORT.map(([k, l]) => '<option value="' + k + '"' + (B.sort === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label></div>';
+  }
+  function blFiltered(P) {
+    const B = blState(), q = B.q.trim().toLowerCase(), mv = BL_MV.filter(x => B.mv.includes(x[0])), cur = App.S.budget.cur;
+    let L = P.cards.filter(c => blInCat(P, c, B.cat) && (!mv.length || mv.some(x => x[2](c))) && (!B.ty.length || B.ty.some(t => new RegExp('\\b' + t + '\\b').test(c.ft))) && (!q || c.n.toLowerCase().includes(q) || c.low.includes(q)));
+    if (B.cat !== 'lands' && !B.ty.includes('Land')) L = L.filter(c => !Engine.isBasic(c)); // basics are on the tracker
+    if (B.sort === 'mv') L = L.slice().sort((a, b) => a.cmc - b.cmc || (a.rank || 1e9) - (b.rank || 1e9));
+    else if (B.sort === 'name') L = L.slice().sort((a, b) => a.n < b.n ? -1 : 1);
+    else if (B.sort === 'price') L = L.slice().sort((a, b) => (b.p[cur] || 0) - (a.p[cur] || 0));
+    return L;
+  }
+  function blRowHTML(P, c) {
+    const B = blState(), q = B.picks[c.n] || 0, x = P.cats.get(c) || { roles: [], themes: [] }, cur = App.S.budget.cur;
+    const RL = Object.fromEntries(Builder.ROLE_CATS.map(r => [r.key, r.label])), TL = Object.fromEntries(P.tags.map(t => [t.key, t.label]));
+    const badges = x.roles.filter(r => r !== 'other' && r !== 'lands').map(r => '<span class="bl-b">' + esc(RL[r]) + '</span>').concat(x.themes.map(t => '<span class="bl-b th">' + esc(TL[t]) + '</span>')).join('');
+    return '<li class="bl-row' + (q ? ' in' : '') + '" data-blrow="' + esc(c.n) + '"><button type="button" class="bl-add" data-bladd="' + esc(c.n) + '" aria-pressed="' + !!q + '" aria-label="' + (q ? 'Remove ' : 'Add ') + esc(c.n) + '">' + (q ? '✓' : '+') + '</button>' +
+      '<div class="bl-main"><div class="bl-l1">' + cardLink(c) + ' ' + manaHTML(c.mc) + '</div><div class="bl-l2"><span class="note">' + esc(c.ft.replace(/^Legendary /, '')) + '</span>' + badges + '</div></div>' +
+      '<span class="bl-p note num">' + (c.p[cur] != null ? Engine.fmt(c.p[cur], cur) : '') + '</span></li>';
+  }
+  function blListHTML(P) {
+    const B = blState(), L = blFiltered(P), shown = L.slice(0, B.n);
+    if (!L.length) return '<p class="note">No cards match' + (P.owned ? ' in your collection. Try All cards above, or clear a filter.' : '. Clear a filter.') + '</p>';
+    return '<p class="note bl-cnt">' + L.length.toLocaleString() + ' card' + (L.length === 1 ? '' : 's') + (P.owned ? ' from your collection' : '') + '</p><ul class="bl-list">' + shown.map(c => blRowHTML(P, c)).join('') + '</ul>' +
+      (L.length > shown.length ? '<button type="button" class="small" data-bl="more">Show ' + Math.min(60, L.length - shown.length) + ' more</button>' : '');
+  }
+  function blTrackHTML(P) {
+    const B = blState(), E = blEntries(), T = Builder.tally(E, P.cmds, B.bracket, P.CI);
+    let low = 0;
+    const row = (k, l, have, rng, tg) => {
+      const st = !rng ? '' : have < rng[0] ? 'fail' : have > rng[2] ? 'warn' : 'pass'; if (st === 'fail') low++;
+      const pct = Math.min(100, tg ? have / tg * 100 : have ? 100 : 0);
+      return '<div class="bl-tr ' + st + '"><span class="bl-tl">' + esc(l) + '</span><span class="bl-tb"><i style="width:' + pct.toFixed(0) + '%"></i></span><b class="num">' + have + '</b><span class="note">/</span><input type="number" min="0" max="99" class="bl-tg num" data-bltg="' + k + '" value="' + tg + '" aria-label="Target for ' + esc(l) + '"' + (rng ? ' title="Typical ' + fmtR(rng[0]) + '–' + fmtR(rng[2]) + ' (Bracket ' + T.b + ' reference decks)"' : '') + '></div>';
+    };
+    const roles = Builder.ROLE_CATS.filter(x => x.key !== 'counters' || P.CI.includes('U')).map(x => row(x.key, x.label, T.roles[x.key].n, T.ranges.roles[x.key], blTarget(T, x.key))).join('');
+    const types = Analysis.TYPE_CATS.map(([k, l]) => row(k, l, T.types[k], T.ranges.types[k], blTarget(T, k))).join('');
+    const themes = P.tags.map(t => { const have = blThemeCount(P, t.key); return row(t.key, t.label, have, null, B.tg[t.key] != null && B.tg[t.key] !== '' ? +B.tg[t.key] : 0); }).join('');
+    const mvR = T.ranges.types.avgMV, avg = T.types.avgMV;
+    const cols = P.CI.split(''), pt = cols.reduce((s, x) => s + T.pips[x], 0), lands = T.roles.lands.n;
+    const colour = cols.length ? '<div class="bl-col">' + cols.map(x => { const sh = pt ? T.pips[x] / pt : 0; return '<div class="bl-crow"><span class="ms ' + x + '">' + x + '</span><span class="bl-tb"><i style="width:' + (sh * 100).toFixed(0) + '%"></i></span><span class="note num">' + Math.round(sh * 100) + '% of pips</span><b class="num" title="Lands that make ' + x + '">' + T.sources[x] + '</b><span class="note">sources</span></div>'; }).join('') + '</div>' : '';
+    const bas = (P.CI ? P.CI.split('') : ['C']).map(x => { const nm = Engine.BASIC_NAMES[x], q = B.picks[nm] || 0; return '<span class="bl-bas"><span class="ms ' + x + '">' + x + '</span><button type="button" class="small" data-blbas="' + nm + '" data-d="-1" aria-label="One fewer ' + nm + '"' + (q ? '' : ' disabled') + '>−</button><b class="num">' + q + '</b><button type="button" class="small" data-blbas="' + nm + '" data-d="1" aria-label="One more ' + nm + '">+</button></span>'; }).join('');
+    const groups = {}; for (const e of E) (groups[Engine.typeGroup(e.c)] = groups[Engine.typeGroup(e.c)] || []).push(e);
+    const deckList = E.length ? Object.keys(groups).sort().map(g => '<div class="bl-dg"><b>' + esc(g) + ' (' + groups[g].reduce((s, e) => s + e.qty, 0) + ')</b>' + groups[g].sort((a, b) => a.c.cmc - b.c.cmc || (a.c.n < b.c.n ? -1 : 1)).map(e => '<span class="bl-di">' + (e.qty > 1 ? e.qty + ' ' : '') + cardLink(e.c) + '<button type="button" class="bl-x" data-bladd="' + esc(e.c.n) + '" aria-label="Remove ' + esc(e.c.n) + '">×</button></span>').join('') + '</div>').join('') : '<p class="note">Nothing picked yet.</p>';
+    const full = T.main >= T.size, over = T.main > T.size;
+    const sumBar = '<button type="button" class="bl-sum" data-bl="track" aria-expanded="' + !!App.blOpen + '"><b class="num">' + T.main + '/' + T.size + '</b><span>' + [['lands', 'Lands'], ['ramp', 'Ramp'], ['draw', 'Draw'], ['removal', 'Removal']].map(([k, l]) => l + ' ' + T.roles[k].n + '/' + blTarget(T, k)).join(' · ') + '</span><span class="bl-chev" aria-hidden="true">▾</span></button>';
+    const body = '<div class="bl-tbody">' +
+      '<div class="bl-total"><div><span class="note">Cards</span><b class="num">' + T.main + ' / ' + T.size + '</b><span class="note">+ ' + P.cmds.length + ' commander' + (P.cmds.length > 1 ? 's' : '') + '</span></div><span class="st ' + (over ? 'warn' : full ? 'pass' : 'na') + '">' + (over ? (T.main - T.size) + ' over' : full ? 'Full' : (T.size - T.main) + ' to go') + '</span></div>' +
+      '<span class="bl-tb big"><i style="width:' + Math.min(100, T.main / T.size * 100).toFixed(0) + '%"></i></span>' +
+      '<h4>Roles</h4>' + roles + (themes ? '<h4>Themes</h4>' + themes : '') + '<h4>Card types</h4>' + types +
+      '<div class="bl-tr ' + (!avg ? '' : avg < mvR[0] || avg > mvR[2] ? 'warn' : 'pass') + '"><span class="bl-tl">Average MV</span><span class="bl-tb"></span><b class="num">' + avg.toFixed(2) + '</b><span class="note" title="Typical ' + mvR[0] + '–' + mvR[2] + '">' + mvR[0] + '–' + mvR[2] + '</span></div>' +
+      '<p class="note bl-low">' + (low ? low + ' below the typical range' : 'Every role and type inside or above the typical range') + ' for Bracket ' + T.b + ' (' + T.ranges.roles.n + ' reference decks). Targets start at the median; change any number.</p>' +
+      '<h4>Mana curve</h4>' + curveSVG(T.curve) +
+      (colour ? '<h4>Colours</h4>' + colour : '') +
+      '<h4>Basic lands <span class="note">(' + lands + ' lands)</span></h4><div class="bl-basics">' + bas + '</div><button type="button" class="small" data-bl="basics">Fill basics to ' + blTarget(T, 'lands') + ' lands</button>' +
+      '<h4>Deck (' + T.main + ')</h4><div class="bl-deck">' + deckList + '</div>' +
+      '<div class="bl-act"><button type="button" class="primary" data-bl="analyze"' + (T.main ? '' : ' disabled') + '>Analyze this deck ›</button><button type="button" class="small" data-bl="copy"' + (T.main ? '' : ' disabled') + '>Copy list</button>' + (App.R && App.R.stats ? '<button type="button" class="small" data-bl="load">Load the current deck</button>' : '') + '<button type="button" class="small" data-bl="clear"' + (T.main ? '' : ' disabled') + '>Clear picks</button><span class="note" id="blNote">' + esc(App.blNote || '') + '</span></div>' +
+      '<p class="note">Analyze imports the list as it is (Analysis, Deck and Improve then work on it; under 100 cards, Fill to 100 adds the rest).</p></div>';
+    return sumBar + body;
+  }
+  // after a pick: the tracker, the category chips and that row, without redrawing the list
+  function blRefresh(name) {
+    const P = blPool();
+    if ($('blTrack')) $('blTrack').innerHTML = blTrackHTML(P);
+    if ($('blCats')) $('blCats').innerHTML = blCatsHTML(P);
+    if (name) { const c = Engine.lookup(App.bulk, name), li = c && document.querySelector('li[data-blrow="' + CSS.escape(c.n) + '"]'); if (li) li.outerHTML = blRowHTML(P, c); }
+  }
+  function blList() { const P = blPool(); if ($('blList')) $('blList').innerHTML = blListHTML(P); if ($('blCats')) $('blCats').innerHTML = blCatsHTML(P); }
+  function blToggle(name) {
+    const B = blState(), c = Engine.lookup(App.bulk, name); if (!c) return;
+    if (B.picks[c.n]) delete B.picks[c.n]; else B.picks[c.n] = 1;
+    App.blNote = ''; blSave(); blRefresh(c.n);
+  }
+  async function blAnalyze() {
+    const cmds = blCmds(), E = blEntries(); if (!cmds.length || !E.length) return;
+    App.impText = Builder.exportList(cmds, E); App.impPick = null;
+    await importDeck();
+  }
+  function blClick(e) {
+    const B = blState();
+    const t = e.target.closest('[data-bladd],[data-blcat],[data-blmv],[data-blty],[data-blth],[data-blbr],[data-blall],[data-blcmd],[data-blbas],[data-bl]'); if (!t) return;
+    const d = t.dataset;
+    if (d.bladd != null) return blToggle(d.bladd);
+    if (d.blcat != null) { B.cat = d.blcat; B.n = 60; blSave(); return blList(); }
+    if (d.blmv != null) { B.mv = B.mv.includes(d.blmv) ? B.mv.filter(x => x !== d.blmv) : B.mv.concat(d.blmv); B.n = 60; blSave(); t.setAttribute('aria-pressed', B.mv.includes(d.blmv)); return blList(); }
+    if (d.blty != null) { B.ty = B.ty.includes(d.blty) ? B.ty.filter(x => x !== d.blty) : B.ty.concat(d.blty); B.n = 60; blSave(); t.setAttribute('aria-pressed', B.ty.includes(d.blty)); return blList(); }
+    if (d.blth != null) { const cur = blThemes(blCmds()); B.themes = cur.includes(d.blth) ? cur.filter(x => x !== d.blth) : cur.concat(d.blth); if (B.cat === d.blth) B.cat = 'all'; App.blThOpen = true; blSave(); return renderBuilder(); }
+    if (d.blbr != null) { B.bracket = +d.blbr; blSave(); return renderBuilder(); }
+    if (d.blall != null) { B.all = d.blall === '1'; B.n = 60; blSave(); return renderBuilder(); }
+    if (d.blcmd != null) { B.cmds = [d.blcmd, '']; B.themes = null; B.cat = 'all'; B.cq = ''; blSave(); window.scrollTo({ top: 0 }); return renderBuilder(); }
+    if (d.blbas != null) { const q = Math.max(0, (B.picks[d.blbas] || 0) + +d.d); if (q) B.picks[d.blbas] = q; else delete B.picks[d.blbas]; blSave(); return blRefresh(); }
+    const P = blPool();
+    switch (d.bl) {
+      case 'cmd-change': B.cmds = ['', '']; blSave(); return renderBuilder();
+      case 'track': App.blOpen = !App.blOpen; $('blTrack').classList.toggle('open', App.blOpen); t.setAttribute('aria-expanded', App.blOpen); return;
+      case 'more': B.n += 60; return blList();
+      case 'th-auto': B.themes = null; App.blThOpen = true; blSave(); return renderBuilder();
+      case 'tribe': { const v = ($('blTribe').value || '').trim().toLowerCase(), T = [...Engine.creatureTypes(App.bulk)].find(x => x.toLowerCase() === v || Engine.plural(x) === v); if (!T) { $('blTribe').setCustomValidity('Not a creature type in the card data'); $('blTribe').reportValidity(); return; } const cur = blThemes(blCmds()); if (!cur.includes('tribal:' + T)) B.themes = cur.concat('tribal:' + T); App.blThOpen = true; blSave(); return renderBuilder(); }
+      case 'basics': { const T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI), noBas = blEntries().filter(e => !Engine.isBasic(e.c)); for (const x of 'WUBRGC') delete B.picks[Engine.BASIC_NAMES[x]]; const add = Builder.basicsFor(noBas, P.cmds, P.CI, blTarget(T, 'lands')); for (const [x, q] of Object.entries(add)) if (q) B.picks[Engine.BASIC_NAMES[x]] = q; blSave(); return blRefresh(); }
+      case 'analyze': t.disabled = true; return blAnalyze();
+      case 'copy': return copyText(Builder.exportList(P.cmds, blEntries()), null, $('blNote'));
+      case 'clear': if (!confirm('Remove every picked card?')) return; B.picks = {}; blSave(); return renderBuilder();
+      case 'load': { const R = App.R; B.cmds = [R.commanders[0].n, R.commanders[1] ? R.commanders[1].n : '']; B.picks = Object.fromEntries(R.deck.map(e => [e.c.n, e.qty])); B.themes = null; App.blNote = 'Loaded ' + R.deck.reduce((s, e) => s + e.qty, 0) + ' cards from the current deck.'; blSave(); return renderBuilder(); }
+    }
+  }
+  function blInput(e) {
+    const B = blState(), id = e.target.id;
+    if (id === 'blQ') { B.q = e.target.value; B.n = 60; clearTimeout(App.blT); App.blT = setTimeout(blList, 120); return; }
+    if (id === 'blCq') { B.cq = e.target.value; const o = ownedCards(), q = Engine.nameKey(B.cq), idx = commanderIndex(), own = o && o.set.size ? o.set : null; let L = q.length >= 2 ? idx.filter(c => Engine.nameKey(c.n).includes(q)) : own ? idx.filter(c => own.has(c.n)) : idx; if (own) L = L.filter(c => own.has(c.n)).concat(L.filter(c => !own.has(c.n))); $('blCmdList').innerHTML = blCmdListHTML(L, o); return; }
+    if (id === 'blTribe') { e.target.setCustomValidity(''); return; }
+    const tg = e.target.dataset && e.target.dataset.bltg;
+    if (tg) { const v = e.target.value; if (v === '') delete B.tg[tg]; else B.tg[tg] = Math.max(0, Math.min(99, Math.round(+v) || 0)); blSave(); }
+  }
+  function blChange(e) {
+    const B = blState();
+    if (e.target.id === 'blSort') { B.sort = e.target.value; blSave(); return blList(); }
+    if (e.target.dataset && e.target.dataset.bltg) blRefresh();
+  }
+
   /* ---------- acceptance tests (run against loaded data) ---------- */
   async function runTests() {
     if (App.busy) return;
@@ -6325,7 +6737,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
   }
 
   /* ---------- keyboard shortcuts ---------- */
-  const KEYS_HELP = 'Keys: 1–6 open Start, Collection, Deck, Analysis, Improve and Primer · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
+  const KEYS_HELP = 'Keys: 1–7 open Start, Collection, Builder, Deck, Analysis, Improve and Primer · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
 
   function wire() {
     document.querySelector('.settings').addEventListener('input', onFormChange);
@@ -6378,6 +6790,9 @@ if (typeof module !== 'undefined') module.exports = Deep;
       const a = e.target.closest('[data-ctadd]'); if (a) { if (a.checked) T.sel.add(a.dataset.ctadd); else { T.sel.delete(a.dataset.ctadd); delete T.cutOv[a.dataset.ctadd]; } T.whole = null; return renderCats(); }
       const c = e.target.closest('[data-ctcut]'); if (c) { T.cutOv[c.dataset.ctcut] = c.value; T.whole = null; return renderCats(); }
     });
+    $('view').addEventListener('click', e => { if (App.tab === 'builder') blClick(e); });
+    $('view').addEventListener('input', e => { if (App.tab === 'builder') blInput(e); });
+    $('view').addEventListener('change', e => { if (App.tab === 'builder') blChange(e); });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
     $('view').addEventListener('click', e => {
       const a = e.target.closest('button[data-cbadd],button[data-cbaddall]'); if (a) return comboAddPanel(a);

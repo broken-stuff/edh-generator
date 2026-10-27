@@ -1360,6 +1360,6 @@ const Engine = (function () {
 
   return { cardPower, POWER_PREF, PAIRS, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
     norm, buildDB, addAliases, lookup, nameKey, parseList, parseLine, splitCSV, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
-    spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes, STYLES, inspire, styleProfile };
+    spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes, tribalTag, plural, STYLES, inspire, styleProfile };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;

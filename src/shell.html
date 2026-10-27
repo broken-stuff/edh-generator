@@ -105,7 +105,7 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 .pgnav .subtabs{margin:0}
 .pgseg button{padding:5px 12px;font-size:calc(12.5px*var(--fz))}
 .st.stbtn{cursor:pointer;border:0;font:inherit;font-size:calc(11.5px*var(--fz))}
-body[data-page="start"] #kpis,body[data-page="start"] #scorebar,body[data-page="collection"] #kpis,body[data-page="collection"] #scorebar,body[data-page="more"] #kpis,body[data-page="more"] #scorebar{display:none}
+body[data-page="start"] #kpis,body[data-page="start"] #scorebar,body[data-page="collection"] #kpis,body[data-page="collection"] #scorebar,body[data-page="builder"] #kpis,body[data-page="builder"] #scorebar,body[data-page="more"] #kpis,body[data-page="more"] #scorebar{display:none}
 body[data-view="setup"] #genBtn{display:none}
 body:not([data-page="analysis"]) #kpis{display:none}
 .results{min-width:0;display:flex;flex-direction:column;gap:14px}
@@ -327,6 +327,74 @@ table.swaps td{vertical-align:top}
 .swatches{display:flex;flex-wrap:wrap;gap:8px}
 .swatches button{width:30px;height:30px;padding:0;border-radius:50%;border:2px solid var(--card);box-shadow:0 0 0 1px var(--line-strong)}
 .swatches button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+/* builder: collection breakdown, card picker and the deck tracker */
+.bl-start{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.bl-cmdlist{display:flex;flex-direction:column;gap:4px;max-height:420px;overflow:auto}
+.bl-cmdbtn{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;padding:8px 10px;border-radius:10px}
+.bl-brow{display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr) 3.5em;gap:8px;align-items:center;font-size:calc(13px*var(--fz))}
+.bl-brow b{text-align:right}
+.bl-bar,.bl-tb{display:block;height:8px;background:var(--card-2);border-radius:999px;overflow:hidden}
+.bl-bar i,.bl-tb i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.bl-tb.big{height:10px;margin:6px 0 2px}
+.bl-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-bottom:8px}
+.bl-cmd{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.bl-cmd b{font-size:calc(15px*var(--fz))}
+.bl-br{display:flex;align-items:center;gap:8px}
+.bl-themes{margin-bottom:10px}.bl-themes .chips{margin:8px 0}
+.bl-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,360px);gap:16px;align-items:start}
+.bl-pick{min-width:0}
+.bl-cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.bl-cat{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 11px;border-radius:12px;min-height:40px;font-size:calc(12.5px*var(--fz));line-height:1.2}
+.bl-cat small{font-size:calc(11px*var(--fz));color:var(--muted);font-variant-numeric:tabular-nums}
+.bl-cat.low small{color:var(--bad)}.bl-cat.met small{color:var(--ok)}
+.bl-cat[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.bl-cat[aria-pressed="true"] small{color:inherit;opacity:.85}
+.bl-filters{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.bl-filters input[type=search]{width:100%}
+.bl-filters .chips{align-items:center}.bl-filters .chips .note{min-width:2.6em}
+.bl-filters .chips button{min-height:30px;padding:4px 10px}
+.bl-sort{display:flex;align-items:center;gap:6px}.bl-sort select{width:auto}
+.bl-cnt{margin:4px 0}
+.bl-list{list-style:none;margin:0 0 10px;padding:0;border-top:1px solid var(--line)}
+.bl-row{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--line)}
+.bl-row.in{background:var(--ok-soft)}
+.bl-add{width:34px;height:34px;padding:0;border-radius:50%;font-size:18px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+.bl-add[aria-pressed="true"]{background:var(--ok);color:#fff;border-color:transparent}
+.bl-main{min-width:0}.bl-l1{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.bl-l2{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:2px}
+.bl-b{font-size:calc(10.5px*var(--fz));padding:1px 7px;border-radius:999px;background:var(--card-2);color:var(--muted);white-space:nowrap}
+.bl-b.th{background:var(--accent-soft);color:var(--ink)}
+.bl-track{position:sticky;top:76px;max-height:calc(100vh - 88px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px 16px}
+.bl-track h4{margin:14px 0 6px;font-size:calc(12px*var(--fz));text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.bl-sum{display:none}
+.bl-total{display:flex;justify-content:space-between;align-items:center;gap:8px}.bl-total>div{display:flex;align-items:baseline;gap:6px}.bl-total b{font-size:calc(20px*var(--fz))}
+.bl-tr{display:grid;grid-template-columns:minmax(0,7.5em) minmax(0,1fr) 2.2em .6em 3.6em;gap:6px;align-items:center;font-size:calc(13px*var(--fz));padding:2px 0}
+.bl-tr b{text-align:right}
+.bl-tr.pass .bl-tb i{background:var(--ok)}.bl-tr.fail .bl-tb i{background:var(--bad)}.bl-tr.warn .bl-tb i{background:var(--warn)}
+.bl-tr.fail .bl-tl{color:var(--bad)}
+.bl-track input.bl-tg{width:100%;padding:3px 6px;text-align:right;min-height:28px;height:28px;font-size:calc(13px*var(--fz));border-radius:8px}
+.bl-low{margin:8px 0 0}
+.bl-col{display:flex;flex-direction:column;gap:4px}
+.bl-crow{display:grid;grid-template-columns:22px minmax(0,1fr) 7.5em 2em 3.6em;white-space:nowrap;gap:6px;align-items:center;font-size:calc(12.5px*var(--fz))}.bl-crow b{text-align:right}
+.bl-basics{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.bl-bas{display:inline-flex;align-items:center;gap:4px}.bl-bas b{min-width:1.6em;text-align:center}
+.bl-bas button.small{padding:2px 9px}
+.bl-deck{display:flex;flex-direction:column;gap:6px;font-size:calc(12.5px*var(--fz))}
+.bl-dg{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}.bl-dg>b{flex-basis:100%;font-size:calc(12px*var(--fz));color:var(--muted)}
+.bl-di{white-space:nowrap}
+.bl-x{border:0;background:none;color:var(--muted);padding:0 3px;min-height:0;font-size:14px;cursor:pointer}
+.bl-act{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
+@media (max-width:900px){
+  .bl-start{grid-template-columns:minmax(0,1fr)}
+  .bl-grid{grid-template-columns:minmax(0,1fr)}
+  /* the tracker: a summary bar pinned above the list; tap it for the full panel */
+  .bl-track{order:-1;top:62px;z-index:30;padding:0;max-height:none;overflow:visible;border-radius:14px}
+  .bl-sum{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;padding:10px 12px;text-align:left;font-size:calc(12.5px*var(--fz));min-height:44px}
+  .bl-sum b{font-size:calc(15px*var(--fz))}.bl-sum span:not(.bl-chev){flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+  .bl-chev{transition:transform .15s}.bl-track.open .bl-chev{transform:rotate(180deg)}
+  .bl-tbody{display:none;padding:0 12px 12px;max-height:65vh;max-height:65dvh;overflow:auto;border-top:1px solid var(--line)}
+  .bl-track.open .bl-tbody{display:block}
+}
+@media (max-width:640px){.bl-cats{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.bl-cat{flex:none}.bl-filters .chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.bl-filters .chips button{flex:none}.bl-row{grid-template-columns:36px minmax(0,1fr)}.bl-p{display:none}.bl-brow{grid-template-columns:minmax(0,7.5em) minmax(0,1fr) 3em}}
 /* phone and tablet */
 @media (max-width:900px){
   .wrap{grid-template-columns:minmax(0,1fr)}
@@ -561,7 +629,7 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
       <div><h3>Text size</h3><div class="seg" id="apSize"><button type="button" data-v="0.93">S</button><button type="button" data-v="1">M</button><button type="button" data-v="1.12">L</button><button type="button" data-v="1.25">XL</button></div></div>
       <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
       <div><h3>Card images</h3><div class="seg" id="apImg"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div><p class="note" style="margin-top:4px">On loads pictures from cards.scryfall.io when a card is shown. Everything else stays on this site.</p></div>
-      <p class="note">Keys: 1–6 pages · G generate · / search · U undo · ? help</p>
+      <p class="note">Keys: 1–7 pages · G generate · / search · U undo · ? help</p>
     </div>
   </div>
   <button type="button" id="clearBtn" title="Clear the deck and settings and start over" aria-label="Clear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Clear</span></button>
@@ -573,6 +641,7 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
   <div class="hello">Commander<br>deck builder</div>
   <button role="tab" aria-selected="true" data-page="start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Start</span></button>
   <button role="tab" aria-selected="false" data-page="collection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg><span>Collection</span></button>
+  <button role="tab" aria-selected="false" data-page="builder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="10" rx="1.5"/><rect x="14" y="4" width="7" height="10" rx="1.5"/><path d="M3 19h18M7 19v-2M17 19v-2M12 19v-3"/></svg><span>Builder</span></button>
   <button role="tab" aria-selected="false" data-page="deck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg><span>Deck</span></button>
   <button role="tab" aria-selected="false" data-page="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analysis</span></button>
   <button role="tab" aria-selected="false" data-page="improve"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg><span>Improve</span></button>
