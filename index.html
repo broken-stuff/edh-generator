@@ -5082,6 +5082,7 @@ if (typeof module !== 'undefined') module.exports = Deep;
       '<tr><td>Uncertainty from</td><td></td><td class="why">' + esc(P.ciParts.join(', ')) + '</td></tr>' +
       '<tr><td>EDHREC rank of nonland cards</td><td></td><td class="why">' + P.quality.map(q => esc(q.label) + ': ' + q.n).join(' · ') + ' (popularity, not power)</td></tr>' +
       '</tbody></table></div>' +
+      '<div class="an-card wide"><h3>Vectors</h3>' + radarSVG(P.vectors) + '</div>' +
       '<div class="an-grid">' + vecRows + '</div>' +
       '<div class="an-card wide"><h3>Combos (' + P.combos.length + ' lines, ' + P.families.length + ' families)</h3>' + comboRows + '<p class="note">Family = combos sharing a card; family value = best line + 25% of the rest, capped at 1.5× best. Line value = compactness (2 cards 1.0, 3 cards 0.7, 4 cards 0.45) × outcome (win 1.0, infinite resource 0.75, lock 0.45, value 0.3). Early = all pieces castable by turn 5 using simulated mana from two consecutive turns.</p></div>';
     const goldfish = '<div class="an-card"><h3>Goldfish simulation</h3>' + manaLineSVG(s) + '<p class="note">Average mana available at the start of each turn (line) against one land per turn (dashed). ' + s.games.toLocaleString() + ' seeded games; simulated percentages carry a 95% margin of at most ±' + (196 * Math.sqrt(0.25 / s.games)).toFixed(2) + ' points.</p><table class="t compact"><tbody>' +
