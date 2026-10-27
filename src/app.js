@@ -1061,11 +1061,11 @@
     collection: ['Collection', []],
     deck: ['Deck', [['cards', 'Cards'], ['counts', 'Counts'], ['hand', 'Sample hand'], ['export', 'Export']]],
     analysis: ['Analysis', []],
-    improve: ['Improve', [['changes', 'Suggested swaps'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]],
+    improve: ['Improve', [['changes', 'Suggested swaps'], ['cats', 'By category'], ['percard', 'By card'], ['upgrade', 'Budget upgrades'], ['combos', 'Combos']]],
     primer: ['Primer', []],
     more: ['More', []]
   };
-  const PAGE_OF = { setup: 'start', import: 'start', collection: 'collection', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
+  const PAGE_OF = { setup: 'start', import: 'start', collection: 'collection', commanders: 'start', inspire: 'start', surprise: 'start', deck: 'deck', role: 'deck', counts: 'deck', hand: 'deck', export: 'deck', valid: 'deck', analysis: 'analysis', changes: 'improve', cats: 'improve', percard: 'improve', upgrade: 'improve', combos: 'improve', primer: 'primer', history: 'more', log: 'more', tests: 'more' };
   const FIND = [['commanders', 'Browse'], ['inspire', 'Quiz'], ['surprise', 'Random']];
   const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
   const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
@@ -1086,7 +1086,7 @@
     counts: 'How many cards the deck has for each job (lands, ramp, draw, removal, wipes and more) next to what real decks of the same bracket run.',
     hand: 'Draw opening hands from this list, mulligan and draw on.', export: 'Copy or download the list for Moxfield, Archidekt, MTGO or plain text.',
     analysis: 'How good the deck is: power, speed and mana from simulated games, its main problems, and its role counts against real decks.',
-    changes: 'Cuts and adds for the deck, each measured with simulated games. Accept the ones you want.', percard: 'Each card in the list with up to three better cards at different prices, each measured as a swap. You choose.', upgrade: 'Set an amount to spend. The best set of swaps that fits it, each add Commander-legal and in your colours, measured with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
+    changes: 'Cuts and adds for the deck, each measured with simulated games. Accept the ones you want.', cats: 'Pick a category (Ramp, Card draw, Removal…). Cards to add for it, each paired with a cut that keeps every other category in its typical range, the set measured together.', percard: 'Each card in the list with up to three better cards at different prices, each measured as a swap. You choose.', upgrade: 'Set an amount to spend. The best set of swaps that fits it, each add Commander-legal and in your colours, measured with simulated games.', combos: 'Commander Spellbook combos in this deck, one card away, and a search across every combo in the data.',
     primer: 'How to play this list, from its own simulation and card roles.',
     history: 'The last 25 decks and revisions in this browser. Tick two to compare them.', log: 'Each step the generator and optimiser took.', tests: 'Checks the generator against the loaded card data.'
   };
@@ -1137,6 +1137,7 @@
     if (App.tab === 'primer') return void renderPrimer();
     if (App.tab === 'combos') return void renderCombos();
     if (App.tab === 'upgrade') return renderUpgrade();
+    if (App.tab === 'cats') return renderCats();
     if (App.tab === 'commanders') return renderCommanders();
     if (App.tab === 'inspire') return renderInspire();
     if (App.tab === 'surprise') return renderSurprise();
@@ -1391,6 +1392,88 @@
     App.UP.key = deckKey(R); App.QS = null; App.PR = null; if (App.anSource !== 'paste') App.AN = null;
     renderAll(); histPush('edit', 'Budget upgrades: ' + pairs.length + ' swap' + (pairs.length === 1 ? '' : 's'));
     setStatus('Applied ' + pairs.length + ' upgrade' + (pairs.length === 1 ? '' : 's') + ' (locked). Deck, Export lists the added cards.');
+  }
+  /* ---------- by category: Analysis.catPlan for one count category, adds and cuts chosen together ---------- */
+  // App.CT: { key, cat, res, sel: Set of add names, cutOv: { add name → cut name }, whole }
+  const ctKeep = R => new Set([].concat(...(R.combos || []).map(x => x.c), R.commanders.map(c => c.n), R.deck.filter(e => e.inc).map(e => e.c.n)));
+  // the package: each selected add (in gain order) with the cut catCuts picks on the running counts, or the user's choice
+  function ctPairs(X, T) {
+    const R = App.R, adds = T.res.adds.filter(a => T.sel.has(a.c.n));
+    const auto = Analysis.catCuts(X.planner, adds.map(a => a.c), T.cat, T.res.rng, ctKeep(R)), used = new Set();
+    return adds.map((a, i) => {
+      const s = auto[i], ov = T.cutOv[a.c.n] && R.deck.find(e => e.c.n === T.cutOv[a.c.n]);
+      const opts = [s.cut].concat(s.alts).filter(Boolean); if (ov && !opts.includes(ov.c)) opts.unshift(ov.c);
+      const cut = ov ? ov.c : s.cut, dup = cut && used.has(cut); if (cut) used.add(cut);
+      return { a, add: a.c, cut, safe: s.safe, opts, dup };
+    });
+  }
+  function ctAfter(T, pairs) {
+    const n = Object.assign({}, T.res.counts);
+    for (const p of pairs) { for (const k of Analysis.catsOf(p.add)) n[k]++; if (p.cut) for (const k of Analysis.catsOf(p.cut)) n[k]--; }
+    return n;
+  }
+  function renderCats() {
+    const R = App.R;
+    if (!R || !R.stats) { $('view').innerHTML = emptyView(); return; }
+    const X = plannerX(); if (!X) { $('view').innerHTML = emptyView(); return; }
+    const key = deckKey(R), T = App.CT && App.CT.key === key ? App.CT : null;
+    const rng = Analysis.catRange(R.settings.bracket, R.CI), cnt = Analysis.catCounts(X.planner.deck);
+    const st = k => !rng[k] ? '' : cnt[k] < rng[k][0] ? 'fail' : cnt[k] > rng[k][2] ? 'warn' : 'pass';
+    const tiles = '<div class="ct-tiles" role="group" aria-label="Category">' + Analysis.COUNT_CATS.filter(([k]) => rng[k]).map(([k, l]) => '<button type="button" class="ct-tile ' + st(k) + '" data-ct="pick" data-k="' + k + '" aria-pressed="' + !!(T && T.cat === k) + '"' + (App.ctBusy ? ' disabled' : '') + '><b>' + esc(l) + '</b><span><b>' + cnt[k] + '</b> · typical ' + fmtR(rng[k][0]) + '–' + fmtR(rng[k][2]) + '</span></button>').join('') + '</div>';
+    let body = '<p class="note" id="ctNote">' + esc(App.ctNote || (T ? '' : 'Pick a category. Red is below the typical range for Bracket ' + (+R.settings.bracket || 'all') + ', amber above it.')) + '</p>';
+    if (T && T.res) {
+      const lab = Object.fromEntries(Analysis.COUNT_CATS.map(x => [x[0], x[1]])), r = T.res;
+      if (!r.adds.length) body += '<p class="note">No card in ' + esc(lab[T.cat]) + ' to add' + (ownOnly() ? ' from your collection' : '') + ' within your colours, bracket and per-card price cap, or nothing left to cut without dropping another category below its range.</p>';
+      else {
+        const pairs = ctPairs(X, T), after = ctAfter(T, pairs);
+        const addRows = r.adds.map(a => '<tr><td><label class="ct-chk"><input type="checkbox" data-ctadd="' + esc(a.c.n) + '"' + (T.sel.has(a.c.n) ? ' checked' : '') + '> ' + cardLink(a.c) + '</label>' + (a.cats.length > 1 ? '<div class="note">also ' + a.cats.filter(k => k !== T.cat).map(k => esc(lab[k])).join(', ') + '</div>' : '') + '<div class="note">measured against − ' + esc(a.cut.n) + '</div></td><td class="n nw">' + (a.price != null ? esc(fmtP(a.price)) : '<span class="note">n/a</span>') + '</td><td class="n ' + (a.g > 0 ? 'up' : a.g < 0 ? 'down' : '') + '">' + (a.g > 0 ? '+' : '') + a.g.toFixed(1) + '</td></tr>').join('');
+        const pairRows = pairs.map((p, i) => '<tr><td><div class="sw"><span class="in">+ ' + cardLink(p.add) + '</span></div></td><td><label class="f inline"><span class="sr">Cut</span><select data-ctcut="' + esc(p.add.n) + '">' + p.opts.map(c => '<option value="' + esc(c.n) + '"' + (c === p.cut ? ' selected' : '') + '>− ' + esc(c.n) + (Analysis.catsOf(c).length ? ' (' + Analysis.catsOf(c).map(k => lab[k]).join(', ') + ')' : '') + '</option>').join('') + '</select></label>' + (p.dup ? ' <b class="pup">cut twice</b>' : !p.safe ? ' <span class="warn-t">drops a category below range</span>' : '') + '</td></tr>').join('');
+        const cRows = Analysis.COUNT_CATS.filter(([k]) => rng[k]).map(([k, l]) => { const a = cnt[k], b = after[k], low = b < rng[k][0], hi = b > rng[k][2]; return a === b && k !== T.cat ? '' : '<tr><td>' + esc(l) + '</td><td class="n num">' + a + ' → <b>' + b + '</b></td><td class="n num">' + fmtR(rng[k][0]) + '–' + fmtR(rng[k][2]) + '</td><td><span class="st ' + (low ? 'fail' : hi ? 'warn' : 'pass') + '">' + (low ? 'Low' : hi ? 'High' : 'Typical') + '</span></td></tr>'; }).join('');
+        const sign = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(d || 0), w = T.whole;
+        const bad = pairs.some(p => !p.cut || p.dup);
+        body += '<h3 class="an-sub">Cards to add for ' + esc(lab[T.cat]) + ' (' + r.adds.length + ' measured)</h3><p class="note">Gain = the swap alone, against the cut shown (10 × power level change + fundamentals change, 3,000 simulated games on the same shuffles). Tick the ones you want; the cuts below are re-chosen for the whole set.</p>' +
+          '<div class="scroll"><table class="t compact"><thead><tr><th>Add</th><th class="n">Price</th><th class="n">Gain</th></tr></thead><tbody>' + addRows + '</tbody></table></div>' +
+          (pairs.length ? '<h3 class="an-sub">Package (' + pairs.length + ' swap' + (pairs.length === 1 ? '' : 's') + ')</h3><div class="scroll"><table class="t compact swaps ct-pkg"><tbody>' + pairRows + '</tbody></table></div>' +
+            '<h4 class="an-sub">Counts after</h4><div class="scroll"><table class="t compact"><thead><tr><th>Category</th><th class="n">Now → after</th><th class="n">Typical</th><th></th></tr></thead><tbody>' + cRows + '</tbody></table></div>' +
+            (w ? '<p class="note">All ' + w.n + ' together, measured: power ' + sign(w.pl, 1) + ', fundamentals ' + sign(w.fund) + ', keepable 7 ' + sign(w.keep * 100, 1) + ' pts' + (w.typical ? ', typical win turn ' + sign(w.typical) : '') + (w.minB ? ', <span class="warn-t">min. bracket ' + sign(w.minB) + '</span>' : '') + '.</p>' : '') +
+            '<div class="row" style="gap:8px"><button type="button" class="small" data-ct="measure"' + (bad || App.ctBusy ? ' disabled' : '') + '>Measure together</button><button type="button" class="small primary" data-ct="apply"' + (bad || App.ctBusy ? ' disabled' : '') + '>Apply ' + pairs.length + '</button></div>' : '<p class="note">Tick a card above to build a package.</p>');
+      }
+    }
+    $('view').innerHTML = tiles + body + '<details class="an-more"><summary class="note">How category swaps are chosen</summary><p class="note">Counts and typical ranges are the ones on Deck › Counts (middle half of reference decks of your bracket). Adds: the cards in the category that fit the deck best (theme fit and EDHREC rank), Commander-legal, in your colours, inside bracket limits and the per-card price cap' + (ownOnly() ? ', from your collection' : '') + '. Cuts are chosen one after another on the running counts, after counting every add: a card is cut only if each category it is in stays at or above the low end of its range; cards from over-supplied categories go first, then the lowest-value card (synergy links + 2×roles + Game Changer/fast/tutor bonus + EDHREC popularity). A card in the category being filled, a locked card, a combo piece and the commander are never cut; a basic land only while lands are above their range.</p></details>';
+  }
+  async function catsRun(cat) {
+    const R = App.R; if (!R || !R.stats || App.ctBusy) return;
+    const X = plannerX(); if (!X) return; const key = deckKey(R);
+    const say = t => { App.ctNote = t; if ($('ctNote')) $('ctNote').textContent = t; };
+    App.ctBusy = true; App.CT = { key, cat, res: null, sel: new Set(), cutOv: {} }; renderCats(); say('Measuring…');
+    try {
+      const prep = Analysis.impactPrep(App.bulk, App.PX.deck, R.commanders, { settings: R.settings, combos: R.combos, impactGames: 3000 });
+      const res = await Analysis.catPlan(prep, X.planner, cat, { bracket: R.settings.bracket, keep: ctKeep(R), tick: (d, t) => { say('Measuring ' + d + '/' + t + '…'); return new Promise(r => setTimeout(r, 0)); } });
+      if (deckKey(App.R) !== key) { say('The deck changed; pick the category again.'); return; }
+      // preselected: the best gains, as many as it takes to reach the median (1 to 5)
+      const m = res.rng[cat] ? res.rng[cat][1] : res.counts[cat] + 1, need = Math.max(1, Math.min(5, Math.ceil(m - res.counts[cat])));
+      App.CT = { key, cat, res, sel: new Set(res.adds.filter(a => a.g > 0).slice(0, need).map(a => a.c.n)), cutOv: {}, prep }; say('');
+    } finally { App.ctBusy = false; if (App.tab === 'cats') renderCats(); }
+  }
+  function catsMeasure() {
+    const T = App.CT, X = plannerX(); if (!T || !T.res || !X) return;
+    const pairs = ctPairs(X, T).filter(p => p.cut); if (!pairs.length) return;
+    const w = Analysis.impactMany(T.prep, pairs.map(p => ({ cut: p.cut, add: p.add })));
+    T.whole = Object.assign(w, { n: pairs.length }); renderCats();
+  }
+  async function catsApply() {
+    const R = App.R, T = App.CT, X = plannerX(); if (!R || !T || !T.res || !X) return;
+    const ps = ctPairs(X, T); if (ps.some(p => !p.cut || p.dup)) return;
+    const pairs = ps.map(p => ({ entry: R.deck.find(e => e.c === p.cut), card: p.add })).filter(p => p.entry && !R.deck.some(e => e.c === p.card));
+    if (!pairs.length) return;
+    const fails = await R.replaceMany(pairs, true);
+    if (fails.length) { setStatus('Not applied: this would break ' + fails.map(r => r.label + ' (' + r.detail + ')').join('; ') + '.'); return; }
+    await R.replaceMany(pairs);
+    for (const p of pairs) histOp({ op: 'swap', cut: p.entry.c.n, add: p.card.n });
+    const lab = (Analysis.COUNT_CATS.find(x => x[0] === T.cat) || [])[1];
+    App.CT = null; App.QS = null; App.PR = null; if (App.anSource !== 'paste') App.AN = null;
+    renderAll(); histPush('edit', lab + ': ' + pairs.length + ' swap' + (pairs.length === 1 ? '' : 's'));
+    setStatus('Applied ' + pairs.length + ' ' + lab + ' swap' + (pairs.length === 1 ? '' : 's') + ': ' + pairs.map(p => p.card.n + ' for ' + p.entry.c.n).join('; ') + '.');
   }
   // cards in the deck now that weren't in it when it was generated or imported (App.base), as "1 Card Name" lines
   function addedCards() {
@@ -2059,11 +2142,18 @@
       if (a === 'accept') { App.acceptNote = ''; const p = X.impact[+b.dataset.i]; if (!p) return; b.disabled = true; await applyChange(p.cut, p.add); (App.accepted = App.accepted || []).push({ cut: p.cut, add: p.add, src: App.anSource }); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); return; }
       if (a === 'undo') { const i = +b.dataset.i, r = App.accepted[i]; if (!r) return; await applyChange(r.add, r.cut); App.accepted.splice(i, 1); anStale(); if (App.anSource !== 'paste') renderAll(); if (App.tab !== 'changes') App.tab = 'analysis'; renderView(); if (App.tab !== 'changes') runAnalysis(); }
     });
+    $('view').addEventListener('change', e => {
+      const T = App.CT; if (!T || !T.res) return;
+      const a = e.target.closest('[data-ctadd]'); if (a) { if (a.checked) T.sel.add(a.dataset.ctadd); else { T.sel.delete(a.dataset.ctadd); delete T.cutOv[a.dataset.ctadd]; } T.whole = null; return renderCats(); }
+      const c = e.target.closest('[data-ctcut]'); if (c) { T.cutOv[c.dataset.ctcut] = c.value; T.whole = null; return renderCats(); }
+    });
     $('view').addEventListener('change', e => { if (e.target.id === 'anGames') { App.anGames = +e.target.value; try { localStorage.setItem('edhgen.anGames', String(App.anGames)); } catch (x) { } } });
     $('view').addEventListener('click', e => {
       const a = e.target.closest('button[data-cbadd],button[data-cbaddall]'); if (a) return comboAddPanel(a);
       const g = e.target.closest('button[data-cbgo]'); if (g) { g.disabled = true; return comboAddGo(); }
       if (e.target.closest('button[data-cbx]')) document.querySelectorAll('tr.cbpanel').forEach(x => x.remove());
+      const ct = e.target.closest('button[data-ct]');
+      if (ct) { const k = ct.dataset.ct; if (k === 'pick') return catsRun(ct.dataset.k); if (k === 'measure') return catsMeasure(); if (k === 'apply') { ct.disabled = true; return catsApply(); } }
       const up = e.target.closest('button[data-up]');
       if (up) {
         const k = up.dataset.up;

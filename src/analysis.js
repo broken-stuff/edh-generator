@@ -1031,6 +1031,52 @@ const Analysis = (function () {
     const whole = swaps.length ? impactMany(prep, swaps) : null;
     return { swaps, spent: Math.round(swaps.reduce((s, x) => s + x.price, 0) * 100) / 100, budget, whole, measured: done, candidates: adds.length + lands.length };
   }
+  /* ---------- category swaps: adds for one count category (Ramp, Card draw…) with cuts that keep the others in range ---------- */
+  // Ranges are ROLE_RANGES for the deck's bracket: [25th percentile, median, 75th percentile]. Counterspells count only in blue decks.
+  const catsOf = c => COUNT_CATS.filter(([, , t]) => t(c)).map(x => x[0]);
+  function catCounts(deck) { const n = Object.fromEntries(COUNT_CATS.map(x => [x[0], 0])); for (const e of deck) for (const k of catsOf(e.c)) n[k] += e.qty || 1; return n; }
+  function catRange(bracket, CI) { const ref = ROLE_RANGES[+bracket] || ROLE_RANGES[0], out = {}; for (const [k] of COUNT_CATS) out[k] = k === 'counters' && !String(CI).includes('U') ? null : ref[k]; return out; }
+  // Cuts for a set of adds, chosen one after another on the running counts (the adds' categories counted first, then each
+  // cut's): a card is safe to cut when every category it is in stays at or above its 25th percentile. Among safe cards,
+  // cards in an over-supplied category (above the 75th percentile) go first, then the lowest value. Never a card of the
+  // category being filled, a locked card, a kept card (commander, combo pieces) or one of the adds. A basic land is cut only
+  // while lands are above their 75th percentile. Returns [{ cut, safe, alts }], alts = the next options for that slot.
+  function catCuts(P, adds, cat, rng, keep) {
+    keep = keep || new Set();
+    const cnt = catCounts(P.deck), left = new Map(P.deck.map(e => [e.c, e.qty || 1])), addSet = new Set(adds), out = [];
+    for (const a of adds) for (const k of catsOf(a)) cnt[k]++;
+    for (let i = 0; i < adds.length; i++) {
+      const cand = [];
+      for (const e of P.deck) {
+        const c = e.c; if (!(left.get(c) > 0) || e.locked || keep.has(c.n) || addSet.has(c)) continue;
+        const ks = catsOf(c); if (ks.includes(cat)) continue;
+        if (A(c).isLand && !(E.isBasic(c) && rng.lands && cnt.lands > rng.lands[2])) continue;
+        const safe = ks.every(k => !rng[k] || cnt[k] - 1 >= rng[k][0]), over = ks.filter(k => rng[k] && cnt[k] > rng[k][2]).length;
+        cand.push({ c, safe, over, v: A(c).isLand ? -1 : P.value(c) });
+      }
+      cand.sort((x, y) => (y.safe - x.safe) || (y.over - x.over) || (x.v - y.v) || (x.c.n < y.c.n ? -1 : 1));
+      const pick = cand[0]; if (!pick) { out.push({ cut: null, safe: false, alts: [] }); continue; }
+      left.set(pick.c, left.get(pick.c) - 1); for (const k of catsOf(pick.c)) cnt[k]--;
+      out.push({ cut: pick.c, safe: pick.safe, alts: cand.slice(1, 7).map(x => x.c) });
+    }
+    return out;
+  }
+  // Candidate adds for a category, each measured against the cut catCuts picks for it alone (gain as in upgradePlan).
+  // Pool: the analysis pool (Commander-legal, colour identity, bracket limits, per-card price cap, collection if set).
+  async function catPlan(prep, P, cat, opts) {
+    opts = opts || {};
+    const test = (COUNT_CATS.find(x => x[0] === cat) || [])[2]; if (!test) return { adds: [], cat };
+    const rng = catRange(opts.bracket, P.CI), keep = opts.keep || new Set(), tick = opts.tick || (() => {});
+    const cands = P.pick(c => test(c) && (cat === 'lands' || !A(c).isLand), opts.max || 10), adds = [];
+    let done = 0;
+    for (const c of cands) {
+      const cut = catCuts(P, [c], cat, rng, keep)[0]; await tick(++done, cands.length);
+      if (!cut.cut) continue;
+      adds.push({ c, cut: cut.cut, price: P.price(c), cats: catsOf(c), g: Math.round((worth(impactMany(prep, [{ cut: cut.cut, add: c }]).after) - worth(prep.base)) * 10) / 10 });
+    }
+    adds.sort((a, b) => b.g - a.g || (a.c.n < b.c.n ? -1 : 1));
+    return { cat, adds, rng, counts: catCounts(P.deck) };
+  }
   // several swaps at once, scored like impactOne (same seed as the base, so the difference comes from the swaps)
   function impactMany(prep, swaps) {
     let d2 = prep.deck; for (const s of swaps) d2 = applySwap(d2, s.cut, s.add);
@@ -1144,6 +1190,6 @@ const Analysis = (function () {
     return { cmds: [], how: null, main, missing: [], candidates: cand };
   }
 
-  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp, COUNT_CATS, roleCounts, ROLE_RANGES };
+  return { OPP, TABLE_W, run, impact, impactPrep, impactOne, impactSwaps, impactMany, pairCuts, upgradePlan, catPlan, catCuts, catCounts, catRange, catsOf, applySwap, simulate, manaModel, parseDecklist, pickCommanders, castOdds, castCheck, colourCheck, colourSources, karstenLands, CAST_OK, CAST_BAD, PAIRS, BENCH, POP, hyp, COUNT_CATS, roleCounts, ROLE_RANGES };
 })();
 if (typeof module !== 'undefined') module.exports = Analysis;
