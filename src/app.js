@@ -437,13 +437,10 @@
     const deck = App.R.deck.map(e => e.imp ? Object.assign({}, e, { locked: false }) : e);
     return { deck, asIs: !!App.R.asIs, cmds: App.R.commanders, unknown: [], label: App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'Generated deck', combos: App.R.combos };
   }
+  let anSeq = 0; // runAnalysis calls; a run that waited past a newer one drops its result
   const anGames = () => { const g = +App.anGames || 100000; return [1500, 10000, 25000, 50000, 100000].includes(g) ? g : 100000; };
-  async function runAnalysis() {
-    if (App.anSource === 'compare') return runCompare();
-    const inp = analysisInput();
-    if (inp.error) { App.AN = { error: inp.error, unknown: inp.unknown || [] }; renderAnView(); return; }
-    const key = App.anSource + '|' + inp.cmds.map(c => c.n).join('+') + '|' + inp.deck.map(e => e.qty + e.c.n).join(',') + '|' + JSON.stringify(App.S.targets) + App.S.bracket + '|' + anGames() + '|' + JSON.stringify(App.S.budget) + '|' + [...(App.denied || [])].join(',') + '|' + ownKey();
-    if (App.AN && App.AN.key === key && !App.AN.stale) { renderAnView(); return; }
+  // combo lookups, then the simulation; nothing when a newer runAnalysis started while the lookups ran
+  async function anCompute(inp, seq) {
     setStatus('Analyzing (' + anGames().toLocaleString() + ' simulated games)…'); await new Promise(r => setTimeout(r, 30));
     let combos = inp.combos || null, almost = null;
     const cp = comboProvider();
@@ -456,11 +453,24 @@
         almost = (await cp.almost(names, poolNames)).filter(x => x.missing.length === 1).slice(0, 8).map(x => ({ cards: x.v.c, missing: x.missing, produces: x.v.p }));
       } catch (e) { }
     }
+    if (seq !== anSeq) return [];
     const t0 = performance.now();
     App.denied = App.denied || new Set();
-    const X = Analysis.run(App.bulk, inp.deck, inp.cmds, { settings: App.S, combos, almost, games: anGames(), deny: [...App.denied], owned: ownOpt() });
+    return [Analysis.run(App.bulk, inp.deck, inp.cmds, { settings: App.S, combos, almost, games: anGames(), deny: [...App.denied], owned: ownOpt() }), combos, t0];
+  }
+  async function runAnalysis() {
+    if (App.anSource === 'compare') return runCompare();
+    const inp = analysisInput();
+    if (inp.error) { App.AN = { error: inp.error, unknown: inp.unknown || [] }; renderAnView(); return; }
+    const key = App.anSource + '|' + inp.cmds.map(c => c.n).join('+') + '|' + inp.deck.map(e => e.qty + e.c.n).join(',') + '|' + JSON.stringify(App.S.targets) + App.S.bracket + '|' + anGames() + '|' + JSON.stringify(App.S.budget) + '|' + [...(App.denied || [])].join(',') + '|' + ownKey();
+    if (App.AN && App.AN.key === key && !App.AN.stale) { renderAnView(); return; }
+    if (App.anRun === key) return; // already analysing this list (Improve's views ask on every render); its result renders when done
+    const seq = ++anSeq; App.anRun = key;
+    let X, combos, t0;
+    try { [X, combos, t0] = await anCompute(inp, seq); } finally { if (seq === anSeq) App.anRun = null; }
+    if (!X) return; // the list changed while this run waited for combos; the newer run replaces it
     X.inp = inp; X.combosIn = combos;
-    X.key = key; X.label = inp.label; X.unknown = inp.unknown; X.cmds = inp.cmds; X.comboLoaded = !!cp;
+    X.key = key; X.label = inp.label; X.unknown = inp.unknown; X.cmds = inp.cmds; X.comboLoaded = !!comboProvider();
     App.AN = X;
     setStatus('Analysis done in ' + ((performance.now() - t0) / 1000).toFixed(2) + ' s (' + X.sim.games.toLocaleString() + ' simulated games).');
     X.impact = []; X.impactDone = !X.plans.length;
@@ -808,6 +818,7 @@
     const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">' + (App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'This deck') + '</button>' + (App.anSource === 'paste' ? '<button type="button" data-an="src-paste" aria-pressed="true">Pasted list</button>' : '') + '<button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
       (App.anSource === 'paste' || App.anSource === 'compare' ? '<label class="f" style="margin-top:8px">' + (App.anSource === 'compare' ? 'List to compare against the generated deck. ' : '') + 'Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="anText" rows="8" spellcheck="false">' + esc(App.anText || '') + '</textarea></label>' : '');
     if (!X && !App.R && App.anSource !== 'compare') { $('view').innerHTML = '<div class="next-tile"><p><b>No deck yet.</b> Build one or import your list on Start, and its analysis opens here.</p><button type="button" class="primary" data-go="setup">Start ›</button></div>'; return; }
+    if (!X && App.anRun) { $('view').innerHTML = src + '<p class="note" style="margin-top:10px">Analyzing…</p>'; return; }
     if (!X) { $('view').innerHTML = src + '<p class="note" style="margin-top:10px">Scores speed, mana, card advantage, interaction, resilience, synergy, consistency and win pressure from card data, exact probabilities and a seeded goldfish simulation. Runs entirely in this page.</p>'; return; }
     if (X.error) { $('view').innerHTML = src + '<div class="msg err" style="margin-top:10px">' + esc(X.error) + (X.unknown && X.unknown.length ? '<br>Unknown names: ' + esc(X.unknown.join(', ')) : '') + '</div>'; return; }
     if (X.compare) { $('view').innerHTML = src + compareHTML(X); return; }
@@ -906,7 +917,7 @@
       method: method.replace('<details class="an-method">', '<details class="an-method" open>')
     }[sub];
     const jump = '<div class="an-jump" role="group" aria-label="Go to">' + (App.anSource === 'paste' ? '' : '<button type="button" class="small primary" data-go="changes">Improve ›</button>') + [['anProblems', 'Problems'], ['anCounts', 'Counts'], ['anDetail', 'Detail']].map(([id, l]) => '<button type="button" class="small" data-jump="' + id + '">' + l + '</button>').join('') + '</div>';
-    $('view').innerHTML = src + jump + head + overview + '<div id="anDetail">' + adv + nav + body + '</div>';
+    $('view').innerHTML = src + jump + (X.stale ? '<p class="note">The deck changed; re-analyzing. The figures below are for the previous list.</p>' : '') + head + overview + '<div id="anDetail">' + adv + nav + body + '</div>';
   }
 
   /* ---------- views ---------- */
