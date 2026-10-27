@@ -13,7 +13,7 @@ No account, server or install. Nothing you enter leaves your browser. The only o
 
 ## Contents
 
-- [Quick start](#quick-start)
+- [How to use](#how-to-use)
 - [Deck generator](#deck-generator)
 - [Card explorer](#card-explorer)
 - [Appearance](#appearance)
@@ -22,12 +22,26 @@ No account, server or install. Nothing you enter leaves your browser. The only o
 - [Development](#development)
 - [Credits and legal](#credits-and-legal) (MIT License)
 
-## Quick start
+## How to use
 
-1. Open the [deck generator](https://broken-stuff.github.io/edh-generator/). Card data loads on its own the first time (a few seconds) and is kept in your browser after that.
-2. Optional: on **Collection**, paste or load the cards you own. Every card you own gets a green dot, and you can have new decks and suggestions use only your cards.
-3. On **Start**, fill the tiles (commander, power, budget, game plan) and press **Generate deck** (or `G`), or paste your own list under **Import my deck**. **Find a commander** helps you pick one (browse, a quiz, or random picks).
-4. Check the deck on **Analysis**, take measured fixes on **Improve**, and read the play guide on **Primer**. Copy the list from **Deck**, **Export**.
+Open the [deck generator](https://broken-stuff.github.io/edh-generator/). Card data loads the first time (a few seconds) and stays in your browser. The **Start** page shows four step tiles, each with its status and a link to its page. Work through them in order:
+
+1. **Collection** (optional). Paste your cards (`1 Card Name` or just the name) or load a CSV export with a Name column (ManaBox, Moxfield, Archidekt, Deckbox). Then pick a mode:
+   - **Mark:** owned cards get a green dot. Builds and suggestions use all cards.
+   - **Prefer:** new decks favour your cards.
+   - **Only mine:** new decks and all suggestions use only your cards (basic lands always allowed).
+2. **Deck.** On Start, either:
+   - **Build a deck:** fill the tiles (Commander, Power, Budget, Collection, Game plan and themes) and press **Generate deck** (`G`). **Find a commander** helps you pick one (Browse, Quiz, Random).
+   - **Import my deck:** paste a list (Moxfield, Archidekt, MTGO, CSV or `1 Name`). It is kept exactly as pasted. If it is under 100 cards, **Fill to 100** (on Analysis and in the Deck summary) keeps every card and adds the rest from your Start settings.
+3. **Analysis.** Power level, bracket, win turn, problems, and role counts against real decks of your bracket.
+4. **Improve.** Measured changes, from **All cards** or **My collection**:
+   - **Suggested swaps:** cuts and adds scored with simulated games; accept or deny each. **Deep search** looks wider.
+   - **By category:** pick a category (Ramp, Card draw, Removal…) to get adds for it, each paired with a cut that keeps the other categories in range.
+   - **By card:** up to three better cards per card, one per price band.
+   - **Budget upgrades:** the best set of swaps for a set amount ($20, $50, $200 or custom).
+   - **Combos:** combos in the deck and ones one or two cards away.
+
+**Primer** gives a play guide; **Deck › Export** copies the list (or only the cards added since build/import, for a store's mass entry).
 
 The two pages link to each other. In the generator, a card's popup has **Similar cards and combos ↗**, which opens that card in the explorer. In the explorer, a card that can be a commander has **Build a deck with it**, which opens the generator with that commander filled in.
 
