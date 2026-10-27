@@ -531,8 +531,14 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
 .next-tile{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding:14px 16px;border-radius:14px;border:1px solid var(--accent);background:var(--accent-soft)}
 .next-tile p{margin:0}
 @media (max-width:900px){.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.coll-grid{grid-template-columns:minmax(0,1fr)}}
-@media (max-width:640px){.tiles{grid-template-columns:minmax(0,1fr)}.tile{padding:14px}.steps{gap:8px}.step{padding:10px 12px}.gen-row button.block{width:100%;min-width:0}}
-@media (pointer:coarse){button.small,.subtabs button,.seg button,.step{min-height:40px}button.link{min-height:32px;padding:4px 2px}}
+.ct-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:4px 0 8px}
+.ct-tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:9px 12px;border-radius:var(--r);background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);font-weight:400}
+.ct-tile span{font-size:.85em;color:var(--muted)}.ct-tile.fail{border-left-color:var(--bad)}.ct-tile.warn{border-left-color:var(--warn)}.ct-tile.pass{border-left-color:var(--ok)}
+.ct-tile[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:-1px}
+.ct-chk{display:inline-flex;gap:6px;align-items:center}
+.ct-pkg select{max-width:100%}
+@media (max-width:640px){.ct-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.tiles{grid-template-columns:minmax(0,1fr)}.tile{padding:14px}.steps{gap:8px}.step{padding:10px 12px}.gen-row button.block{width:100%;min-width:0}}
+@media (pointer:coarse){button.small,.subtabs button,.seg button,.step,.ct-tile{min-height:40px}button.link{min-height:32px;padding:4px 2px}}
 @media (max-width:374px){.mini{position:static}}
 </style>
 <title>broken-stuff card explorer</title>
