@@ -321,9 +321,12 @@
   function showMsgs(errors, warnings, extraHTML) {
     let h = '';
     if (errors && errors.length) h += '<div class="msg err" role="alert"><b>Cannot generate</b><ul>' + errors.map(e => '<li>' + esc(e) + '</li>').join('') + '</ul></div>';
-    if (warnings && warnings.length) h += '<div class="msg warn"><b>Notes</b><ul>' + warnings.map(e => '<li>' + esc(e) + '</li>').join('') + '</ul></div>';
-    if (extraHTML) h += extraHTML;
     $('msgs').innerHTML = h;
+    // Notes and unmet targets are low priority: they sit under the page content, errors stay on top
+    let n = '';
+    if (warnings && warnings.length) n += '<div class="msg warn"><b>Notes</b><ul>' + warnings.map(e => '<li>' + esc(e) + '</li>').join('') + '</ul></div>';
+    if (extraHTML) n += extraHTML;
+    $('notes').innerHTML = n;
   }
   function shortfallHTML(R) {
     if (!R.shortfalls || !R.shortfalls.length) return '';
@@ -1694,7 +1697,7 @@
     const kept = built.deck.reduce((s, e) => s + e.qty, 0), total = kept + built.commanders.length;
     const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' with ' + cmds.map(c => c.n).join(' + ') + (K.how !== 'section' && K.how !== 'pick' ? ' (read as the commander from the ' + K.how + ')' : '') + ' (' + total + ' total).' +
       (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
-      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes).' : '') + (total < 100 ? ' ' + (100 - total) + ' short of 100: Fill to 100 on Analysis adds them.' : total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
+      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes at the bottom).' : '') + (total < 100 ? ' ' + (100 - total) + ' short of 100: Fill to 100 on Analysis adds them.' : total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
     say(msg); setStatus(msg);
     App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
     runAnalysis();
