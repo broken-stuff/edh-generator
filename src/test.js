@@ -100,6 +100,14 @@ function legalCheck(R, label) {
   // swap/remove
   const e = R.deck.find(x => x.slot === 'ramp'); const alts = R.alternatives(e, 5); console.log('alts', alts.map(x => x.c.n));
   await R.remove(e); legalCheck(R, 'after remove');
+  // hand edits (Builder): take a card out without a replacement, add it back, basics by count
+  { const x = R.deck.find(y => !E.isBasic(y.c) && y.qty === 1), n0 = R.deck.reduce((s, y) => s + y.qty, 0);
+    await R.cutCard(x); assert(!R.deck.some(y => y.c === x.c) && R.deck.reduce((s, y) => s + y.qty, 0) === n0 - 1 && R.bans.includes(x.c.n), 'cutCard: card out, deck one short, card banned for rebuilds');
+    assert(R.validation.rules.find(r => r.id === 'count').pass === false, 'cutCard: the count rule reports 99');
+    await R.addCard(x.c); const back = R.deck.find(y => y.c === x.c); assert(back && back.locked && !R.bans.includes(x.c.n), 'addCard: card back, locked, ban lifted');
+    legalCheck(R, 'after cut and add back');
+    const b = R.deck.find(y => E.isBasic(y.c)), q = b.qty; await R.cutCard(b, 2); assert(b.qty === q - 2, 'cutCard: basics by count');
+    await R.addCard(b.c, 2); assert(R.deck.find(y => y.c === b.c).qty === q, 'addCard: basics merge into one entry'); legalCheck(R, 'after basics out and back'); }
   // owned only
   R = await E.generate(db, Object.assign({}, base, { commanders: ['Synth Mono Lord'], owned: { mode: 'only', list: '1 Synth G 0-0\n1 Synth G 0-3' } }));
   legalCheck(R, 'owned only'); console.log(R.warnings);

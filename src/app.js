@@ -811,7 +811,7 @@
     if (App.anSource === 'paste') return '';
     const o = ownedCards(), mine = ownOnly() && o && o.set.size, own = ownSumHTML();
     const what = X.plans.length ? X.plans.length + ' candidate swap' + (X.plans.length === 1 ? '' : 's') + ' for the problems above' : 'No obvious swaps; deep search and budget upgrades look further';
-    return '<div class="next-tile" id="anNext"><div><p><b>Next: Improve.</b> ' + what + ', measured with simulated games, from ' + (mine ? 'your collection (' + o.set.size.toLocaleString() + ' cards)' : 'all cards') + '.</p>' + (own ? '<p>' + own + '</p>' : '') + '</div><button type="button" class="primary" data-go="changes">Improve this deck ›</button></div>';
+    return '<div class="next-tile" id="anNext"><div><p><b>Next: Improve.</b> ' + what + ', measured with simulated games, from ' + (mine ? 'your collection (' + o.set.size.toLocaleString() + ' cards)' : 'all cards') + '.</p>' + (own ? '<p>' + own + '</p>' : '') + '</div><div class="row"><button type="button" class="small" data-blopen="1">Edit in Builder</button><button type="button" class="primary" data-go="changes">Improve this deck ›</button></div></div>';
   }
   function renderAnalysis() {
     const X = App.AN;
@@ -930,7 +930,7 @@
     const fails = v.rules.filter(r => r.pass === false).length;
     el.innerHTML = [
       ['Commander', R.commanders.map(c => esc(c.n)).join(' + ') + ' ' + pipsHTML(R.CI)],
-      ['Cards', (R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0)) + fillBtnHTML()],
+      ['Cards', (R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0)) + fillBtnHTML() + ' <button type="button" class="small" data-blopen="1" title="Add and take out cards by role, mana value and type, with a live tracker">Edit in Builder</button>'],
       ['Avg MV', s.avgMV.toFixed(2)],
       ['Unpriced', s.unknown.length],
       ['Game Changers', s.gcs.length],
@@ -1709,25 +1709,33 @@
   function blState() {
     if (App.B) return App.B;
     let s = null; try { s = JSON.parse(LS.get(BL_KEY) || 'null'); } catch (e) { }
-    App.B = Object.assign({ cmds: ['', ''], bracket: 3, themes: null, picks: {}, cat: 'all', mv: [], ty: [], q: '', sort: 'rank', all: false, tg: {}, n: 60, cq: '' }, s || {});
+    App.B = Object.assign({ mode: 'draft', cmds: ['', ''], bracket: 3, themes: null, picks: {}, cat: 'all', mv: [], ty: [], q: '', sort: 'rank', all: false, tg: {}, n: 60, cq: '' }, s || {});
     return App.B;
   }
-  function blSave() { const B = App.B; LS.set(BL_KEY, JSON.stringify({ cmds: B.cmds, bracket: B.bracket, themes: B.themes, picks: B.picks, cat: B.cat, mv: B.mv, ty: B.ty, sort: B.sort, all: B.all, tg: B.tg })); }
-  const blCmds = () => blState().cmds.map(n => n && App.bulk && Engine.lookup(App.bulk, n)).filter(Boolean);
+  function blSave() { const B = App.B; LS.set(BL_KEY, JSON.stringify({ mode: B.mode, cmds: B.cmds, bracket: B.bracket, themes: B.themes, picks: B.picks, cat: B.cat, mv: B.mv, ty: B.ty, sort: B.sort, all: B.all, tg: B.tg })); }
+  // Current deck mode: the Builder reads and edits the working deck (App.R), so Deck, Analysis and Improve see every
+  // change and Undo takes it back. Draft mode: a separate list kept in this browser.
+  const blLive = () => blState().mode === 'deck' && !!(App.R && App.R.stats);
+  const blCmds = () => blLive() ? App.R.commanders : blState().cmds.map(n => n && App.bulk && Engine.lookup(App.bulk, n)).filter(Boolean);
+  const blQty = n => blLive() ? App.R.deck.filter(e => e.c.n === n).reduce((s, e) => s + e.qty, 0) : blState().picks[n] || 0;
+  function blOpenDeck() { const B = blState(); if (B.mode !== 'deck') { B.mode = 'deck'; B.themes = null; B.cat = 'all'; } B.bracket = +App.R.settings.bracket || B.bracket; blSave(); go('builder'); }
   const blCI = cmds => 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
   // theme keys in use: the commander's own (Builder.cmdThemes) until the user changes them
   function blThemes(cmds) { const B = blState(); return B.themes || Builder.cmdThemes(App.bulk, cmds); }
   // cached pool and categories for the current commander, collection, source and themes
   function blPool() {
-    const B = blState(), cmds = blCmds(), o = ownedCards(), owned = !B.all && o && o.set.size ? o.set : null, th = blThemes(cmds);
+    const B = blState(), cmds = blCmds(), o = ownedCards(), th = blThemes(cmds), live = blLive() ? App.R : null;
+    let owned = !B.all && o && o.set.size ? o.set : null;
+    if (owned && live) owned = new Set([...owned, ...live.deck.map(e => e.c.n)]); // the deck's own cards stay listed, owned or not
     const key = cmds.map(c => c.n).join('|') + '#' + (owned ? o.key : 'all') + '#' + th.join(',');
-    if (App.BC && App.BC.key === key && App.BC.db === App.bulk) return App.BC;
+    if (App.BC && App.BC.key === key && App.BC.db === App.bulk && App.BC.R === live) return App.BC;
     const CI = blCI(cmds), tags = th.map(Builder.themeTag).filter(Boolean), cards = Builder.pool(App.bulk, CI, owned, cmds);
     const cats = new Map(cards.map(c => [c, Builder.cardCats(c, tags)]));
-    App.BC = { key, db: App.bulk, cmds, CI, tags, cards, cats, owned: !!owned };
+    App.BC = { key, db: App.bulk, R: live, cmds, CI, tags, cards, cats, owned: !!owned };
     return App.BC;
   }
   function blEntries() {
+    if (blLive()) return App.R.deck;
     const B = blState(), out = [];
     for (const [n, q] of Object.entries(B.picks)) { const c = Engine.lookup(App.bulk, n); if (c && q > 0) out.push({ c, qty: q }); }
     return out;
@@ -1743,9 +1751,11 @@
   function renderBuilder() {
     if (!App.bulk) { $('view').innerHTML = emptyView(); return; }
     const B = blState(), cmds = blCmds(), o = ownedCards(), n = o ? o.set.size : 0;
-    if (!cmds.length) { $('view').innerHTML = blStartHTML(o, n); return; }
+    const live = blLive(), hasDeck = !!(App.R && App.R.stats);
+    const modeSeg = hasDeck ? '<div class="bl-mode"><span class="note">Editing</span><div class="seg" role="group" aria-label="What the Builder edits"><button type="button" data-blmode="deck" aria-pressed="' + live + '" title="Changes go straight into the deck on Deck, Analysis and Improve">Current deck</button><button type="button" data-blmode="draft" aria-pressed="' + !live + '" title="A separate list kept in this browser">Draft</button></div></div>' : '';
+    if (!cmds.length) { $('view').innerHTML = modeSeg + blStartHTML(o, n); return; }
     const P = blPool();
-    const head = '<div class="bl-head"><div class="bl-cmd"><span class="note">Commander</span><b>' + cmds.map(c => cardLink(c)).join(' + ') + '</b> <span>' + pipsHTML(P.CI) + '</span> <button type="button" class="link" data-bl="cmd-change">Change</button></div>' +
+    const head = modeSeg + '<div class="bl-head"><div class="bl-cmd"><span class="note">Commander</span><b>' + cmds.map(c => cardLink(c)).join(' + ') + '</b> <span>' + pipsHTML(P.CI) + '</span> ' + (live ? '<span class="note">(change it on Start)</span>' : '<button type="button" class="link" data-bl="cmd-change">Change</button>') + '</div>' +
       '<div class="bl-br"><span class="note">Targets from</span><div class="seg" role="group" aria-label="Bracket for the targets">' + [1, 2, 3, 4, 5].map(b => '<button type="button" data-blbr="' + b + '" aria-pressed="' + (+B.bracket === b) + '" title="Reference decks of Bracket ' + b + '">B' + b + '</button>').join('') + '</div></div>' +
       (n ? '<div class="seg" role="group" aria-label="Cards to offer"><button type="button" data-blall="0" aria-pressed="' + !B.all + '">My collection</button><button type="button" data-blall="1" aria-pressed="' + B.all + '">All cards</button></div>' : '') + '</div>' +
       blThemesHTML(P);
@@ -1817,7 +1827,7 @@
     return L;
   }
   function blRowHTML(P, c) {
-    const B = blState(), q = B.picks[c.n] || 0, x = P.cats.get(c) || { roles: [], themes: [] }, cur = App.S.budget.cur;
+    const q = blQty(c.n), x = P.cats.get(c) || { roles: [], themes: [] }, cur = App.S.budget.cur;
     const RL = Object.fromEntries(Builder.ROLE_CATS.map(r => [r.key, r.label])), TL = Object.fromEntries(P.tags.map(t => [t.key, t.label]));
     const badges = x.roles.filter(r => r !== 'other' && r !== 'lands').map(r => '<span class="bl-b">' + esc(RL[r]) + '</span>').concat(x.themes.map(t => '<span class="bl-b th">' + esc(TL[t]) + '</span>')).join('');
     return '<li class="bl-row' + (q ? ' in' : '') + '" data-blrow="' + esc(c.n) + '"><button type="button" class="bl-add" data-bladd="' + esc(c.n) + '" aria-pressed="' + !!q + '" aria-label="' + (q ? 'Remove ' : 'Add ') + esc(c.n) + '">' + (q ? '✓' : '+') + '</button>' +
@@ -1827,7 +1837,7 @@
   function blListHTML(P) {
     const B = blState(), L = blFiltered(P), shown = L.slice(0, B.n);
     if (!L.length) return '<p class="note">No cards match' + (P.owned ? ' in your collection. Try All cards above, or clear a filter.' : '. Clear a filter.') + '</p>';
-    return '<p class="note bl-cnt">' + L.length.toLocaleString() + ' card' + (L.length === 1 ? '' : 's') + (P.owned ? ' from your collection' : '') + '</p><ul class="bl-list">' + shown.map(c => blRowHTML(P, c)).join('') + '</ul>' +
+    return '<p class="note bl-cnt">' + L.length.toLocaleString() + ' card' + (L.length === 1 ? '' : 's') + (P.owned ? (P.R ? ' from your collection and this deck' : ' from your collection') : '') + '</p><ul class="bl-list">' + shown.map(c => blRowHTML(P, c)).join('') + '</ul>' +
       (L.length > shown.length ? '<button type="button" class="small" data-bl="more">Show ' + Math.min(60, L.length - shown.length) + ' more</button>' : '');
   }
   function blTrackHTML(P) {
@@ -1844,7 +1854,7 @@
     const mvR = T.ranges.types.avgMV, avg = T.types.avgMV;
     const cols = P.CI.split(''), pt = cols.reduce((s, x) => s + T.pips[x], 0), lands = T.roles.lands.n;
     const colour = cols.length ? '<div class="bl-col">' + cols.map(x => { const sh = pt ? T.pips[x] / pt : 0; return '<div class="bl-crow"><span class="ms ' + x + '">' + x + '</span><span class="bl-tb"><i style="width:' + (sh * 100).toFixed(0) + '%"></i></span><span class="note num">' + Math.round(sh * 100) + '% of pips</span><b class="num" title="Lands that make ' + x + '">' + T.sources[x] + '</b><span class="note">sources</span></div>'; }).join('') + '</div>' : '';
-    const bas = (P.CI ? P.CI.split('') : ['C']).map(x => { const nm = Engine.BASIC_NAMES[x], q = B.picks[nm] || 0; return '<span class="bl-bas"><span class="ms ' + x + '">' + x + '</span><button type="button" class="small" data-blbas="' + nm + '" data-d="-1" aria-label="One fewer ' + nm + '"' + (q ? '' : ' disabled') + '>−</button><b class="num">' + q + '</b><button type="button" class="small" data-blbas="' + nm + '" data-d="1" aria-label="One more ' + nm + '">+</button></span>'; }).join('');
+    const bas = (P.CI ? P.CI.split('') : ['C']).map(x => { const nm = Engine.BASIC_NAMES[x], q = blQty(nm); return '<span class="bl-bas"><span class="ms ' + x + '">' + x + '</span><button type="button" class="small" data-blbas="' + nm + '" data-d="-1" aria-label="One fewer ' + nm + '"' + (q ? '' : ' disabled') + '>−</button><b class="num">' + q + '</b><button type="button" class="small" data-blbas="' + nm + '" data-d="1" aria-label="One more ' + nm + '">+</button></span>'; }).join('');
     const groups = {}; for (const e of E) (groups[Engine.typeGroup(e.c)] = groups[Engine.typeGroup(e.c)] || []).push(e);
     const deckList = E.length ? Object.keys(groups).sort().map(g => '<div class="bl-dg"><b>' + esc(g) + ' (' + groups[g].reduce((s, e) => s + e.qty, 0) + ')</b>' + groups[g].sort((a, b) => a.c.cmc - b.c.cmc || (a.c.n < b.c.n ? -1 : 1)).map(e => '<span class="bl-di">' + (e.qty > 1 ? e.qty + ' ' : '') + cardLink(e.c) + '<button type="button" class="bl-x" data-bladd="' + esc(e.c.n) + '" aria-label="Remove ' + esc(e.c.n) + '">×</button></span>').join('') + '</div>').join('') : '<p class="note">Nothing picked yet.</p>';
     const full = T.main >= T.size, over = T.main > T.size;
@@ -1859,8 +1869,10 @@
       (colour ? '<h4>Colours</h4>' + colour : '') +
       '<h4>Basic lands <span class="note">(' + lands + ' lands)</span></h4><div class="bl-basics">' + bas + '</div><button type="button" class="small" data-bl="basics">Fill basics to ' + blTarget(T, 'lands') + ' lands</button>' +
       '<h4>Deck (' + T.main + ')</h4><div class="bl-deck">' + deckList + '</div>' +
-      '<div class="bl-act"><button type="button" class="primary" data-bl="analyze"' + (T.main ? '' : ' disabled') + '>Analyze this deck ›</button><button type="button" class="small" data-bl="copy"' + (T.main ? '' : ' disabled') + '>Copy list</button>' + (App.R && App.R.stats ? '<button type="button" class="small" data-bl="load">Load the current deck</button>' : '') + '<button type="button" class="small" data-bl="clear"' + (T.main ? '' : ' disabled') + '>Clear picks</button><span class="note" id="blNote">' + esc(App.blNote || '') + '</span></div>' +
-      '<p class="note">Analyze imports the list as it is (Analysis, Deck and Improve then work on it; under 100 cards, Fill to 100 adds the rest).</p></div>';
+      (blLive() ? '<div class="bl-act"><button type="button" class="primary" data-go="analysis">Analysis ›</button><button type="button" class="small" data-go="changes">Improve ›</button>' + fillBtnHTML() + '<button type="button" class="small" data-bl="copy">Copy list</button><span class="note" id="blNote">' + esc(App.blNote || '') + '</span></div>' +
+        '<p class="note">You are editing the current deck: every change shows on Deck, Analysis and Improve, and Undo (U) takes it back. Cards you add are locked; cards you take out stay out of Rebuild around locks.</p></div>'
+      : '<div class="bl-act"><button type="button" class="primary" data-bl="analyze"' + (T.main ? '' : ' disabled') + '>Analyze this deck ›</button><button type="button" class="small" data-bl="copy"' + (T.main ? '' : ' disabled') + '>Copy list</button>' + (App.R && App.R.stats ? '<button type="button" class="small" data-bl="load">Load the current deck</button>' : '') + '<button type="button" class="small" data-bl="clear"' + (T.main ? '' : ' disabled') + '>Clear picks</button><span class="note" id="blNote">' + esc(App.blNote || '') + '</span></div>' +
+        '<p class="note">Analyze imports the list as it is (Analysis, Deck and Improve then work on it; under 100 cards, Fill to 100 adds the rest).</p></div>');
     return sumBar + body;
   }
   // after a pick: the tracker, the category chips and that row, without redrawing the list
@@ -1871,8 +1883,21 @@
     if (name) { const c = Engine.lookup(App.bulk, name), li = c && document.querySelector('li[data-blrow="' + CSS.escape(c.n) + '"]'); if (li) li.outerHTML = blRowHTML(P, c); }
   }
   function blList() { const P = blPool(); if ($('blList')) $('blList').innerHTML = blListHTML(P); if ($('blCats')) $('blCats').innerHTML = blCatsHTML(P); }
-  function blToggle(name) {
+  // one hand edit of the current deck: applied through the engine, recorded for Undo and History, analysis marked stale
+  async function blEdit(ops, label) {
+    const R = App.R; if (!R || App.busy) return;
+    for (const op of ops) {
+      if (op.op === 'add') await R.addCard(Engine.lookup(App.bulk, op.add), op.qty);
+      else { const e = R.deck.find(x => x.c.n === op.cut); if (!e) continue; await R.cutCard(e, op.qty); }
+      histOp(op);
+    }
+    App.QS = null; App.DEEP = null; App.PC = null; App.UP = null; App.PX = null; anStale();
+    App.blNote = label; renderSummary(); syncActions();
+    clearTimeout(App.blHT); App.blHT = setTimeout(() => histPush('edit', 'Builder: ' + label), 1500);
+  }
+  async function blToggle(name) {
     const B = blState(), c = Engine.lookup(App.bulk, name); if (!c) return;
+    if (blLive()) { const q = blQty(c.n); await blEdit([q ? { op: 'cut', cut: c.n, qty: q } : { op: 'add', add: c.n, qty: 1 }], (q ? 'took out ' : 'added ') + c.n); return blRefresh(c.n); }
     if (B.picks[c.n]) delete B.picks[c.n]; else B.picks[c.n] = 1;
     App.blNote = ''; blSave(); blRefresh(c.n);
   }
@@ -1883,8 +1908,9 @@
   }
   function blClick(e) {
     const B = blState();
-    const t = e.target.closest('[data-bladd],[data-blcat],[data-blmv],[data-blty],[data-blth],[data-blbr],[data-blall],[data-blcmd],[data-blbas],[data-bl]'); if (!t) return;
+    const t = e.target.closest('[data-blmode],[data-bladd],[data-blcat],[data-blmv],[data-blty],[data-blth],[data-blbr],[data-blall],[data-blcmd],[data-blbas],[data-bl]'); if (!t) return;
     const d = t.dataset;
+    if (d.blmode != null) { B.mode = d.blmode; B.themes = null; B.cat = 'all'; if (d.blmode === 'deck') B.bracket = +App.R.settings.bracket || B.bracket; App.blNote = ''; blSave(); return renderBuilder(); }
     if (d.bladd != null) return blToggle(d.bladd);
     if (d.blcat != null) { B.cat = d.blcat; B.n = 60; blSave(); return blList(); }
     if (d.blmv != null) { B.mv = B.mv.includes(d.blmv) ? B.mv.filter(x => x !== d.blmv) : B.mv.concat(d.blmv); B.n = 60; blSave(); t.setAttribute('aria-pressed', B.mv.includes(d.blmv)); return blList(); }
@@ -1893,6 +1919,7 @@
     if (d.blbr != null) { B.bracket = +d.blbr; blSave(); return renderBuilder(); }
     if (d.blall != null) { B.all = d.blall === '1'; B.n = 60; blSave(); return renderBuilder(); }
     if (d.blcmd != null) { B.cmds = [d.blcmd, '']; B.themes = null; B.cat = 'all'; B.cq = ''; blSave(); window.scrollTo({ top: 0 }); return renderBuilder(); }
+    if (d.blbas != null && blLive()) { const q = blQty(d.blbas); if (+d.d < 0 && !q) return; return blEdit([+d.d > 0 ? { op: 'add', add: d.blbas, qty: 1 } : { op: 'cut', cut: d.blbas, qty: 1 }], (+d.d > 0 ? 'added a ' : 'took out a ') + d.blbas).then(() => blRefresh()); }
     if (d.blbas != null) { const q = Math.max(0, (B.picks[d.blbas] || 0) + +d.d); if (q) B.picks[d.blbas] = q; else delete B.picks[d.blbas]; blSave(); return blRefresh(); }
     const P = blPool();
     switch (d.bl) {
@@ -1901,7 +1928,10 @@
       case 'more': B.n += 60; return blList();
       case 'th-auto': B.themes = null; App.blThOpen = true; blSave(); return renderBuilder();
       case 'tribe': { const v = ($('blTribe').value || '').trim().toLowerCase(), T = [...Engine.creatureTypes(App.bulk)].find(x => x.toLowerCase() === v || Engine.plural(x) === v); if (!T) { $('blTribe').setCustomValidity('Not a creature type in the card data'); $('blTribe').reportValidity(); return; } const cur = blThemes(blCmds()); if (!cur.includes('tribal:' + T)) B.themes = cur.concat('tribal:' + T); App.blThOpen = true; blSave(); return renderBuilder(); }
-      case 'basics': { const T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI), noBas = blEntries().filter(e => !Engine.isBasic(e.c)); for (const x of 'WUBRGC') delete B.picks[Engine.BASIC_NAMES[x]]; const add = Builder.basicsFor(noBas, P.cmds, P.CI, blTarget(T, 'lands')); for (const [x, q] of Object.entries(add)) if (q) B.picks[Engine.BASIC_NAMES[x]] = q; blSave(); return blRefresh(); }
+      case 'basics': if (blLive()) { const E = blEntries(), T = Builder.tally(E, P.cmds, B.bracket, P.CI), add = Builder.basicsFor(E.filter(e => !Engine.isBasic(e.c)), P.cmds, P.CI, blTarget(T, 'lands')), ops = [];
+        for (const x of 'WUBRGC') { const nm = Engine.BASIC_NAMES[x], d = (add[x] || 0) - blQty(nm); if (d > 0) ops.push({ op: 'add', add: nm, qty: d }); else if (d < 0) ops.push({ op: 'cut', cut: nm, qty: -d }); }
+        if (!ops.length) return; return blEdit(ops, 'basic lands set to ' + blTarget(T, 'lands') + ' lands').then(() => blRefresh()); }
+      { const T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI), noBas = blEntries().filter(e => !Engine.isBasic(e.c)); for (const x of 'WUBRGC') delete B.picks[Engine.BASIC_NAMES[x]]; const add = Builder.basicsFor(noBas, P.cmds, P.CI, blTarget(T, 'lands')); for (const [x, q] of Object.entries(add)) if (q) B.picks[Engine.BASIC_NAMES[x]] = q; blSave(); return blRefresh(); }
       case 'analyze': t.disabled = true; return blAnalyze();
       case 'copy': return copyText(Builder.exportList(P.cmds, blEntries()), null, $('blNote'));
       case 'clear': if (!confirm('Remove every picked card?')) return; B.picks = {}; blSave(); return renderBuilder();
@@ -2293,7 +2323,7 @@
   }
 
   /* ---------- undo: rebuild the deck from its settings and replay every edit but the last (generation is deterministic) ---------- */
-  const opLabel = op => op.op === 'remove' ? 'removing ' + op.cut : op.cut + ' → ' + op.add;
+  const opLabel = op => op.op === 'remove' ? 'removing ' + op.cut : op.op === 'add' ? 'adding ' + (op.qty > 1 ? op.qty + ' ' : '') + op.add : op.op === 'cut' ? 'taking out ' + (op.qty > 1 ? op.qty + ' ' : '') + op.cut : op.cut + ' → ' + op.add;
   async function replayChain(chain, ops) {
     App.restoring = true;
     try {
@@ -2305,6 +2335,8 @@
         if (op.op === 'swap' && cut && add) await R.swapOne(cut, add);
         else if (op.op === 'replace' && cut && add) await R.replace(cut, add, op.locked);
         else if (op.op === 'remove' && cut) await R.remove(cut);
+        else if (op.op === 'add' && add) await R.addCard(add, op.qty || 1);
+        else if (op.op === 'cut' && cut) await R.cutCard(cut, op.qty || 1);
       }
       App.chain = { settings: chain.settings, env: chain.env, ops: ops.slice() };
       return true;
@@ -2405,7 +2437,7 @@
         if (k === 'copy') return copyText(buyList(App.UP.res.swaps.map(x => ({ c: x.add, qty: 1 }))), null, $('upCopyNote'));
       }
     });
-    document.querySelector('.results').addEventListener('click', e => { if (e.target.closest('button[data-fill]')) fillDeck(); });
+    document.querySelector('.results').addEventListener('click', e => { if (e.target.closest('button[data-fill]')) fillDeck(); if (e.target.closest('button[data-blopen]') && App.R && App.R.stats) blOpenDeck(); });
     document.querySelector('.results').addEventListener('click', e => { const b = e.target.closest('button[data-goto]'); if (b) { App.tab = b.dataset.goto; renderView(); window.scrollTo({ top: 0 }); } });
     $('view').addEventListener('click', async e => {
       const b = e.target.closest('button[data-hist]'); if (!b) return;
