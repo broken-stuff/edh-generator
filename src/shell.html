@@ -200,6 +200,7 @@ table.t.compact th{font-size:calc(10.5px*var(--fz))}
 .st.pass{background:var(--ok-soft);color:var(--ok)}.st.fail{background:var(--bad-soft);color:var(--bad)}.st.na{background:var(--card-2);color:var(--muted)}
 .msg{border-radius:12px;padding:11px 15px;font-size:calc(13px*var(--fz));border:1px solid var(--line)}
 .msg+.msg{margin-top:8px}
+#msgs:empty,#notes:empty{display:none}
 .msg.err{background:var(--bad-soft);color:var(--bad);border-color:transparent}
 .msg.warn{background:var(--warn-soft);color:var(--ink);border-color:transparent}
 .msg.warn b{color:var(--warn)}
@@ -825,6 +826,7 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
 
   <div id="summary" class="panel summary hidden"></div>
   <section class="panel" id="view"></section>
+  <div id="notes" aria-label="Notes"></div>
 </main>
 </div>
 <div id="cardPop" class="hidden" role="tooltip"></div>
