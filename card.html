@@ -1973,6 +1973,23 @@ const Engine = (function () {
       R.validation = await validate(R, ctx); R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
       return null;
     };
+    // hand edits (Builder): add copies of a card, locked, or take copies out without a replacement. A card taken out is
+    // banned so Rebuild around locks leaves it out; adding it back lifts the ban. The deck may then be under or over 100.
+    R.addCard = async function (card, qty) {
+      qty = qty || 1; bans.delete(card.n); R.bans = [...bans];
+      const ex = deck.find(e => e.c === card);
+      if (ex) { ex.qty += qty; if (!isBasic(card)) ex.locked = true; st.total += (isBasic(card) && !S.budget.inclBasics ? 0 : (price(card) || 0)) * qty; const a = analyze(card); for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k] += qty; if (a.creature) st.creatures += qty; }
+      else { const a = analyze(card); add(card, a.isLand ? (isBasic(card) ? 'basic' : 'land') : 'flex', qty, a.isLand ? landScore(card) : dyn(card), 'added by hand', { locked: !isBasic(card) }); }
+      L('Added by hand: ' + (qty > 1 ? qty + ' ' : '') + card.n + '.');
+      R.validation = await validate(R, ctx); R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
+    };
+    R.cutCard = async function (entry, qty) {
+      qty = Math.min(qty || entry.qty, entry.qty);
+      if (qty < entry.qty) { entry.qty -= qty; st.total -= (isBasic(entry.c) && !S.budget.inclBasics ? 0 : (price(entry.c) || 0)) * qty; const a = analyze(entry.c); for (const k of Object.keys(st.cnt)) if (a.flags[k]) st.cnt[k] -= qty; if (a.creature) st.creatures -= qty; }
+      else { removeEntry(entry); if (!isBasic(entry.c)) { bans.add(entry.c.n); R.bans = [...bans]; } }
+      L('Taken out by hand: ' + (qty > 1 ? qty + ' ' : '') + entry.c.n + '.');
+      R.validation = await validate(R, ctx); R.stats = stats(R, ctx); R.ok = R.validation.rules.every(r => r.pass !== false);
+    };
     R.bans = [...bans];
     return R;
   }
