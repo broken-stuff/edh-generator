@@ -108,6 +108,17 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 body[data-page="start"] #kpis,body[data-page="start"] #scorebar,body[data-page="collection"] #kpis,body[data-page="collection"] #scorebar,body[data-page="builder"] #kpis,body[data-page="builder"] #scorebar,body[data-page="more"] #kpis,body[data-page="more"] #scorebar{display:none}
 body[data-view="setup"] #genBtn{display:none}
 body:not([data-page="analysis"]) #kpis{display:none}
+/* Quick mode (the default): Build, Deck and the card explorer; "All tools" in Appearance shows the rest */
+body.simple .fullonly{display:none!important}
+body.simple[data-page="deck"] #kpis{display:block}
+#tBudget:has(+ #tOwn.hidden){grid-column:1/-1}
+.kpis.one .kpi{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 18px}
+.kpis.one .kpi .kh{margin:0}
+.kpis.one .kmore{flex:1 1 100%}
+.kpis.one .kmore summary{cursor:pointer;color:var(--muted);font-size:calc(12.5px*var(--fz))}
+.kpis.one .kmore .kpis{margin-top:10px;grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpis.one .kmore .kpi{box-shadow:none;flex-direction:column;align-items:flex-start;gap:2px}
+@media (max-width:640px){.kpis.one .kmore .kpis{grid-template-columns:minmax(0,1fr)}}
 .results{min-width:0;display:flex;flex-direction:column;gap:14px}
 /* KPI cards */
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
@@ -630,7 +641,8 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
       <div><h3>Text size</h3><div class="seg" id="apSize"><button type="button" data-v="0.93">S</button><button type="button" data-v="1">M</button><button type="button" data-v="1.12">L</button><button type="button" data-v="1.25">XL</button></div></div>
       <div><h3>Headings</h3><div class="seg" id="apHead"><button type="button" data-v="serif">Serif</button><button type="button" data-v="sans">Sans</button></div></div>
       <div><h3>Card images</h3><div class="seg" id="apImg"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div><p class="note" style="margin-top:4px">On loads pictures from cards.scryfall.io when a card is shown. Everything else stays on this site.</p></div>
-      <p class="note">Keys: 1–7 pages · G generate · / search · U undo · ? help</p>
+      <div><h3>Tools</h3><div class="seg" id="apTools"><button type="button" data-v="simple">Quick</button><button type="button" data-v="full">All tools</button></div><p class="note" style="margin-top:4px">Quick shows the deck builder only. All tools adds Collection, Builder, Analysis, Improve, Primer, Build log and Tests.</p></div>
+      <p class="note">Keys: 1–9 pages · G generate · / search · U undo · ? help</p>
     </div>
   </div>
   <button type="button" id="clearBtn" title="Clear the deck and settings and start over" aria-label="Clear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Clear</span></button>
@@ -641,20 +653,20 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
 <nav class="tabs rail" role="tablist" aria-label="Pages" aria-orientation="vertical">
   <div class="hello">Commander<br>deck builder</div>
   <button role="tab" aria-selected="true" data-page="start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Start</span></button>
-  <button role="tab" aria-selected="false" data-page="collection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg><span>Collection</span></button>
-  <button role="tab" aria-selected="false" data-page="builder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="10" rx="1.5"/><rect x="14" y="4" width="7" height="10" rx="1.5"/><path d="M3 19h18M7 19v-2M17 19v-2M12 19v-3"/></svg><span>Builder</span></button>
+  <button role="tab" aria-selected="false" data-page="collection" class="fullonly"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg><span>Collection</span></button>
+  <button role="tab" aria-selected="false" data-page="builder" class="fullonly"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="10" rx="1.5"/><rect x="14" y="4" width="7" height="10" rx="1.5"/><path d="M3 19h18M7 19v-2M17 19v-2M12 19v-3"/></svg><span>Builder</span></button>
   <button role="tab" aria-selected="false" data-page="deck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg><span>Deck</span></button>
-  <button role="tab" aria-selected="false" data-page="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analysis</span></button>
-  <button role="tab" aria-selected="false" data-page="improve"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg><span>Improve</span></button>
-  <button role="tab" aria-selected="false" data-page="primer" class="rprimer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
+  <button role="tab" aria-selected="false" data-page="analysis" class="fullonly"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analysis</span></button>
+  <button role="tab" aria-selected="false" data-page="improve" class="fullonly"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg><span>Improve</span></button>
+  <button role="tab" aria-selected="false" data-page="primer" class="rprimer fullonly"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
   <div class="morewrap">
     <button type="button" id="moreBtn" class="morebtn" aria-expanded="false" aria-controls="moreList"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/></svg><span>More</span></button>
     <div class="morelist hidden" id="moreList">
-      <button type="button" data-tab="primer" class="mprimer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
+      <button type="button" data-tab="primer" class="mprimer fullonly"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></svg><span>Primer</span></button>
       <button type="button" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg><span>History</span></button>
-      <button type="button" data-tab="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>Build log</span></button>
+      <button type="button" data-tab="log" class="fullonly"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>Build log</span></button>
       <a class="mlink" href="card.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>Card explorer</span></a>
-      <button type="button" data-tab="tests"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7 15h10"/></svg><span>Tests</span></button>
+      <button type="button" data-tab="tests" class="fullonly"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7 15h10"/></svg><span>Tests</span></button>
     </div>
   </div>
 </nav>
@@ -712,7 +724,7 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
       <select id="archetype" data-k="archetype">
         <option value="">Auto (from commander)</option><option value="tribal">Tribal (add the type in Themes and tags)</option>
       </select></label>
-    <label class="f">Card choice
+    <label class="f" id="modeF">Card choice
       <select id="mode" data-k="mode">
         <option value="">Standard (synergy + EDHREC popularity)</option><option value="mech">Mechanics only (no popularity)</option>
       </select></label>

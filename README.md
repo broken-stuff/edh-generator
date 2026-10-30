@@ -6,7 +6,7 @@ Commander (EDH) deck tools that run entirely in your browser, built on [Scryfall
 
 | Page | What it does |
 |---|---|
-| **Deck generator** (`index.html`) | Builds a legal 100-card deck for a commander, bracket, budget and game plan, then scores it, explains it and writes a play primer. Also helps you pick a commander, and has a Builder for picking a deck by hand from your collection with a live role and curve tracker. |
+| **Deck generator** (`index.html`) | Builds a legal 100-card deck for a commander, bracket, budget and game plan, with one headline power score and export. **All tools** adds analysis, measured upgrades, a play primer, collection support and a hand Builder. |
 | **Card explorer** (`card.html`) | Looks up any card and ranks the cards most like it, with prices and its 2-card combos. |
 
 No account, server or install. Nothing you enter leaves your browser. The only outside requests are the site's own data files and, if you turn them on, card pictures from `cards.scryfall.io`.
@@ -24,7 +24,18 @@ No account, server or install. Nothing you enter leaves your browser. The only o
 
 ## How to use
 
-Open the [deck generator](https://broken-stuff.github.io/edh-generator/). Card data loads the first time (a few seconds) and stays in your browser. The **Start** page shows four step tiles, each with its status and a link to its page. Work through them in order:
+Open the [deck generator](https://broken-stuff.github.io/edh-generator/). Card data loads the first time (a few seconds) and stays in your browser. It opens in **Quick** mode, which has two pages:
+
+1. **Build.** Pick a commander (or **Find a commander**: Browse, Quiz, Random), a power level (Commander Bracket), a budget and a game plan, then press **Generate deck** (`G`).
+2. **Deck.** The list, with one headline score (power level out of 10). Tap **Bracket, win turn and price** under it for the rest. Tap a card to lock, swap or remove it; **Rebuild around locks** rebuilds the rest. **Export** copies or downloads the list for Moxfield, Archidekt, MTGO or plain text.
+
+The [card explorer](https://broken-stuff.github.io/edh-generator/card.html) ranks the cards most like any card, with prices and its 2-card combos. A card's popup in the generator links to it, and the explorer's **Build a deck with it** opens the generator with that commander filled in.
+
+**All tools** (Appearance, the gear at the top) brings back every page described below: Collection, Builder, Import, Analysis, Improve, Primer, Counts, Sample hand, Build log and Tests. The choice is kept in this browser. In Quick mode the Collection tile and the **Mechanics only** card choice still show while they are in use, so a setting can't apply unseen.
+
+### With All tools
+
+The **Start** page shows four step tiles, each with its status and a link to its page. Work through them in order:
 
 1. **Collection** (optional). Paste your cards (`1 Card Name` or just the name) or load a CSV export with a Name column (ManaBox, Moxfield, Archidekt, Deckbox). Then pick a mode:
    - **Mark:** owned cards get a green dot. Builds and suggestions use all cards.
@@ -64,7 +75,7 @@ Each card is weighed on:
 
 Analysis, Improve and deep search on a mechanics-only deck use the same quality model in place of EDHREC rank. Standard builds are unchanged.
 
-The pages are in the left menu (a bar at the bottom on phones) and follow the order you use them in: **Start**, **Collection**, **Builder**, **Deck**, **Analysis**, **Improve** and **Primer** (under More on phones). **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title. The KPI tiles (power, bracket, win turn, price) show on Analysis; the other deck pages show the same numbers in one line.
+With **All tools** on, the pages are in the left menu (a bar at the bottom on phones) and follow the order you use them in: **Start**, **Collection**, **Builder**, **Deck**, **Analysis**, **Improve** and **Primer** (under More on phones). **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title. The KPI tiles (power, bracket, win turn, price) show on Analysis; the other deck pages show the same numbers in one line.
 
 ### Start
 
@@ -171,7 +182,7 @@ The first time the page opens, it takes a few seconds to read every card's rules
 
 ## Appearance
 
-The gear button (top right, on both pages) sets light, dark or system mode, accent colour, text size, serif or sans headings, and card pictures. The explorer shows pictures by default; the generator hides them by default.
+The gear button (top right, on both pages) sets light, dark or system mode, accent colour, text size, serif or sans headings, card pictures and, in the generator, **Quick** or **All tools**. The explorer shows pictures by default; the generator hides them by default.
 
 ## Card data
 
