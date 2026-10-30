@@ -111,6 +111,17 @@ h3{font-size:calc(14px*var(--fz));font-weight:600;margin-bottom:8px;color:var(--
 body[data-page="start"] #kpis,body[data-page="start"] #scorebar,body[data-page="collection"] #kpis,body[data-page="collection"] #scorebar,body[data-page="builder"] #kpis,body[data-page="builder"] #scorebar,body[data-page="more"] #kpis,body[data-page="more"] #scorebar{display:none}
 body[data-view="setup"] #genBtn{display:none}
 body:not([data-page="analysis"]) #kpis{display:none}
+/* Quick mode (the default): Build, Deck and the card explorer; "All tools" in Appearance shows the rest */
+body.simple .fullonly{display:none!important}
+body.simple[data-page="deck"] #kpis{display:block}
+#tBudget:has(+ #tOwn.hidden){grid-column:1/-1}
+.kpis.one .kpi{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 18px}
+.kpis.one .kpi .kh{margin:0}
+.kpis.one .kmore{flex:1 1 100%}
+.kpis.one .kmore summary{cursor:pointer;color:var(--muted);font-size:calc(12.5px*var(--fz))}
+.kpis.one .kmore .kpis{margin-top:10px;grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpis.one .kmore .kpi{box-shadow:none;flex-direction:column;align-items:flex-start;gap:2px}
+@media (max-width:640px){.kpis.one .kmore .kpis{grid-template-columns:minmax(0,1fr)}}
 .results{min-width:0;display:flex;flex-direction:column;gap:14px}
 /* KPI cards */
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}

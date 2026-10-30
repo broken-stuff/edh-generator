@@ -393,6 +393,7 @@
     const el = $('ownTile'); if (!el) return;
     const o = ownedCards(), n = o ? o.set.size : 0, m = App.S.owned.mode || 'off';
     $('ownHint').textContent = n ? n.toLocaleString() + ' cards' : 'optional';
+    $('tOwn').classList.toggle('hidden', !App.full && !n);
     el.innerHTML = '<p class="note" style="margin:0">' + (n ? 'Your cards are marked with a green dot.' : 'Add the cards you own to see which ones a deck needs, or to build only from them.') + '</p>' +
       (n ? '<div class="seg wide" role="radiogroup" aria-label="Use my collection">' + OWN_MODES.map(([k, l]) => '<button type="button" data-ownmode="' + k + '" aria-pressed="' + (k === m) + '">' + ({ off: 'Mark', prefer: 'Prefer', only: 'Only mine' })[k] + '</button>').join('') + '</div>' : '') +
       '<div class="row"><button type="button" class="small" data-go="collection">' + (n ? 'Edit collection' : 'Add my collection') + ' ›</button></div>';
@@ -933,7 +934,7 @@
     const fails = v.rules.filter(r => r.pass === false).length;
     el.innerHTML = [
       ['Commander', R.commanders.map(c => esc(c.n)).join(' + ') + ' ' + pipsHTML(R.CI)],
-      ['Cards', (R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0)) + fillBtnHTML() + ' <button type="button" class="small" data-blopen="1" title="Add and take out cards by role, mana value and type, with a live tracker">Edit in Builder</button>'],
+      ['Cards', (R.commanders.length + R.deck.reduce((a, e) => a + e.qty, 0)) + fillBtnHTML() + (App.full ? ' <button type="button" class="small" data-blopen="1" title="Add and take out cards by role, mana value and type, with a live tracker">Edit in Builder</button>' : '')],
       ['Avg MV', s.avgMV.toFixed(2)],
       ['Unpriced', s.unknown.length],
       ['Game Changers', s.gcs.length],
@@ -1087,6 +1088,9 @@
   const subOf = v => v === 'role' || v === 'deck' || v === 'valid' ? 'cards' : FIND.some(f => f[0] === v) ? 'find' : v;
   const viewOf = sub => sub === 'cards' ? (App.groupBy === 'role' ? 'role' : 'deck') : sub === 'find' ? (App.findMode || 'commanders') : sub;
   const lastView = {};
+  // Quick mode (the default) keeps building, the deck and its export; "All tools" in Appearance shows every page and view
+  const FULL_ONLY = new Set(['collection', 'builder', 'analysis', 'improve', 'primer', 'import', 'counts', 'hand', 'log', 'tests', 'changes', 'cats', 'percard', 'upgrade', 'combos']);
+  const shown = v => App.full || !FULL_ONLY.has(v) && !FULL_ONLY.has(PAGE_OF[v]);
   // opens a view (or a page's last view), as a click in the rail would
   function go(v) {
     if (PAGES[v] && PAGES[v][1].length) v = lastView[v] || viewOf(PAGES[v][1][0][0]);
@@ -1108,15 +1112,20 @@
     primer: 'How to play this list, from its own simulation and card roles.',
     history: 'The last 25 decks and revisions in this browser. Tick two to compare them.', log: 'Each step the generator and optimiser took.', tests: 'Checks the generator against the loaded card data.'
   };
+  const VIEW_NOTE_QUICK = {
+    setup: 'Pick a commander, a power level and a budget, then Generate deck. The same settings always give the same deck.',
+    deck: 'Tap a card for its text and its actions: lock, swap or remove. Similar cards and combos are in the card explorer.'
+  };
   function pageHeadHTML(page) {
     const v = App.tab, sub = subOf(v), views = PAGES[page][1];
     const title = page === 'more' ? { history: 'History', log: 'Build log', tests: 'Acceptance tests' }[v] : PAGES[page][0];
     const pill = (k, l, cur) => '<button type="button" role="tab" data-view="' + k + '" aria-selected="' + (k === cur) + '">' + l + '</button>';
     const opt = (k, l, cur) => '<button type="button" data-view="' + k + '" aria-pressed="' + (k === cur) + '">' + l + '</button>';
-    let nav = views.length ? '<div class="subtabs" role="tablist" aria-label="' + esc(title) + ' views">' + views.map(([k, l]) => pill(k, l, sub)).join('') + '</div>' : '';
+    const vis = views.filter(([k]) => shown(k));
+    let nav = vis.length > 1 ? '<div class="subtabs" role="tablist" aria-label="' + esc(title) + ' views">' + vis.map(([k, l]) => pill(k, l, sub)).join('') + '</div>' : '';
     if (sub === 'find') nav += '<div class="seg pgseg" role="group" aria-label="Find a commander">' + FIND.map(([k, l]) => opt(k, l, v)).join('') + '</div>';
     if (sub === 'cards' && v !== 'valid') nav += '<div class="seg pgseg" role="group" aria-label="Group cards by">' + [['deck', 'By type'], ['role', 'By role']].map(([k, l]) => opt(k, l, v)).join('') + '</div>';
-    return '<h2>' + esc(title) + '</h2><p class="note">' + (VIEW_NOTE[v] || '') + '</p>' + (page === 'start' ? stepsHTML() : '') + (nav ? '<div class="pgnav">' + nav + '</div>' : '') + (page === 'improve' && App.bulk ? ownBarHTML() : '');
+    return '<h2>' + esc(page === 'start' && !App.full ? 'Build' : title) + '</h2><p class="note">' + ((!App.full && VIEW_NOTE_QUICK[v]) || VIEW_NOTE[v] || '') + '</p>' + (page === 'start' && App.full ? stepsHTML() : '') + (nav ? '<div class="pgnav">' + nav + '</div>' : '') + (page === 'improve' && App.bulk ? ownBarHTML() : '');
   }
   // Start: the four steps as tiles, each with where it stands and a link to its page
   function stepsHTML() {
@@ -1140,6 +1149,8 @@
     document.querySelectorAll('.tabs button[data-page]').forEach(b => b.setAttribute('aria-selected', b.dataset.page === page));
     document.querySelectorAll('.tabs button[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === App.tab));
     $('moreBtn').classList.toggle('on', page === 'more');
+    document.querySelector('.tabs button[data-page="start"] span').textContent = App.full ? 'Start' : 'Build';
+    $('modeF').classList.toggle('hidden', !App.full && App.S.mode !== 'mech'); // Mechanics only stays visible while it is on
     const setup = App.tab === 'setup';
     $('setupView').classList.toggle('hidden', !setup); $('view').classList.toggle('hidden', setup);
     $('summary').classList.toggle('hidden', !(App.tab === 'deck' || App.tab === 'role' || App.tab === 'valid') || !App.R || !App.R.stats);
@@ -1577,16 +1588,20 @@
       ['win', 'Win turn', 'var(--i-pink)', 'T' + q.win + (q.winRange ? '<small> T' + q.winRange[0] + '–' + q.winRange[1] + '</small>' : ''), q.winSrc === 'simulated combo' ? 'simulated combo' + (q.winRange ? ', middle half of games' : '') : 'from power level · best T' + q.winBest]
     ];
     const KO = ['power', 'bracket', 'win', 'price']; K.sort((a, b) => KO.indexOf(a[0]) - KO.indexOf(b[0]));
-    el.innerHTML = K.map(([k, l, c, v, sub, cls, bar]) => '<div class="kpi' + (cls ? ' ' + cls : '') + '"><div class="kh"><span class="ki" style="background:' + c + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + KI[k] + '</svg></span><span class="kl">' + l + '</span></div><div class="kv2">' + v + '</div>' +
-      (bar != null ? '<div class="kbar"><i style="width:' + (bar * 100).toFixed(1) + '%"></i></div>' : '') + '<div class="ks">' + sub + '</div></div>').join('');
+    const card = ([k, l, c, v, sub, cls, bar], extra) => '<div class="kpi' + (cls ? ' ' + cls : '') + '"><div class="kh"><span class="ki" style="background:' + c + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + KI[k] + '</svg></span><span class="kl">' + l + '</span></div><div class="kv2">' + v + '</div>' +
+      (bar != null ? '<div class="kbar"><i style="width:' + (bar * 100).toFixed(1) + '%"></i></div>' : '') + '<div class="ks">' + sub + '</div>' + (extra || '') + '</div>';
+    // quick mode: one headline score; bracket, win turn and price open from it
+    el.classList.toggle('one', !App.full);
+    el.innerHTML = App.full ? K.map(k => card(k)).join('') : card(K[0], '<details class="kmore"' + (App.kpiMore ? ' open' : '') + '><summary>Bracket, win turn and price</summary><div class="kpis">' + K.slice(1).map(k => card(k)).join('') + '</div></details>');
+    const km = el.querySelector('.kmore'); if (km) km.addEventListener('toggle', () => { App.kpiMore = km.open; });
     el.title = 'Power, bracket and win turn from ' + q.games.toLocaleString() + ' simulated games of the current list. Fundamentals and balance are on Analysis.';
     mini.innerHTML = [['Power', q.pl.toFixed(1)], ['Bracket', 'B' + R.settings.bracket + (hi ? ' (plays B' + q.minB + ')' : ''), hi ? 'warn' : ''], ['Win', 'T' + q.win], ['Price', Engine.fmt(total, cur) + (hasCap ? ' / ' + Engine.fmt(+cap, cur) : ''), over ? 'bad' : '']]
-      .map(([k, v, c]) => '<div' + (c ? ' class="' + c + '"' : '') + '><span>' + k + '</span><b>' + v + '</b></div>').join('');
+      .filter(x => App.full || x[0] === 'Power' || x[0] === 'Price').map(([k, v, c]) => '<div' + (c ? ' class="' + c + '"' : '') + '><span>' + k + '</span><b>' + v + '</b></div>').join('');
     el.classList.remove('hidden'); syncMini();
   }
   // compact copy of the KPI cards that pins to the top once the cards scroll out of view
   let kpiVisible = true;
-  function syncMini() { $('scorebar').classList.toggle('hidden', $('kpis').classList.contains('hidden') || (document.body.dataset.page === 'analysis' && kpiVisible)); }
+  function syncMini() { const pg = document.body.dataset.page; $('scorebar').classList.toggle('hidden', $('kpis').classList.contains('hidden') || ((pg === 'analysis' || !App.full && pg === 'deck') && kpiVisible)); }
   if ('IntersectionObserver' in window) new IntersectionObserver(es => { kpiVisible = es[0].isIntersecting; syncMini(); }, { rootMargin: '-60px 0px 0px 0px' }).observe($('kpis'));
   function renderAll() { renderSummary(); renderScorebar(); renderView(); $('regenBtn').disabled = !App.R || !App.R.stats || App.busy; syncActions(); }
 
@@ -1634,11 +1649,11 @@
       else if (R.errors.length) { App.R = null; showMsgs(R.errors, R.warnings); setStatus('Not generated.'); }
       else {
         App.R = R; built = true; App.openSwap = null; App.QS = null; App.base = R.deck.map(e => [e.c.n, e.qty]); App.UP = null; if (App.anSource !== 'paste') App.AN = null;
-        if (App.tab === 'setup' && !App.restoring) { App.tab = 'analysis'; window.scrollTo({ top: 0 }); } // the next step after building is checking the deck
+        if (App.tab === 'setup' && !App.restoring) { App.tab = App.full ? 'analysis' : viewOf('cards'); window.scrollTo({ top: 0 }); } // the next step after building is checking the deck
         if (!App.restoring) App.chain = { settings: S, env: { locks: env.locks, bans: env.bans, imported: env.imported, asIs: env.asIs }, ops: [] };
         showMsgs([], R.warnings, shortfallHTML(R));
         const O = R.optimize;
-        setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '; the optimiser made ' + O.swaps.length + ' swap' + (O.swaps.length === 1 ? '' : 's') + (O.timedOut ? ' before its time cap' : '') + '. Details: More, Build log.' : '.'));
+        setStatus('Generated in ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s from ' + R.poolSize.toLocaleString() + ' candidates' + (O ? '; the optimiser made ' + O.swaps.length + ' swap' + (O.swaps.length === 1 ? '' : 's') + (O.timedOut ? ' before its time cap' : '') + (App.full ? '. Details: More, Build log.' : '.') : '.'));
       }
     } catch (e) { App.R = null; showMsgs([e.message || String(e)], []); setStatus('Error.'); console.error(e); }
     App.busy = false; setProg(null); renderSources(); renderAll();
@@ -2367,7 +2382,7 @@
   }
 
   /* ---------- keyboard shortcuts ---------- */
-  const KEYS_HELP = 'Keys: 1–7 open Start, Collection, Builder, Deck, Analysis, Improve and Primer · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
+  const KEYS_HELP = 'Keys: 1–9 open the pages in the menu, in order · G generate · / search · U or Ctrl+Z undo the last edit · Esc closes popups · ? shows this.';
 
   function wire() {
     document.querySelector('.settings').addEventListener('input', onFormChange);
@@ -2525,7 +2540,7 @@
     $('applyTok').addEventListener('click', async () => { try { applySettings(await decodeSettings($('shareTok').value)); setStatus('Token applied.'); checkCommanders(); } catch (err) { setStatus('Token error: ' + err.message); } });
     $('resetSet').addEventListener('click', () => { applySettings({}); setStatus('Defaults restored.'); });
     // appearance: mode, accent colour, text size, heading font (stored per browser)
-    let AP = { mode: 'system', accent: '', size: '1', head: 'serif', img: 'off' };
+    let AP = { mode: 'system', accent: '', size: '1', head: 'serif', img: 'off', tools: 'simple' };
     try { AP = Object.assign(AP, JSON.parse(LS.get('edhgen.appearance') || '{}')); } catch (e) { }
     const legacy = LS.get('edhgen.theme'); if (legacy && !LS.get('edhgen.appearance')) AP.mode = legacy;
     const root = document.documentElement;
@@ -2533,11 +2548,12 @@
       if (AP.mode === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', AP.mode);
       if (AP.accent) root.setAttribute('data-accent', AP.accent); else root.removeAttribute('data-accent');
       root.style.setProperty('--fz', AP.size); root.setAttribute('data-headings', AP.head); App.img = AP.img;
-      for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head'], ['apImg', 'img']]) $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(AP[k])));
+      App.full = AP.tools === 'full'; document.body.classList.toggle('simple', !App.full);
+      for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head'], ['apImg', 'img'], ['apTools', 'tools']]) $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(AP[k])));
     };
     applyAP();
-    for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head'], ['apImg', 'img']])
-      $(id).addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; AP[k] = b.dataset.v; applyAP(); LS.set('edhgen.appearance', JSON.stringify(AP)); if (k === 'img' && App.tab === 'hand') renderHand(); });
+    for (const [id, k] of [['apMode', 'mode'], ['apAccent', 'accent'], ['apSize', 'size'], ['apHead', 'head'], ['apImg', 'img'], ['apTools', 'tools']])
+      $(id).addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; AP[k] = b.dataset.v; applyAP(); LS.set('edhgen.appearance', JSON.stringify(AP)); if (k === 'img' && App.tab === 'hand') renderHand(); if (k === 'tools') { if (!shown(App.tab)) App.tab = 'setup'; renderAll(); } });
     $('clearBtn').addEventListener('click', () => {
       if (App.busy) return;
       if (!confirm('Start over? This clears the current deck and all settings. History, card data and appearance are kept.')) return;
@@ -2571,7 +2587,7 @@
       const k = e.key;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && k.toLowerCase() === 'z') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } return; }
       if (e.ctrlKey || e.metaKey) return;
-      const tabs = [...document.querySelectorAll('.tabs button[data-page]')];
+      const tabs = [...document.querySelectorAll('.tabs button[data-page]')].filter(b => shown(b.dataset.page));
       if (/^[1-9]$/.test(k)) { const b = tabs[+k - 1]; if (b) { e.preventDefault(); b.click(); } }
       else if (k === 'g' || k === 'G') { if (!$('genBtn').disabled) { e.preventDefault(); $('genBtn').click(); } }
       else if (k === 'u' || k === 'U') { if (App.chain && App.chain.ops.length) { e.preventDefault(); undoLast(); } }
