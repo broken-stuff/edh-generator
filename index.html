@@ -682,6 +682,8 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
   <section class="settings" id="setupView" aria-label="Deck settings">
     <div class="tiles">
 <div class="tile" id="tCmd"><div class="tile-h"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4 4 5-7 5 7 4-4-2 11H5z"/></svg></span><h3>Commander</h3></div>
+  <div class="seg wide" id="qFormat" role="radiogroup" aria-label="Format"><button type="button" data-fmt="" aria-pressed="true" title="Standard Commander legality">Commander</button><button type="button" data-fmt="pdh" aria-pressed="false" title="The 99 must be commons; the commander an uncommon creature">Pauper Commander</button></div>
+  <div class="note" id="fmtNote"></div>
   <div class="ac"><label class="f">Commander <input type="search" id="cmd1" data-k="commanders.0" autocomplete="off" placeholder="Start typing a name" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd1L"></ul></div>
   <details class="tdet" id="cmd2Det"><summary class="note">Second commander (Partner, Background, Doctor's companion)</summary>
   <div class="ac"><label class="f">Second commander<input type="search" id="cmd2" data-k="commanders.1" autocomplete="off" placeholder="Optional" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd2L"></ul></div></details>
@@ -918,6 +920,8 @@ const Engine = (function () {
       n: name, fn, oid: c.oracle_id || (faces && faces[0] && faces[0].oracle_id) || c.id, mc, cmc: +c.cmc || 0, tl, ft, ot, low,
       ci: WUBRG.split('').filter(x => (c.color_identity || []).includes(x)).join(''),
       leg: (c.legalities && c.legalities.commander) || 'not_legal', gc: !!c.game_changer,
+      rar: c.rarity && (!Array.isArray(c.games) || c.games.includes('paper') || c.games.includes('mtgo')) ? [c.rarity] : [],
+      legP: (c.legalities && c.legalities.paupercommander) || '',
       rank: Number.isFinite(c.edhrec_rank) ? c.edhrec_rank : null,
       p: { usd: pnum(pr.usd), eur: pnum(pr.eur), tix: pnum(pr.tix) },
       rl: !!c.reserved, bc: c.border_color || '', stamp: c.security_stamp || '', stype: c.set_type || '',
@@ -934,6 +938,7 @@ const Engine = (function () {
     for (const k of ['usd', 'eur', 'tix']) if (b.p[k] != null && (a.p[k] == null || b.p[k] < a.p[k])) a.p[k] = b.p[k];
     if (b.rank != null && (a.rank == null || b.rank < a.rank)) a.rank = b.rank;
     a.gc = a.gc || b.gc; a.rl = a.rl || b.rl;
+    for (const r of b.rar || []) { a.rar = a.rar || []; if (!a.rar.includes(r)) a.rar.push(r); }
     for (const t of b.otags) if (!a.otags.includes(t)) a.otags.push(t);
     if (b.al && b.al.length) { a.al = a.al || []; for (const x of b.al) if (!a.al.includes(x)) a.al.push(x); }
     a.merged = (a.merged || 1) + 1;
@@ -944,10 +949,12 @@ const Engine = (function () {
     const all = [...byOid.values()].sort((a, b) => a.n < b.n ? -1 : a.n > b.n ? 1 : 0);
     const byName = new Map();
     // a name shared by two cards (Mystery Booster playtest cards, Alchemy, tokens) means the real one: Commander-legal first, then not from an Un/playtest set
-    const rank = c => (c.leg === 'legal' ? 2 : 0) + (c.stype === 'funny' || c.bc === 'silver' ? 0 : 1);
+    const rank = c => ((c.leg0 || c.leg) === 'legal' ? 2 : 0) + (c.stype === 'funny' || c.bc === 'silver' ? 0 : 1);
     for (const c of all) for (const k of [c.n, c.fn]) { const key = nameKey(k), e = byName.get(key); if (!e || rank(c) > rank(e)) byName.set(key, c); }
     for (const c of all) for (const k of c.n.split(' // ').slice(1).concat(c.al || [])) { const key = nameKey(k); if (!byName.has(key)) byName.set(key, c); } // back faces and printed alternate names, only where no card has that name
-    return { all, byName, meta: meta || {}, _ctypes: null };
+    // Default Cards (every printing) merges many printings per card, so its rarities are complete for Pauper Commander
+    let merged = 0; for (const c of all) if (c.merged > 1) merged++;
+    return { all, byName, meta: meta || {}, _ctypes: null, pdhSrc: merged > 1000 ? 'printings' : all.some(c => c.legP) ? 'scryfall' : '' };
   }
   // pairs: [[alternate name, Oracle name], ...] (data/aliases.json: Universes Beyond flavour names such as "Rick, Steadfast Leader")
   function addAliases(db, pairs) {
@@ -955,6 +962,54 @@ const Engine = (function () {
     for (const [al, on] of pairs || []) { const key = nameKey(al), c = db.byName.get(nameKey(on)); if (c && !db.byName.has(key)) { db.byName.set(key, c); n++; } }
     return n;
   }
+  /* ---------- formats: Commander, or Pauper Commander (PDH, pdhhomebase.com/rules): the 99 must have a common printing,
+     the commander must be a creature, Vehicle or Spacecraft printed at uncommon (legendary or not). Printings count on
+     paper and MTGO, not Arena. setFormat rewrites every card's c.leg to its legality in the chosen format (c.leg0 keeps
+     the Commander legality), so every pool, suggestion and check that reads c.leg follows the format. ---------- */
+  const FORMATS = { '': 'Commander', pdh: 'Pauper Commander' };
+  const PDH_BANNED = new Set(['Mystic Remora', 'Rhystic Study']); // pdhhomebase.com/rules; cards banned in Commander (ante, Conspiracy, removed cards) count as banned too
+  const PDH_CMD_TYPES = /\b(?:Creature|Vehicle|Spacecraft)\b/;
+  let FMT = '';
+  // rar: data/rarity.json (tools/scryfall-rarity.js), every paper and MTGO printing's rarity
+  function addRarity(db, j) {
+    const com = new Set(j.common || []), unc = new Set(j.uncommon || []), ban = new Set(j.banned || []);
+    for (const c of db.all) { c.rar = []; if (com.has(c.n)) c.rar.push('common'); if (unc.has(c.n)) c.rar.push('uncommon'); c.banP = ban.has(c.n); }
+    db.pdhSrc = 'rarity'; db.pdhVer = (db.pdhVer || 0) + 1; db.fmtKey = null;
+    return com.size;
+  }
+  function pdhOf(db, c) {
+    const l0 = c.leg0 || c.leg, rar = c.rar || [];
+    const banned = l0 === 'banned' || PDH_BANNED.has(c.n) || c.banP || c.legP === 'banned';
+    if (banned) return { leg: 'banned', cmd: false };
+    if (l0 !== 'legal') return { leg: l0, cmd: false };
+    // printings from rarity.json or a Default Cards file are complete; else Scryfall's own paupercommander legality if the file has it
+    const full = db.pdhSrc === 'rarity' || db.pdhSrc === 'printings';
+    const common = full || !c.legP ? rar.includes('common') : c.legP === 'legal';
+    const unc = rar.includes('uncommon') || (!full && c.legP === 'restricted');
+    return { leg: common ? 'legal' : 'not_legal', cmd: unc && PDH_CMD_TYPES.test(c.ft) };
+  }
+  function setFormat(db, fmt) {
+    FMT = fmt === 'pdh' ? 'pdh' : '';
+    if (!db) return FMT;
+    const key = FMT + '|' + (db.pdhVer || 0);
+    if (db.fmtKey === key) return FMT;
+    for (const c of db.all) {
+      if (c.leg0 == null) c.leg0 = c.leg;
+      if (FMT === 'pdh') { const p = pdhOf(db, c); c.leg = p.leg; c.pdhCmd = p.cmd; } else c.leg = c.leg0;
+    }
+    db.fmtKey = key; db.format = FMT; db._ctypes = null;
+    return FMT;
+  }
+  const format = () => FMT;
+  const formatName = f => FORMATS[f == null ? FMT : f] || FORMATS[''];
+  // why a card in the 99 is not legal in the current format (for warnings and rules)
+  function illegalWhy(c) {
+    if (FMT !== 'pdh') return c.leg + ' in Commander';
+    if (c.leg === 'banned') return 'banned in Pauper Commander';
+    if ((c.leg0 || c.leg) !== 'legal') return (c.leg0 || c.leg).replace('_', ' ') + ' in Commander';
+    return 'not printed at common';
+  }
+
   // exact name first; then the same name with "/", "///" or unspaced "//" between faces, then the front face alone
   function lookup(db, name) {
     const k = nameKey(name), hit = db.byName.get(k); if (hit) return hit;
@@ -1176,6 +1231,14 @@ const Engine = (function () {
     };
   }
   function commanderEligibility(c) {
+    if (FMT === 'pdh') {
+      if (c.pdhCmd) return { ok: true };
+      const l0 = c.leg0 || c.leg;
+      if (c.leg === 'banned') return { ok: false, msg: 'banned in Pauper Commander' };
+      if (l0 !== 'legal') return { ok: false, msg: 'not legal in Commander (Scryfall legality: ' + l0 + ')' };
+      if (!PDH_CMD_TYPES.test(c.ft)) return { ok: false, msg: 'not a creature, Vehicle or Spacecraft (Pauper Commander)' };
+      return { ok: false, msg: 'never printed at uncommon on paper or MTGO; a Pauper Commander commander must be an uncommon creature' };
+    }
     if (c.leg !== 'legal') return { ok: false, msg: 'not legal in Commander (Scryfall legality: ' + c.leg + ')' };
     const t = cmdTraits(c);
     if ((/\bLegendary\b/.test(c.ft) && /\bCreature\b/.test(c.ft)) || /can be your commander/i.test(c.ot) || t.isBg) return { ok: true };
@@ -1394,6 +1457,7 @@ const Engine = (function () {
   async function generate(db, S0, env) {
     env = env || {};
     const S = deepMerge(defaults(), S0 || {});
+    setFormat(db, S.format);
     const R = { ok: false, errors: [], warnings: [], log: [], deck: [], commanders: [], settings: S, shortfalls: [], combos: [], comboStatus: 'unavailable', poolSize: 0, excluded: {} };
     const L = m => R.log.push(m);
     const cur = S.budget.cur || 'usd';
@@ -1469,7 +1533,11 @@ const Engine = (function () {
       if (cmds.includes(c)) continue;
       if (incs.some(x => x.c === c)) continue;
       const a = analyze(c);
-      if (c.leg !== 'legal') { R.warnings.push(incW + ' rejected: ' + c.n + ' is ' + c.leg + ' in Commander.'); continue; }
+      if (c.leg !== 'legal') {
+        // an imported list is kept as pasted: a card legal in Commander but not in Pauper Commander stays and fails Rules
+        if (env.imported && FMT === 'pdh' && (c.leg0 || c.leg) === 'legal') R.warnings.push(incW + ': ' + c.n + ' is ' + illegalWhy(c) + '; kept, and listed under Rules.');
+        else { R.warnings.push(incW + ' rejected: ' + c.n + ' is ' + illegalWhy(c) + '.'); continue; }
+      }
       if (!subsetCI(c.ci, CI)) { R.warnings.push(incW + ' rejected: ' + c.n + ' (identity ' + (c.ci || 'C') + ') is outside commander identity ' + (CI || 'C') + '.'); continue; }
       if (excludeSet.has(c.n)) { R.warnings.push(incW + ' rejected: ' + c.n + ' is also on the exclude list.'); continue; }
       let qty = it.qty;
@@ -1503,7 +1571,7 @@ const Engine = (function () {
     }
 
     /* seeded RNG */
-    const seedBase = String(S.seed || '').trim() || ('auto:' + hashStr(stable(Object.assign({}, S, { seed: '', reroll: 0 }, S.mode ? {} : { mode: undefined })))); // an empty mode leaves the seed as before
+    const seedBase = String(S.seed || '').trim() || ('auto:' + hashStr(stable((o => { if (!o.format) delete o.format; return o; })(Object.assign({}, S, { seed: '', reroll: 0 }, S.mode ? {} : { mode: undefined }))))); // an empty format too // an empty mode leaves the seed as before
     R.seedUsed = seedBase + (S.reroll ? '#' + S.reroll : '');
     const rng = mulberry32(hashStr(R.seedUsed));
 
@@ -1517,7 +1585,7 @@ const Engine = (function () {
     for (const c of db.all) {
       if (cmds.includes(c) || isBasic(c)) continue;
       if (!subsetCI(c.ci, CI)) continue;
-      if (c.leg !== 'legal') { if (c.leg === 'banned') ex(c, 'banned'); continue; }
+      if (c.leg !== 'legal') { if (c.leg === 'banned') ex(c, 'banned'); else if (FMT === 'pdh' && c.leg0 === 'legal') ex(c, 'no common printing'); continue; }
       const a = analyze(c);
       if (excludeSet.has(c.n)) { ex(c, 'exclude list'); continue; }
       if (bans.has(c.n)) { ex(c, 'removed by user'); continue; }
@@ -2103,8 +2171,9 @@ const Engine = (function () {
     rules.push({ id: 'singleton', label: 'Singleton', pass: dup.length === 0, detail: dup.length ? 'Duplicates: ' + dup.join(', ') : 'No duplicates except basics' + (exemptUsed.length ? ' and exempt cards (' + exemptUsed.join(', ') + ')' : ''), offenders: dup });
     const offCI = R.deck.filter(e => !subsetCI(e.c.ci, CI)).map(e => e.c.n);
     rules.push({ id: 'identity', label: 'Color identity', pass: offCI.length === 0, detail: offCI.length ? 'Outside ' + (CI || 'C') + ': ' + offCI.join(', ') : 'All cards within ' + (CI || 'colorless'), offenders: offCI });
-    const illegal = all.filter(e => e.c.leg !== 'legal').map(e => e.c.n + ' (' + e.c.leg + ')');
-    rules.push({ id: 'legality', label: 'Legality (Commander, not banned)', pass: illegal.length === 0, detail: illegal.length ? illegal.join(', ') : 'All cards legal per Scryfall legalities.commander', offenders: all.filter(e => e.c.leg !== 'legal').map(e => e.c.n) });
+    const pdh = FMT === 'pdh', bad = e => pdh && e.cmd ? !commanderEligibility(e.c).ok : e.c.leg !== 'legal';
+    const illegal = all.filter(bad).map(e => e.c.n + ' (' + (e.cmd && pdh ? commanderEligibility(e.c).msg : pdh ? illegalWhy(e.c) : e.c.leg) + ')');
+    rules.push({ id: 'legality', label: pdh ? 'Legality (Pauper Commander: commons, uncommon commander)' : 'Legality (Commander, not banned)', pass: illegal.length === 0, detail: illegal.length ? illegal.join(', ') : pdh ? 'Every card has a common printing on paper or MTGO, the commander an uncommon one; none banned' : 'All cards legal per Scryfall legalities.commander', offenders: all.filter(bad).map(e => e.c.n) });
     const ex = R.deck.filter(e => excludeSet.has(e.c.n)).map(e => e.c.n);
     rules.push({ id: 'exclude', label: 'Exclude list respected', pass: ex.length === 0, detail: ex.length ? ex.join(', ') : 'No excluded cards present', offenders: ex });
     let totalP = 0, unknown = [];
@@ -2216,7 +2285,7 @@ const Engine = (function () {
   ];
 
   return { cardPower, POWER_PREF, PAIRS, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
-    norm, buildDB, addAliases, lookup, nameKey, parseList, parseLine, splitCSV, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
+    norm, buildDB, addAliases, addRarity, setFormat, format, formatName, illegalWhy, FORMATS, lookup, nameKey, parseList, parseLine, splitCSV, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
     spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes, tribalTag, plural, STYLES, inspire, styleProfile };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;
@@ -3663,6 +3732,11 @@ const Analysis = (function () {
     const synBonus = c => { let s = 0; for (const [k, side] of sides(c)) if (activeKeys.has(k)) { const p = pairStats.find(x => x.key === k); s += side === 'en' ? (p.status.startsWith('payoff') ? 2 : 1) : (p.status.startsWith('enabler') ? 2 : 1); } if (tribal && new RegExp('\\b' + tribal.type + '\\b').test(c.ft)) s += 1; return Math.max(s, mechAsAdd(c) / 8); };
     const pick = (pred, k) => pool.filter(pred).map(c => ({ c, s: synBonus(c) * 0.6 + popOr(c) })).sort((a, b) => b.s - a.s || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
     const addRec = (sev, text, cards) => recs.push({ sev, text, cards: (cards || []).map(c => ({ n: c.n, mc: c.mc, price: c.p[cur], rank: c.rank, uri: c.uri })) });
+    { // cards not legal in the format the deck is checked for (Pauper Commander: no common printing); adds come only from legal cards
+      const bad = all.filter(e => e.c.leg !== 'legal' && !E.isBasic(e.c)).map(e => e.c), badCmd = E.format() === 'pdh' ? cmds.filter(c => !E.commanderEligibility(c).ok) : [];
+      if (badCmd.length) addRec('high', 'Not a legal ' + E.formatName() + ' commander: ' + badCmd.map(c => c.n + ' (' + E.commanderEligibility(c).msg + ')').join('; ') + '.');
+      if (bad.length) addRec('high', bad.length + ' card' + (bad.length === 1 ? ' is' : 's are') + ' not legal in ' + E.formatName() + ': ' + bad.slice(0, 12).map(c => c.n + ' (' + E.illegalWhy(c) + ')').join('; ') + (bad.length > 12 ? '; …' : '') + '. Swap them on Improve, By card.');
+    }
     for (const r of ['ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon']) {
       const have = role(r), t = +targets[r] || 0;
       if (have < t) addRec(t - have >= 3 ? 'high' : 'med', E.SLOT_LABEL[r] + ': ' + have + ' of ' + t + '. Candidates ranked by theme fit and EDHREC rank:', pick(c => !A(c).isLand && A(c).roles[r], 5));
@@ -4473,7 +4547,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
       const { cards, parsed } = await parseBulkFile(file, f => { prog.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; });
       if (!cards.length) throw new Error('No Scryfall card objects found (' + parsed + ' records parsed).');
       const meta = { source: 'Scryfall bulk file', ...(extra || {}), nv: NORM_V, file: file.name, fileModified: file.lastModified ? new Date(file.lastModified).toISOString() : null, loadedAt: new Date().toISOString(), records: parsed };
-      App.bulk = Engine.buildDB(cards, meta); App.cmdIndex = null; $('secData').open = false; buildComboProvider(); loadAliases();
+      App.bulk = Engine.buildDB(cards, meta); App.cmdIndex = null; $('secData').open = false; buildComboProvider(); loadAliases(); loadRarity(); syncFormat();
       setStatus('Loaded ' + App.bulk.all.length + ' unique cards from ' + file.name + '.');
       IDB.put('bulk', { cards, meta }).then(ok => { $('idbNote').textContent = ok ? 'Stored in this browser for next visit.' : ''; });
     } catch (e) { setStatus('Bulk file error: ' + e.message); showMsgs([e.message], []); }
@@ -4565,6 +4639,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     if (!App.bulk && bulk && bulk.cards && bulk.cards.length) { App.bulk = Engine.buildDB(bulk.cards, bulk.meta); $('idbNote').textContent = 'Using stored card data: ' + (bulk.meta.file || '') + '.'; }
     renderSources(); renderView();
     await loadAliases();
+    await loadRarity();
     await loadSpellbook();
   }
   /* ---------- data/aliases.json: Universes Beyond flavour names and other printed names → Oracle names (tools/scryfall-aliases.js),
@@ -4577,9 +4652,61 @@ if (typeof module !== 'undefined') module.exports = Builder;
     } catch (e) { }
   }
 
+  /* ---------- data/rarity.json: every card's paper and MTGO printed rarities (tools/scryfall-rarity.js), which Pauper
+     Commander legality needs; the Oracle Cards file has one printing per card. ---------- */
+  async function loadRarity() {
+    if (!App.bulk || App.bulk.pdhSrc === 'rarity' || App.bulk.pdhSrc === 'printings' || !window.EDH_SITE || !/^https?:$/.test(location.protocol)) return;
+    try {
+      const r = await fetch('data/rarity.json', { cache: 'no-cache' }); if (!r.ok) return;
+      const j = await r.json(); if (!(j && j.format === 'edhgen-rarity/1')) return;
+      Engine.addRarity(App.bulk, j); App.cmdIndex = null; syncFormat(true);
+    } catch (e) { }
+  }
+  /* ---------- format: Commander or Pauper Commander. Engine.setFormat sets each card's legality for the format, so
+     every pool, suggestion and rule check follows it. ---------- */
+  const isPDH = () => App.S.format === 'pdh';
+  const fmtSegHTML = () => '<div class="seg" role="radiogroup" aria-label="Format">' + Object.keys(Engine.FORMATS).map(f => '<button type="button" data-fmt="' + f + '" aria-pressed="' + ((App.S.format || '') === f) + '" title="' + (f ? 'The 99 must be commons; the commander an uncommon creature' : 'Standard Commander legality') + '">' + Engine.FORMATS[f] + '</button>').join('') + '</div>';
+  function syncFormat(force) {
+    if (!App.bulk) return;
+    const before = App.bulk.fmtKey; Engine.setFormat(App.bulk, App.S.format);
+    if (force || before !== App.bulk.fmtKey) { App.cmdIndex = null; App.BC = null; if (App.R && App.R.stats && App.tab !== 'setup' && !App.busy) renderView(); }
+    fmtNote();
+  }
+  function fmtNote() {
+    const el = $('fmtNote'); if (!el) return;
+    const src = App.bulk ? App.bulk.pdhSrc : '';
+    el.textContent = !isPDH() ? '' : !App.bulk ? 'Pauper Commander: the 99 must be commons, the commander an uncommon creature. Card data not loaded yet.' :
+      src === 'rarity' || src === 'printings' ? 'Pauper Commander: the 99 must have a common printing (paper or MTGO), the commander an uncommon creature, Vehicle or Spacecraft. Mystic Remora and Rhystic Study are banned.' :
+      src === 'scryfall' ? 'Pauper Commander legality from Scryfall\'s paupercommander field. A common creature with an uncommon printing is not offered as commander without the rarity file.' :
+      'Rarity data (data/rarity.json) is not loaded, so legality comes from one printing per card: some legal commons and commanders are missing.';
+  }
+  // switching format with a deck loaded runs its chain again: an imported list is kept and checked against the new
+  // format, a generated deck is rebuilt for it (with its locks and edits)
+  async function setFormatUI(fmt) {
+    fmt = fmt === 'pdh' ? 'pdh' : '';
+    const was = App.S.format || '';
+    if (was === fmt || App.busy) return;
+    if (App.R && App.R.stats && App.chain) { // the deck's commander must be legal in the new format, or the deck stays as it is
+      Engine.setFormat(App.bulk, fmt); const no = App.R.commanders.map(c => [c, Engine.commanderEligibility(c)]).filter(x => !x[1].ok); Engine.setFormat(App.bulk, was);
+      if (no.length) { setStatus('Format not changed: ' + no.map(([c, el]) => c.n + ' cannot be the commander in ' + Engine.formatName(fmt) + ' (' + el.msg + ')').join('; ') + '. Pick another commander on Start, or Clear, first.'); renderView(); return; }
+    }
+    if (fmt) App.S.format = fmt; else delete App.S.format;
+    writeForm(App.S); persistSettings(); checkCommanders();
+    if (App.R && App.R.stats && App.chain) {
+      const ch = App.chain, s2 = JSON.parse(JSON.stringify(ch.settings)); if (fmt) s2.format = fmt; else delete s2.format;
+      const tab = App.tab, ok = await replayChain(Object.assign({}, ch, { settings: s2 }), ch.ops);
+      App.AN = null; App.QS = null; App.PR = null; App.SH = null; App.UP = null; App.tab = tab; renderAll();
+      if (!ok) { const back = JSON.parse(JSON.stringify(App.S)); if (was) back.format = was; else delete back.format; App.S = back; writeForm(App.S); persistSettings(); }
+      if (ok && App.R) { const v = App.R.validation.rules.find(r => r.id === 'legality'); setStatus((ch.env && ch.env.asIs ? 'Checked the imported deck for ' : 'Rebuilt the deck for ') + Engine.formatName(fmt) + (v && !v.pass ? ': ' + v.offenders.length + ' card(s) not legal, listed under Rules.' : '.')); histPush('edit', 'Format: ' + Engine.formatName(fmt)); }
+      else setStatus('Format not changed: the deck could not be rebuilt for ' + Engine.formatName(fmt) + ' (see the messages above). The deck is unchanged.');
+      if (['analysis', 'changes', 'percard'].includes(App.tab) && App.R) runAnalysis();
+    } else renderView();
+  }
+
   /* ---------- data state ---------- */
   function comboProvider() { return App.bulkCombos || null; }
   function renderSources() {
+    syncFormat();
     const set = (id, cls, text) => { const el = $(id); el.innerHTML = '<span class="dot ' + cls + '"></span>' + esc(text); };
     set('pBulk', App.bulk ? 'ok' : '', App.bulk ? App.bulk.all.length.toLocaleString() + ' cards' : 'Card data not loaded');
     $('pBulk').title = App.bulk ? (App.bulk.meta.file || 'stored data') : '';
@@ -4608,7 +4735,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     document.querySelectorAll('[data-k]').forEach(el => { const v = getPath(S, el.dataset.k); if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v; });
     $('varOut').textContent = (+S.variance).toFixed(2);
     { const B = Engine.BRACKETS[S.bracket] || {}; $('brHint').textContent = B.name ? 'Bracket ' + S.bracket + ' · games end turn ' + B.turns : ''; }
-    syncQuick(S);
+    syncQuick(S); syncFormat();
   }
   /* ---------- quick start: writes into the regular settings ---------- */
   const PLANS = {
@@ -4627,6 +4754,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     const bv = S.budget && S.budget.total != null && S.budget.total !== '' ? String(+S.budget.total) : '';
     document.querySelectorAll('#qBudget button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.b === bv)));
     document.querySelectorAll('#qBracket button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.br === +S.bracket)));
+    document.querySelectorAll('[data-fmt]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.fmt === (S.format || ''))));
     if ($('budHint')) $('budHint').textContent = bv ? Engine.fmt(+bv, S.budget.cur || 'usd') + ' cap' : 'no limit';
   }
   function wireQuick() {
@@ -4646,6 +4774,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     $('qBudget').addEventListener('click', e => { const b = e.target.closest('button[data-b]'); if (!b) return; App.S.budget.total = b.dataset.b === '' ? '' : +b.dataset.b; writeForm(App.S); persistSettings(); });
     $('qBracket').addEventListener('click', e => { const b = e.target.closest('button[data-br]'); if (!b) return; App.S.bracket = +b.dataset.br; App.S.bl = Engine.bracketDefaults(App.S.bracket); writeForm(App.S); persistSettings(); });
     $('qGen').addEventListener('click', () => $('genBtn').click());
+    document.addEventListener('click', e => { const b = e.target.closest('button[data-fmt]'); if (b) setFormatUI(b.dataset.fmt); });
   }
   function onFormChange(ev) {
     const el = ev.target; if (!el.dataset || !el.dataset.k) return;
@@ -6154,7 +6283,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     const B = blState(), cmds = blCmds(), o = ownedCards(), th = blThemes(cmds), live = blLive() ? App.R : null;
     let owned = !B.all && o && o.set.size ? o.set : null;
     if (owned && live) owned = new Set([...owned, ...live.deck.map(e => e.c.n)]); // the deck's own cards stay listed, owned or not
-    const key = cmds.map(c => c.n).join('|') + '#' + (owned ? o.key : 'all') + '#' + th.join(',');
+    const key = cmds.map(c => c.n).join('|') + '#' + (owned ? o.key : 'all') + '#' + th.join(',') + '#' + App.bulk.fmtKey;
     if (App.BC && App.BC.key === key && App.BC.db === App.bulk && App.BC.R === live) return App.BC;
     const CI = blCI(cmds), tags = th.map(Builder.themeTag).filter(Boolean), cards = Builder.pool(App.bulk, CI, owned, cmds);
     const cats = new Map(cards.map(c => [c, Builder.cardCats(c, tags)]));
@@ -6183,7 +6312,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     if (!cmds.length) { $('view').innerHTML = modeSeg + blStartHTML(o, n); return; }
     const P = blPool();
     const head = modeSeg + '<div class="bl-head"><div class="bl-cmd"><span class="note">Commander</span><b>' + cmds.map(c => cardLink(c)).join(' + ') + '</b> <span>' + pipsHTML(P.CI) + '</span> ' + (live ? '<span class="note">(change it on Start)</span>' : '<button type="button" class="link" data-bl="cmd-change">Change</button>') + '</div>' +
-      '<div class="bl-br"><span class="note">Targets from</span><div class="seg" role="group" aria-label="Bracket for the targets">' + [1, 2, 3, 4, 5].map(b => '<button type="button" data-blbr="' + b + '" aria-pressed="' + (+B.bracket === b) + '" title="Reference decks of Bracket ' + b + '">B' + b + '</button>').join('') + '</div></div>' +
+      '<div class="bl-br"><span class="note">Format</span>' + fmtSegHTML() + '</div><div class="bl-br"><span class="note">Targets from</span><div class="seg" role="group" aria-label="Bracket for the targets">' + [1, 2, 3, 4, 5].map(b => '<button type="button" data-blbr="' + b + '" aria-pressed="' + (+B.bracket === b) + '" title="Reference decks of Bracket ' + b + '">B' + b + '</button>').join('') + '</div></div>' +
       (n ? '<div class="seg" role="group" aria-label="Cards to offer"><button type="button" data-blall="0" aria-pressed="' + !B.all + '">My collection</button><button type="button" data-blall="1" aria-pressed="' + B.all + '">All cards</button></div>' : '') + '</div>' +
       blThemesHTML(P);
     $('view').innerHTML = head + '<div class="bl-grid"><section class="bl-pick" aria-label="Cards to pick"><div id="blCats" class="bl-cats">' + blCatsHTML(P) + '</div>' + blFiltersHTML() + '<div id="blList">' + blListHTML(P) + '</div></section>' +
@@ -6195,10 +6324,11 @@ if (typeof module !== 'undefined') module.exports = Builder;
     let list = q.length >= 2 ? idx.filter(c => Engine.nameKey(c.n).includes(q)) : n ? idx.filter(c => o.set.has(c.n)) : idx;
     if (n) list = list.filter(c => o.set.has(c.n)).concat(list.filter(c => !o.set.has(c.n)));
     const ownCmd = n ? idx.filter(c => o.set.has(c.n)).length : 0;
-    const pick = '<div class="tile"><div class="tile-h"><h3>Pick a commander</h3><span class="hint">' + (n ? ownCmd + ' in your collection' : 'any legal commander') + '</span></div>' +
+    const pick = '<div class="tile"><div class="tile-h"><h3>Pick a commander</h3><span class="hint">' + (n ? ownCmd + ' in your collection' : 'any legal ' + Engine.formatName() + ' commander') + '</span></div>' +
+      '<div class="bl-br" style="margin-bottom:8px"><span class="note">Format</span>' + fmtSegHTML() + '</div>' +
       '<label class="f">Search commanders<input type="search" id="blCq" value="' + esc(B.cq || '') + '" placeholder="Start typing a name" autocomplete="off"></label>' +
       '<div class="bl-cmdlist" id="blCmdList">' + blCmdListHTML(list, o) + '</div>' +
-      '<p class="note" style="margin:0">Only cards inside the commander\'s colour identity and legal in Commander are offered. ' + (n ? 'Your commanders are listed first.' : '') + '</p></div>';
+      '<p class="note" style="margin:0">Only cards inside the commander\'s colour identity and legal in ' + Engine.formatName() + ' are offered' + (isPDH() ? ' (commons; the commander an uncommon creature)' : '') + '. ' + (n ? 'Your commanders are listed first.' : '') + '</p></div>';
     let bd = '';
     if (n) {
       const cards = [...o.set].map(x => Engine.lookup(App.bulk, x)).filter(c => c && c.leg === 'legal'), tags = Object.keys(Engine.TAGS).map(Builder.themeTag).filter(Boolean), D = Builder.breakdown(cards, tags);
@@ -6209,7 +6339,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
       const Ty = Analysis.TYPE_CATS.map(([k, l]) => [l, D.types[k]]).concat([['Lands', D.roles.lands]]);
       const Ci = Object.entries(D.ci).sort((a, b) => b[1] - a[1]), rest = Ci.splice(10).reduce((t, x) => t + x[1], 0);
       const mx = a => Math.max(1, ...a.map(x => x[1]));
-      bd = '<div class="tile"><div class="tile-h"><h3>Your collection by role</h3><span class="hint">' + cards.length.toLocaleString() + ' Commander-legal cards</span></div>' + rows(R, mx(R)) +
+      bd = '<div class="tile"><div class="tile-h"><h3>Your collection by role</h3><span class="hint">' + cards.length.toLocaleString() + ' ' + Engine.formatName() + '-legal cards</span></div>' + rows(R, mx(R)) +
         '<p class="note" style="margin:0">A card counts in every role it fills, with the same rules as Deck › Counts.</p></div>' +
         '<div class="tile"><div class="tile-h"><h3>By synergy theme</h3></div>' + rows(Th, mx(Th)) + '</div>' +
         '<div class="tile"><div class="tile-h"><h3>By card type</h3></div>' + rows(Ty, mx(Ty)) + '</div>' +
@@ -6456,7 +6586,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
       '<div class="note">' + esc(c.tl) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
       (c.ot ? '<div class="cp-ot">' + manaHTML(c.ot).replace(/\n/g, '<br>') + '</div>' : '') +
       (ownSet() && !Engine.isBasic(c) ? '<div class="cp-m">' + (ownSet().has(c.n) ? '<span class="ownmk"></span> In your collection' : 'Not in your collection') + '</div>' : '') +
-      '<div class="cp-m">' + (p != null ? fmtP(p) : 'no price') + (c.rank ? ' · EDHREC #' + c.rank.toLocaleString() : '') + (c.leg !== 'legal' ? ' · <span class="pup">' + esc(c.leg.replace('_', ' ')) + ' in Commander</span>' : '') + '</div>' +
+      '<div class="cp-m">' + (p != null ? fmtP(p) : 'no price') + (c.rank ? ' · EDHREC #' + c.rank.toLocaleString() : '') + (c.leg !== 'legal' && !(isCmd && Engine.commanderEligibility(c).ok) ? ' · <span class="pup">' + esc(isPDH() ? Engine.illegalWhy(c) : c.leg.replace('_', ' ') + ' in Commander') + '</span>' : '') + '</div>' +
       (chips ? '<div>' + chips + '</div>' : '') +
       (isCmd ? '<div class="cp-why"><b>Commander</b></div>' : e ? '<div class="cp-why"><b>Why it is in the deck:</b> ' + esc(e.why || Engine.SLOT_LABEL[e.slot] || e.slot || '') + (e.locked ? ' (locked)' : '') + '</div>' : '') +
       (e && !isCmd ? (i => '<div class="row cp-acts"><button type="button" class="small" data-act="lock" data-i="' + i + '" aria-pressed="' + !!e.locked + '">' + (e.locked ? 'Unlock' : 'Lock') + '</button>' + (Engine.isBasic(c) ? '' : '<button type="button" class="small" data-act="swap" data-i="' + i + '">Swap</button><button type="button" class="small" data-act="remove" data-i="' + i + '">Remove</button>') + '</div>')(R.deck.indexOf(e)) : '') +
@@ -6755,8 +6885,9 @@ if (typeof module !== 'undefined') module.exports = Builder;
     App.restoring = true;
     try {
       App.S = deepAssign(uiDefaults(), JSON.parse(JSON.stringify(chain.settings))); writeForm(App.S); persistSettings();
+      const before = App.R;
       await runGenerate(chain.env);
-      const R = App.R; if (!R) return false;
+      const R = App.R; if (!R || R === before) return false; // not rebuilt: the edits are not replayed onto the old deck
       for (const op of ops) {
         const cut = op.cut && R.deck.find(x => x.c.n === op.cut), add = op.add && Engine.lookup(App.bulk, op.add);
         if (op.op === 'swap' && cut && add) await R.swapOne(cut, add);

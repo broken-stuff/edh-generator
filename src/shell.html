@@ -676,6 +676,8 @@ a.cl.own::after,.ownmk::after{content:"";display:inline-block;width:7px;height:7
   <section class="settings" id="setupView" aria-label="Deck settings">
     <div class="tiles">
 <div class="tile" id="tCmd"><div class="tile-h"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4 4 5-7 5 7 4-4-2 11H5z"/></svg></span><h3>Commander</h3></div>
+  <div class="seg wide" id="qFormat" role="radiogroup" aria-label="Format"><button type="button" data-fmt="" aria-pressed="true" title="Standard Commander legality">Commander</button><button type="button" data-fmt="pdh" aria-pressed="false" title="The 99 must be commons; the commander an uncommon creature">Pauper Commander</button></div>
+  <div class="note" id="fmtNote"></div>
   <div class="ac"><label class="f">Commander <input type="search" id="cmd1" data-k="commanders.0" autocomplete="off" placeholder="Start typing a name" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd1L"></ul></div>
   <details class="tdet" id="cmd2Det"><summary class="note">Second commander (Partner, Background, Doctor's companion)</summary>
   <div class="ac"><label class="f">Second commander<input type="search" id="cmd2" data-k="commanders.1" autocomplete="off" placeholder="Optional" aria-autocomplete="list"></label><ul class="hidden" role="listbox" id="cmd2L"></ul></div></details>
