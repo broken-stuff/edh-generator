@@ -1,10 +1,10 @@
 {
  "format": "edhgen-spellbook/1",
  "source": "https://json.commanderspellbook.com/variants.json",
- "timestamp": "2026-11-09T06:12:07.470676+00:00",
+ "timestamp": "2026-11-10T12:11:49.479638+00:00",
  "version": "7.3.6",
- "variants": 119502,
- "read": 121005,
+ "variants": 119486,
+ "read": 120989,
  "skipped": {
   "status": 0,
   "legality": 1503,
@@ -21,32 +21,32 @@
   {
    "file": "variants-000.json",
    "count": 20000,
-   "bytes": 1493357
+   "bytes": 1493199
   },
   {
    "file": "variants-001.json",
    "count": 20000,
-   "bytes": 1505561
+   "bytes": 1505209
   },
   {
    "file": "variants-002.json",
    "count": 20000,
-   "bytes": 1482472
+   "bytes": 1482739
   },
   {
    "file": "variants-003.json",
    "count": 20000,
-   "bytes": 1481569
+   "bytes": 1480966
   },
   {
    "file": "variants-004.json",
    "count": 20000,
-   "bytes": 1483472
+   "bytes": 1483500
   },
   {
    "file": "variants-005.json",
-   "count": 19502,
-   "bytes": 1452626
+   "count": 19486,
+   "bytes": 1451320
   }
  ]
 }

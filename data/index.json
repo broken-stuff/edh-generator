@@ -3,18 +3,23 @@
  "files": [
   {
    "name": "aliases.json",
-   "size": 28471,
-   "sha256": "364c68f3bd123071200f6259f79b9c769889c69daad67c92059aee2546069161"
+   "size": 28644,
+   "sha256": "e7e7de1d76655a6e52b245fc0d1ad8468ca5c9277bb264f13ce6fbe14fb0dd48"
   },
   {
    "name": "oracle-cards-20261108220201.jsonl.gz",
    "size": 7163701,
    "sha256": "5bf05e637381f834ded5401d2e8864b8f29a134abb1877147d2536c3335a78bd"
+  },
+  {
+   "name": "rarity.json",
+   "size": 330508,
+   "sha256": "35059ab8ddfc13735ad615a8543da5c9582f5c479b5048ba7525c7f7a2bad6df"
   }
  ],
  "spellbook": {
   "manifest": "spellbook/manifest.json",
-  "variants": 119502,
-  "timestamp": "2026-11-09T06:12:07.470676+00:00"
+  "variants": 119486,
+  "timestamp": "2026-11-10T12:11:49.479638+00:00"
  }
 }
