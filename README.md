@@ -64,6 +64,15 @@ Each card is weighed on:
 
 Analysis, Improve and deep search on a mechanics-only deck use the same quality model in place of EDHREC rank. Standard builds are unchanged.
 
+**Format: Pauper Commander** (on Start in the Commander tile, and at the top of Builder) switches the whole generator to [Pauper Commander (PDH)](https://pdhhomebase.com/rules/) legality:
+- the 99 must have been printed at common, and the commander must be a creature, Vehicle or Spacecraft printed at uncommon (it need not be legendary). Printings count on paper and MTGO, not Arena, as the PDH rules say.
+- Mystic Remora and Rhystic Study are banned, as are cards Scryfall marks banned in `paupercommander` and cards banned in Commander (that list holds the ante, Conspiracy and removed cards PDH also bans).
+- the commander list, generation, Builder, suggested swaps, deep search, By category, By card, Budget upgrades and combo adds offer only legal cards. **Rules** on Deck checks the format.
+- an imported list is kept as pasted: cards that are legal in Commander but not in PDH stay in the deck, fail **Rules** and are listed as a high problem on Analysis, so you can swap them on Improve. Must-include cards that are not legal are left out with a note.
+- switching format with a deck loaded checks an imported list again, or rebuilds a generated deck for the new format. If the deck's commander can't lead a deck in the new format, the format is not changed.
+
+Rarities come from `data/rarity.json` (every paper and MTGO printing, from Scryfall's Default Cards). Without it, a Default Cards file loaded under Card data works the same way; an Oracle Cards file alone has one printing per card, so the Start page says some legal cards will be missing. Brackets, power level and win turn are still measured against Commander decks (40 life).
+
 The pages are in the left menu (a bar at the bottom on phones) and follow the order you use them in: **Start**, **Collection**, **Builder**, **Deck**, **Analysis**, **Improve** and **Primer** (under More on phones). **More** holds History, Build log and Tests. Pages with more than one view have a row of tabs under the title. The KPI tiles (power, bracket, win turn, price) show on Analysis; the other deck pages show the same numbers in one line.
 
 ### Start
@@ -96,6 +105,7 @@ Build a deck by hand from your collection.
 
 - **Before a commander is picked:** your collection broken down by role (the Deck › Counts categories: lands, ramp, card draw, spot removal, counterspells, board wipes, protection, tutors, recursion, win conditions, and nonland cards with no role), by synergy theme (the generator's theme tags), by card type and by colour identity. A card counts in every role and theme it matches. Pick a commander from the list (yours first) or search any legal one.
 - **Cards offered:** Commander-legal cards inside the commander's colour identity, from **My collection** (basic lands always available) or **All cards**. Category chips (All, each role, each synergy theme, No role) show the deck's count against its target and how many cards are available. Filter by mana value (0–1 to 6+), card type and text, and sort by popularity (EDHREC rank), mana value, name or price. **+** adds a card, **✓** removes it.
+- **Format:** Commander or Pauper Commander, the same switch as on Start. In Pauper Commander only commons are offered and the commander list holds uncommon creatures.
 - **Synergy themes** are read from the commander's rules text the way the generator reads them (for example Tribal: Elf for Lathril); add or remove any theme, or add a creature type.
 - **Tracker** (beside the list; a bar above it on phones, tap for the full panel): cards out of 99 (98 with two commanders), each role and card type (creatures, instants, sorceries, artifacts, enchantments, planeswalkers) against a target, average mana value, the mana curve, each colour's share of the pips next to the lands that make it, basic lands (+/− per type, or **Fill basics** to the land target split by pips), and the deck grouped by type. Targets start at the median of the reference decks for the bracket you choose (B1–B5) and can be changed; a row is red below the 25th percentile, green inside the middle half, amber above it. Type and average-MV ranges come from the same 822 Archidekt decklists as Deck › Counts (`node tools/ref-roles.js` recomputes both tables).
 - **Editing: Current deck** (shown once you have a generated or imported deck; **Edit in Builder** in the Deck summary and on Analysis opens it): the Builder edits the working deck itself. Every add or take-out shows straight away on Deck, Counts, Analysis and Improve, is kept in History, and **Undo** (`U`) takes it back. Cards you add are locked; cards you take out are left out of **Rebuild around locks** until you add them back. Basic lands +/− and **Fill basics** change the deck's basics. Under 100 cards, **Fill to 100** adds the rest from your Start settings. With **My collection**, the deck's own cards stay listed whether you own them or not.
@@ -221,6 +231,7 @@ cd src
 node test.js     # generator engine; exits non-zero on a failure
 node stest.js    # card explorer similarity; exits non-zero on a failure
 node btest.js    # builder: pool, themes, tracker counts, basics, export round trip
+node ptest.js    # Pauper Commander: rarity legality, commanders, generation, import flags, tools/scryfall-rarity.js
 node ttest.js    # role tagging on the real card data in data/: staples get their roles, top-500 coverage
 node atest.js    # prints analysis output for a generated deck
 node sens.js     # prints a table of how decks respond to bracket, budget and game plan
@@ -232,6 +243,7 @@ node sens.js     # prints a table of how decks respond to bracket, budget and ga
 - slims Scryfall's Oracle Cards file into `data/oracle-cards-*.jsonl.gz` with `tools/scryfall-slim.js`
 - splits Commander Spellbook's `variants.json` into `data/spellbook/` with `tools/spellbook-shard.js`
 - writes `data/aliases.json` (alternate printed names, such as Universes Beyond flavour names, mapped to Oracle names) from Scryfall's Default Cards file with `tools/scryfall-aliases.js`
+- writes `data/rarity.json` (cards printed at common, creatures printed at uncommon, on paper or MTGO, and Scryfall's Pauper Commander bans) from the same file with `tools/scryfall-rarity.js`; the Pauper Commander format reads it
 - rewrites `data/index.json` with `tools/data-index.js`, then commits to `main`
 
 **Reference decks (calibration):** `.github/workflows/ref-decks.yml` (manual, or a push that changes the downloader) runs `tools/ref-decks.js`, which saves bracket-labelled decklists for the 60 most-played commanders to `data/reference/decks.jsonl.gz`: EDHREC's average deck for each bracket (exhibition, core, upgraded, optimized, cEDH) and up to 3 of the most-viewed Archidekt decks per bracket (the bracket the owner set), one request every 1.2 s. `node tools/ref-calibrate.js data --json out.json` runs the analysis on every reference deck and prints agreement between its bracket and power level and the decks' brackets (exact, within one, confusion matrix, rank correlation), with power-level cut points fitted by leave-one-commander-out cross-validation. The page does not load these files.

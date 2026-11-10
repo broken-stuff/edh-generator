@@ -8,6 +8,7 @@ on:
       - 'src/**'
       - 'index.html'
       - 'card.html'
+      - 'tools/scryfall-rarity.js'
       - '.github/workflows/check.yml'
 permissions:
   contents: read
@@ -26,6 +27,7 @@ jobs:
           node test.js
           node stest.js
           node btest.js
+          node ptest.js
           node ttest.js
       - name: Built pages match src/
         working-directory: src

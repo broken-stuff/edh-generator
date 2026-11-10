@@ -823,6 +823,8 @@ const Engine = (function () {
       n: name, fn, oid: c.oracle_id || (faces && faces[0] && faces[0].oracle_id) || c.id, mc, cmc: +c.cmc || 0, tl, ft, ot, low,
       ci: WUBRG.split('').filter(x => (c.color_identity || []).includes(x)).join(''),
       leg: (c.legalities && c.legalities.commander) || 'not_legal', gc: !!c.game_changer,
+      rar: c.rarity && (!Array.isArray(c.games) || c.games.includes('paper') || c.games.includes('mtgo')) ? [c.rarity] : [],
+      legP: (c.legalities && c.legalities.paupercommander) || '',
       rank: Number.isFinite(c.edhrec_rank) ? c.edhrec_rank : null,
       p: { usd: pnum(pr.usd), eur: pnum(pr.eur), tix: pnum(pr.tix) },
       rl: !!c.reserved, bc: c.border_color || '', stamp: c.security_stamp || '', stype: c.set_type || '',
@@ -839,6 +841,7 @@ const Engine = (function () {
     for (const k of ['usd', 'eur', 'tix']) if (b.p[k] != null && (a.p[k] == null || b.p[k] < a.p[k])) a.p[k] = b.p[k];
     if (b.rank != null && (a.rank == null || b.rank < a.rank)) a.rank = b.rank;
     a.gc = a.gc || b.gc; a.rl = a.rl || b.rl;
+    for (const r of b.rar || []) { a.rar = a.rar || []; if (!a.rar.includes(r)) a.rar.push(r); }
     for (const t of b.otags) if (!a.otags.includes(t)) a.otags.push(t);
     if (b.al && b.al.length) { a.al = a.al || []; for (const x of b.al) if (!a.al.includes(x)) a.al.push(x); }
     a.merged = (a.merged || 1) + 1;
@@ -849,10 +852,12 @@ const Engine = (function () {
     const all = [...byOid.values()].sort((a, b) => a.n < b.n ? -1 : a.n > b.n ? 1 : 0);
     const byName = new Map();
     // a name shared by two cards (Mystery Booster playtest cards, Alchemy, tokens) means the real one: Commander-legal first, then not from an Un/playtest set
-    const rank = c => (c.leg === 'legal' ? 2 : 0) + (c.stype === 'funny' || c.bc === 'silver' ? 0 : 1);
+    const rank = c => ((c.leg0 || c.leg) === 'legal' ? 2 : 0) + (c.stype === 'funny' || c.bc === 'silver' ? 0 : 1);
     for (const c of all) for (const k of [c.n, c.fn]) { const key = nameKey(k), e = byName.get(key); if (!e || rank(c) > rank(e)) byName.set(key, c); }
     for (const c of all) for (const k of c.n.split(' // ').slice(1).concat(c.al || [])) { const key = nameKey(k); if (!byName.has(key)) byName.set(key, c); } // back faces and printed alternate names, only where no card has that name
-    return { all, byName, meta: meta || {}, _ctypes: null };
+    // Default Cards (every printing) merges many printings per card, so its rarities are complete for Pauper Commander
+    let merged = 0; for (const c of all) if (c.merged > 1) merged++;
+    return { all, byName, meta: meta || {}, _ctypes: null, pdhSrc: merged > 1000 ? 'printings' : all.some(c => c.legP) ? 'scryfall' : '' };
   }
   // pairs: [[alternate name, Oracle name], ...] (data/aliases.json: Universes Beyond flavour names such as "Rick, Steadfast Leader")
   function addAliases(db, pairs) {
@@ -860,6 +865,54 @@ const Engine = (function () {
     for (const [al, on] of pairs || []) { const key = nameKey(al), c = db.byName.get(nameKey(on)); if (c && !db.byName.has(key)) { db.byName.set(key, c); n++; } }
     return n;
   }
+  /* ---------- formats: Commander, or Pauper Commander (PDH, pdhhomebase.com/rules): the 99 must have a common printing,
+     the commander must be a creature, Vehicle or Spacecraft printed at uncommon (legendary or not). Printings count on
+     paper and MTGO, not Arena. setFormat rewrites every card's c.leg to its legality in the chosen format (c.leg0 keeps
+     the Commander legality), so every pool, suggestion and check that reads c.leg follows the format. ---------- */
+  const FORMATS = { '': 'Commander', pdh: 'Pauper Commander' };
+  const PDH_BANNED = new Set(['Mystic Remora', 'Rhystic Study']); // pdhhomebase.com/rules; cards banned in Commander (ante, Conspiracy, removed cards) count as banned too
+  const PDH_CMD_TYPES = /\b(?:Creature|Vehicle|Spacecraft)\b/;
+  let FMT = '';
+  // rar: data/rarity.json (tools/scryfall-rarity.js), every paper and MTGO printing's rarity
+  function addRarity(db, j) {
+    const com = new Set(j.common || []), unc = new Set(j.uncommon || []), ban = new Set(j.banned || []);
+    for (const c of db.all) { c.rar = []; if (com.has(c.n)) c.rar.push('common'); if (unc.has(c.n)) c.rar.push('uncommon'); c.banP = ban.has(c.n); }
+    db.pdhSrc = 'rarity'; db.pdhVer = (db.pdhVer || 0) + 1; db.fmtKey = null;
+    return com.size;
+  }
+  function pdhOf(db, c) {
+    const l0 = c.leg0 || c.leg, rar = c.rar || [];
+    const banned = l0 === 'banned' || PDH_BANNED.has(c.n) || c.banP || c.legP === 'banned';
+    if (banned) return { leg: 'banned', cmd: false };
+    if (l0 !== 'legal') return { leg: l0, cmd: false };
+    // printings from rarity.json or a Default Cards file are complete; else Scryfall's own paupercommander legality if the file has it
+    const full = db.pdhSrc === 'rarity' || db.pdhSrc === 'printings';
+    const common = full || !c.legP ? rar.includes('common') : c.legP === 'legal';
+    const unc = rar.includes('uncommon') || (!full && c.legP === 'restricted');
+    return { leg: common ? 'legal' : 'not_legal', cmd: unc && PDH_CMD_TYPES.test(c.ft) };
+  }
+  function setFormat(db, fmt) {
+    FMT = fmt === 'pdh' ? 'pdh' : '';
+    if (!db) return FMT;
+    const key = FMT + '|' + (db.pdhVer || 0);
+    if (db.fmtKey === key) return FMT;
+    for (const c of db.all) {
+      if (c.leg0 == null) c.leg0 = c.leg;
+      if (FMT === 'pdh') { const p = pdhOf(db, c); c.leg = p.leg; c.pdhCmd = p.cmd; } else c.leg = c.leg0;
+    }
+    db.fmtKey = key; db.format = FMT; db._ctypes = null;
+    return FMT;
+  }
+  const format = () => FMT;
+  const formatName = f => FORMATS[f == null ? FMT : f] || FORMATS[''];
+  // why a card in the 99 is not legal in the current format (for warnings and rules)
+  function illegalWhy(c) {
+    if (FMT !== 'pdh') return c.leg + ' in Commander';
+    if (c.leg === 'banned') return 'banned in Pauper Commander';
+    if ((c.leg0 || c.leg) !== 'legal') return (c.leg0 || c.leg).replace('_', ' ') + ' in Commander';
+    return 'not printed at common';
+  }
+
   // exact name first; then the same name with "/", "///" or unspaced "//" between faces, then the front face alone
   function lookup(db, name) {
     const k = nameKey(name), hit = db.byName.get(k); if (hit) return hit;
@@ -1081,6 +1134,14 @@ const Engine = (function () {
     };
   }
   function commanderEligibility(c) {
+    if (FMT === 'pdh') {
+      if (c.pdhCmd) return { ok: true };
+      const l0 = c.leg0 || c.leg;
+      if (c.leg === 'banned') return { ok: false, msg: 'banned in Pauper Commander' };
+      if (l0 !== 'legal') return { ok: false, msg: 'not legal in Commander (Scryfall legality: ' + l0 + ')' };
+      if (!PDH_CMD_TYPES.test(c.ft)) return { ok: false, msg: 'not a creature, Vehicle or Spacecraft (Pauper Commander)' };
+      return { ok: false, msg: 'never printed at uncommon on paper or MTGO; a Pauper Commander commander must be an uncommon creature' };
+    }
     if (c.leg !== 'legal') return { ok: false, msg: 'not legal in Commander (Scryfall legality: ' + c.leg + ')' };
     const t = cmdTraits(c);
     if ((/\bLegendary\b/.test(c.ft) && /\bCreature\b/.test(c.ft)) || /can be your commander/i.test(c.ot) || t.isBg) return { ok: true };
@@ -1299,6 +1360,7 @@ const Engine = (function () {
   async function generate(db, S0, env) {
     env = env || {};
     const S = deepMerge(defaults(), S0 || {});
+    setFormat(db, S.format);
     const R = { ok: false, errors: [], warnings: [], log: [], deck: [], commanders: [], settings: S, shortfalls: [], combos: [], comboStatus: 'unavailable', poolSize: 0, excluded: {} };
     const L = m => R.log.push(m);
     const cur = S.budget.cur || 'usd';
@@ -1374,7 +1436,11 @@ const Engine = (function () {
       if (cmds.includes(c)) continue;
       if (incs.some(x => x.c === c)) continue;
       const a = analyze(c);
-      if (c.leg !== 'legal') { R.warnings.push(incW + ' rejected: ' + c.n + ' is ' + c.leg + ' in Commander.'); continue; }
+      if (c.leg !== 'legal') {
+        // an imported list is kept as pasted: a card legal in Commander but not in Pauper Commander stays and fails Rules
+        if (env.imported && FMT === 'pdh' && (c.leg0 || c.leg) === 'legal') R.warnings.push(incW + ': ' + c.n + ' is ' + illegalWhy(c) + '; kept, and listed under Rules.');
+        else { R.warnings.push(incW + ' rejected: ' + c.n + ' is ' + illegalWhy(c) + '.'); continue; }
+      }
       if (!subsetCI(c.ci, CI)) { R.warnings.push(incW + ' rejected: ' + c.n + ' (identity ' + (c.ci || 'C') + ') is outside commander identity ' + (CI || 'C') + '.'); continue; }
       if (excludeSet.has(c.n)) { R.warnings.push(incW + ' rejected: ' + c.n + ' is also on the exclude list.'); continue; }
       let qty = it.qty;
@@ -1408,7 +1474,7 @@ const Engine = (function () {
     }
 
     /* seeded RNG */
-    const seedBase = String(S.seed || '').trim() || ('auto:' + hashStr(stable(Object.assign({}, S, { seed: '', reroll: 0 }, S.mode ? {} : { mode: undefined })))); // an empty mode leaves the seed as before
+    const seedBase = String(S.seed || '').trim() || ('auto:' + hashStr(stable((o => { if (!o.format) delete o.format; return o; })(Object.assign({}, S, { seed: '', reroll: 0 }, S.mode ? {} : { mode: undefined }))))); // an empty format too // an empty mode leaves the seed as before
     R.seedUsed = seedBase + (S.reroll ? '#' + S.reroll : '');
     const rng = mulberry32(hashStr(R.seedUsed));
 
@@ -1422,7 +1488,7 @@ const Engine = (function () {
     for (const c of db.all) {
       if (cmds.includes(c) || isBasic(c)) continue;
       if (!subsetCI(c.ci, CI)) continue;
-      if (c.leg !== 'legal') { if (c.leg === 'banned') ex(c, 'banned'); continue; }
+      if (c.leg !== 'legal') { if (c.leg === 'banned') ex(c, 'banned'); else if (FMT === 'pdh' && c.leg0 === 'legal') ex(c, 'no common printing'); continue; }
       const a = analyze(c);
       if (excludeSet.has(c.n)) { ex(c, 'exclude list'); continue; }
       if (bans.has(c.n)) { ex(c, 'removed by user'); continue; }
@@ -2008,8 +2074,9 @@ const Engine = (function () {
     rules.push({ id: 'singleton', label: 'Singleton', pass: dup.length === 0, detail: dup.length ? 'Duplicates: ' + dup.join(', ') : 'No duplicates except basics' + (exemptUsed.length ? ' and exempt cards (' + exemptUsed.join(', ') + ')' : ''), offenders: dup });
     const offCI = R.deck.filter(e => !subsetCI(e.c.ci, CI)).map(e => e.c.n);
     rules.push({ id: 'identity', label: 'Color identity', pass: offCI.length === 0, detail: offCI.length ? 'Outside ' + (CI || 'C') + ': ' + offCI.join(', ') : 'All cards within ' + (CI || 'colorless'), offenders: offCI });
-    const illegal = all.filter(e => e.c.leg !== 'legal').map(e => e.c.n + ' (' + e.c.leg + ')');
-    rules.push({ id: 'legality', label: 'Legality (Commander, not banned)', pass: illegal.length === 0, detail: illegal.length ? illegal.join(', ') : 'All cards legal per Scryfall legalities.commander', offenders: all.filter(e => e.c.leg !== 'legal').map(e => e.c.n) });
+    const pdh = FMT === 'pdh', bad = e => pdh && e.cmd ? !commanderEligibility(e.c).ok : e.c.leg !== 'legal';
+    const illegal = all.filter(bad).map(e => e.c.n + ' (' + (e.cmd && pdh ? commanderEligibility(e.c).msg : pdh ? illegalWhy(e.c) : e.c.leg) + ')');
+    rules.push({ id: 'legality', label: pdh ? 'Legality (Pauper Commander: commons, uncommon commander)' : 'Legality (Commander, not banned)', pass: illegal.length === 0, detail: illegal.length ? illegal.join(', ') : pdh ? 'Every card has a common printing on paper or MTGO, the commander an uncommon one; none banned' : 'All cards legal per Scryfall legalities.commander', offenders: all.filter(bad).map(e => e.c.n) });
     const ex = R.deck.filter(e => excludeSet.has(e.c.n)).map(e => e.c.n);
     rules.push({ id: 'exclude', label: 'Exclude list respected', pass: ex.length === 0, detail: ex.length ? ex.join(', ') : 'No excluded cards present', offenders: ex });
     let totalP = 0, unknown = [];
@@ -2121,7 +2188,7 @@ const Engine = (function () {
   ];
 
   return { cardPower, POWER_PREF, PAIRS, defaults, bracketDefaults, BRACKETS, ROLES, SLOT_LABEL, ROLE_RULES, FLAGS, TAGS, LAND_CLASS_DESC, BASIC_NAMES,
-    norm, buildDB, addAliases, lookup, nameKey, parseList, parseLine, splitCSV, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
+    norm, buildDB, addAliases, addRarity, setFormat, format, formatName, illegalWhy, FORMATS, lookup, nameKey, parseList, parseLine, splitCSV, analyze, pips, typeGroup, commanderEligibility, pairCheck, cmdTraits,
     spellbookVariants, localComboProvider, generate, exportDeck, fmt, hashStr, stable, isBasic, creatureTypes, tribalTag, plural, STYLES, inspire, styleProfile };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;

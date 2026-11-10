@@ -1,6 +1,7 @@
 # Keeps data/ loadable by the page without any API calls:
 #  - data/oracle-cards-*.jsonl.gz: Scryfall Oracle Cards, refreshed weekly (and on demand), cut to the fields the page reads
 #  - data/aliases.json: alternate printed names (Universes Beyond flavour names) mapped to Oracle names, from Default Cards
+#  - data/rarity.json: names printed at common / uncommon on paper or MTGO (Pauper Commander legality), from Default Cards
 #  - data/spellbook/: Commander Spellbook combos, rebuilt weekly (and on demand) from variants.json into small files
 #  - data/index.json: list of files in data/, rebuilt after every push that touches data/
 name: Data files
@@ -91,8 +92,8 @@ jobs:
           echo "::notice::Downloaded $(stat -c %s "$RUNNER_TEMP/oracle.json") bytes; $(node tools/scryfall-slim.js "$RUNNER_TEMP/oracle.json" "$RUNNER_TEMP/$name.jsonl.gz")"
           git rm -q --ignore-unmatch data/oracle-cards-*.json data/oracle-cards-*.jsonl data/oracle-cards-*.json.gz data/oracle-cards-*.jsonl.gz
           mv "$RUNNER_TEMP/$name.jsonl.gz" data/
-      - name: Card name aliases from Scryfall Default Cards
-        # Same schedule as the card data; a push builds the file only when it is missing or the converter changed.
+      - name: Card name aliases and printed rarities from Scryfall Default Cards
+        # Same schedule as the card data; a push builds the files only when one is missing or its converter changed.
         env:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
@@ -102,8 +103,8 @@ jobs:
           if [ "$EVENT" = schedule ]; then run=yes; fi
           if [ "$EVENT" = workflow_dispatch ] && [ "$REFRESH" != false ]; then run=yes; fi
           if [ "$EVENT" = push ]; then
-            if [ ! -f data/aliases.json ]; then run=yes
-            elif git diff --name-only "$BEFORE" HEAD 2>/dev/null | grep -qE '^tools/scryfall-aliases\.js$'; then run=yes; fi
+            if [ ! -f data/aliases.json ] || [ ! -f data/rarity.json ]; then run=yes
+            elif git diff --name-only "$BEFORE" HEAD 2>/dev/null | grep -qE '^tools/scryfall-(aliases|rarity)\.js$'; then run=yes; fi
           fi
           echo "Refresh aliases: $run"
           [ "$run" = yes ] || exit 0
@@ -114,6 +115,7 @@ jobs:
           echo "::notice::Default Cards file: $url"
           curl -fsSL --retry 4 --retry-delay 10 -H "User-Agent: $UA" -o "$RUNNER_TEMP/default.bin" "$url"
           echo "::notice::$(node tools/scryfall-aliases.js "$RUNNER_TEMP/default.bin" data/aliases.json)"
+          echo "::notice::$(node tools/scryfall-rarity.js "$RUNNER_TEMP/default.bin" data/rarity.json)"
       - name: Index data/
         run: node tools/data-index.js data
       - name: Mechanics coverage report

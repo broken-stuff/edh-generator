@@ -870,6 +870,11 @@ const Analysis = (function () {
     const synBonus = c => { let s = 0; for (const [k, side] of sides(c)) if (activeKeys.has(k)) { const p = pairStats.find(x => x.key === k); s += side === 'en' ? (p.status.startsWith('payoff') ? 2 : 1) : (p.status.startsWith('enabler') ? 2 : 1); } if (tribal && new RegExp('\\b' + tribal.type + '\\b').test(c.ft)) s += 1; return Math.max(s, mechAsAdd(c) / 8); };
     const pick = (pred, k) => pool.filter(pred).map(c => ({ c, s: synBonus(c) * 0.6 + popOr(c) })).sort((a, b) => b.s - a.s || (a.c.n < b.c.n ? -1 : 1)).slice(0, k).map(x => x.c);
     const addRec = (sev, text, cards) => recs.push({ sev, text, cards: (cards || []).map(c => ({ n: c.n, mc: c.mc, price: c.p[cur], rank: c.rank, uri: c.uri })) });
+    { // cards not legal in the format the deck is checked for (Pauper Commander: no common printing); adds come only from legal cards
+      const bad = all.filter(e => e.c.leg !== 'legal' && !E.isBasic(e.c)).map(e => e.c), badCmd = E.format() === 'pdh' ? cmds.filter(c => !E.commanderEligibility(c).ok) : [];
+      if (badCmd.length) addRec('high', 'Not a legal ' + E.formatName() + ' commander: ' + badCmd.map(c => c.n + ' (' + E.commanderEligibility(c).msg + ')').join('; ') + '.');
+      if (bad.length) addRec('high', bad.length + ' card' + (bad.length === 1 ? ' is' : 's are') + ' not legal in ' + E.formatName() + ': ' + bad.slice(0, 12).map(c => c.n + ' (' + E.illegalWhy(c) + ')').join('; ') + (bad.length > 12 ? '; …' : '') + '. Swap them on Improve, By card.');
+    }
     for (const r of ['ramp', 'draw', 'removal', 'wipes', 'protection', 'recursion', 'wincon']) {
       const have = role(r), t = +targets[r] || 0;
       if (have < t) addRec(t - have >= 3 ? 'high' : 'med', E.SLOT_LABEL[r] + ': ' + have + ' of ' + t + '. Candidates ranked by theme fit and EDHREC rank:', pick(c => !A(c).isLand && A(c).roles[r], 5));

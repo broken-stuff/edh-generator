@@ -49,7 +49,7 @@
       const { cards, parsed } = await parseBulkFile(file, f => { prog.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; });
       if (!cards.length) throw new Error('No Scryfall card objects found (' + parsed + ' records parsed).');
       const meta = { source: 'Scryfall bulk file', ...(extra || {}), nv: NORM_V, file: file.name, fileModified: file.lastModified ? new Date(file.lastModified).toISOString() : null, loadedAt: new Date().toISOString(), records: parsed };
-      App.bulk = Engine.buildDB(cards, meta); App.cmdIndex = null; $('secData').open = false; buildComboProvider(); loadAliases();
+      App.bulk = Engine.buildDB(cards, meta); App.cmdIndex = null; $('secData').open = false; buildComboProvider(); loadAliases(); loadRarity(); syncFormat();
       setStatus('Loaded ' + App.bulk.all.length + ' unique cards from ' + file.name + '.');
       IDB.put('bulk', { cards, meta }).then(ok => { $('idbNote').textContent = ok ? 'Stored in this browser for next visit.' : ''; });
     } catch (e) { setStatus('Bulk file error: ' + e.message); showMsgs([e.message], []); }
@@ -141,6 +141,7 @@
     if (!App.bulk && bulk && bulk.cards && bulk.cards.length) { App.bulk = Engine.buildDB(bulk.cards, bulk.meta); $('idbNote').textContent = 'Using stored card data: ' + (bulk.meta.file || '') + '.'; }
     renderSources(); renderView();
     await loadAliases();
+    await loadRarity();
     await loadSpellbook();
   }
   /* ---------- data/aliases.json: Universes Beyond flavour names and other printed names → Oracle names (tools/scryfall-aliases.js),
@@ -153,9 +154,61 @@
     } catch (e) { }
   }
 
+  /* ---------- data/rarity.json: every card's paper and MTGO printed rarities (tools/scryfall-rarity.js), which Pauper
+     Commander legality needs; the Oracle Cards file has one printing per card. ---------- */
+  async function loadRarity() {
+    if (!App.bulk || App.bulk.pdhSrc === 'rarity' || App.bulk.pdhSrc === 'printings' || !window.EDH_SITE || !/^https?:$/.test(location.protocol)) return;
+    try {
+      const r = await fetch('data/rarity.json', { cache: 'no-cache' }); if (!r.ok) return;
+      const j = await r.json(); if (!(j && j.format === 'edhgen-rarity/1')) return;
+      Engine.addRarity(App.bulk, j); App.cmdIndex = null; syncFormat(true);
+    } catch (e) { }
+  }
+  /* ---------- format: Commander or Pauper Commander. Engine.setFormat sets each card's legality for the format, so
+     every pool, suggestion and rule check follows it. ---------- */
+  const isPDH = () => App.S.format === 'pdh';
+  const fmtSegHTML = () => '<div class="seg" role="radiogroup" aria-label="Format">' + Object.keys(Engine.FORMATS).map(f => '<button type="button" data-fmt="' + f + '" aria-pressed="' + ((App.S.format || '') === f) + '" title="' + (f ? 'The 99 must be commons; the commander an uncommon creature' : 'Standard Commander legality') + '">' + Engine.FORMATS[f] + '</button>').join('') + '</div>';
+  function syncFormat(force) {
+    if (!App.bulk) return;
+    const before = App.bulk.fmtKey; Engine.setFormat(App.bulk, App.S.format);
+    if (force || before !== App.bulk.fmtKey) { App.cmdIndex = null; App.BC = null; if (App.R && App.R.stats && App.tab !== 'setup' && !App.busy) renderView(); }
+    fmtNote();
+  }
+  function fmtNote() {
+    const el = $('fmtNote'); if (!el) return;
+    const src = App.bulk ? App.bulk.pdhSrc : '';
+    el.textContent = !isPDH() ? '' : !App.bulk ? 'Pauper Commander: the 99 must be commons, the commander an uncommon creature. Card data not loaded yet.' :
+      src === 'rarity' || src === 'printings' ? 'Pauper Commander: the 99 must have a common printing (paper or MTGO), the commander an uncommon creature, Vehicle or Spacecraft. Mystic Remora and Rhystic Study are banned.' :
+      src === 'scryfall' ? 'Pauper Commander legality from Scryfall\'s paupercommander field. A common creature with an uncommon printing is not offered as commander without the rarity file.' :
+      'Rarity data (data/rarity.json) is not loaded, so legality comes from one printing per card: some legal commons and commanders are missing.';
+  }
+  // switching format with a deck loaded runs its chain again: an imported list is kept and checked against the new
+  // format, a generated deck is rebuilt for it (with its locks and edits)
+  async function setFormatUI(fmt) {
+    fmt = fmt === 'pdh' ? 'pdh' : '';
+    const was = App.S.format || '';
+    if (was === fmt || App.busy) return;
+    if (App.R && App.R.stats && App.chain) { // the deck's commander must be legal in the new format, or the deck stays as it is
+      Engine.setFormat(App.bulk, fmt); const no = App.R.commanders.map(c => [c, Engine.commanderEligibility(c)]).filter(x => !x[1].ok); Engine.setFormat(App.bulk, was);
+      if (no.length) { setStatus('Format not changed: ' + no.map(([c, el]) => c.n + ' cannot be the commander in ' + Engine.formatName(fmt) + ' (' + el.msg + ')').join('; ') + '. Pick another commander on Start, or Clear, first.'); renderView(); return; }
+    }
+    if (fmt) App.S.format = fmt; else delete App.S.format;
+    writeForm(App.S); persistSettings(); checkCommanders();
+    if (App.R && App.R.stats && App.chain) {
+      const ch = App.chain, s2 = JSON.parse(JSON.stringify(ch.settings)); if (fmt) s2.format = fmt; else delete s2.format;
+      const tab = App.tab, ok = await replayChain(Object.assign({}, ch, { settings: s2 }), ch.ops);
+      App.AN = null; App.QS = null; App.PR = null; App.SH = null; App.UP = null; App.tab = tab; renderAll();
+      if (!ok) { const back = JSON.parse(JSON.stringify(App.S)); if (was) back.format = was; else delete back.format; App.S = back; writeForm(App.S); persistSettings(); }
+      if (ok && App.R) { const v = App.R.validation.rules.find(r => r.id === 'legality'); setStatus((ch.env && ch.env.asIs ? 'Checked the imported deck for ' : 'Rebuilt the deck for ') + Engine.formatName(fmt) + (v && !v.pass ? ': ' + v.offenders.length + ' card(s) not legal, listed under Rules.' : '.')); histPush('edit', 'Format: ' + Engine.formatName(fmt)); }
+      else setStatus('Format not changed: the deck could not be rebuilt for ' + Engine.formatName(fmt) + ' (see the messages above). The deck is unchanged.');
+      if (['analysis', 'changes', 'percard'].includes(App.tab) && App.R) runAnalysis();
+    } else renderView();
+  }
+
   /* ---------- data state ---------- */
   function comboProvider() { return App.bulkCombos || null; }
   function renderSources() {
+    syncFormat();
     const set = (id, cls, text) => { const el = $(id); el.innerHTML = '<span class="dot ' + cls + '"></span>' + esc(text); };
     set('pBulk', App.bulk ? 'ok' : '', App.bulk ? App.bulk.all.length.toLocaleString() + ' cards' : 'Card data not loaded');
     $('pBulk').title = App.bulk ? (App.bulk.meta.file || 'stored data') : '';
@@ -184,7 +237,7 @@
     document.querySelectorAll('[data-k]').forEach(el => { const v = getPath(S, el.dataset.k); if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v; });
     $('varOut').textContent = (+S.variance).toFixed(2);
     { const B = Engine.BRACKETS[S.bracket] || {}; $('brHint').textContent = B.name ? 'Bracket ' + S.bracket + ' · games end turn ' + B.turns : ''; }
-    syncQuick(S);
+    syncQuick(S); syncFormat();
   }
   /* ---------- quick start: writes into the regular settings ---------- */
   const PLANS = {
@@ -203,6 +256,7 @@
     const bv = S.budget && S.budget.total != null && S.budget.total !== '' ? String(+S.budget.total) : '';
     document.querySelectorAll('#qBudget button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.b === bv)));
     document.querySelectorAll('#qBracket button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.br === +S.bracket)));
+    document.querySelectorAll('[data-fmt]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.fmt === (S.format || ''))));
     if ($('budHint')) $('budHint').textContent = bv ? Engine.fmt(+bv, S.budget.cur || 'usd') + ' cap' : 'no limit';
   }
   function wireQuick() {
@@ -222,6 +276,7 @@
     $('qBudget').addEventListener('click', e => { const b = e.target.closest('button[data-b]'); if (!b) return; App.S.budget.total = b.dataset.b === '' ? '' : +b.dataset.b; writeForm(App.S); persistSettings(); });
     $('qBracket').addEventListener('click', e => { const b = e.target.closest('button[data-br]'); if (!b) return; App.S.bracket = +b.dataset.br; App.S.bl = Engine.bracketDefaults(App.S.bracket); writeForm(App.S); persistSettings(); });
     $('qGen').addEventListener('click', () => $('genBtn').click());
+    document.addEventListener('click', e => { const b = e.target.closest('button[data-fmt]'); if (b) setFormatUI(b.dataset.fmt); });
   }
   function onFormChange(ev) {
     const el = ev.target; if (!el.dataset || !el.dataset.k) return;
@@ -1730,7 +1785,7 @@
     const B = blState(), cmds = blCmds(), o = ownedCards(), th = blThemes(cmds), live = blLive() ? App.R : null;
     let owned = !B.all && o && o.set.size ? o.set : null;
     if (owned && live) owned = new Set([...owned, ...live.deck.map(e => e.c.n)]); // the deck's own cards stay listed, owned or not
-    const key = cmds.map(c => c.n).join('|') + '#' + (owned ? o.key : 'all') + '#' + th.join(',');
+    const key = cmds.map(c => c.n).join('|') + '#' + (owned ? o.key : 'all') + '#' + th.join(',') + '#' + App.bulk.fmtKey;
     if (App.BC && App.BC.key === key && App.BC.db === App.bulk && App.BC.R === live) return App.BC;
     const CI = blCI(cmds), tags = th.map(Builder.themeTag).filter(Boolean), cards = Builder.pool(App.bulk, CI, owned, cmds);
     const cats = new Map(cards.map(c => [c, Builder.cardCats(c, tags)]));
@@ -1759,7 +1814,7 @@
     if (!cmds.length) { $('view').innerHTML = modeSeg + blStartHTML(o, n); return; }
     const P = blPool();
     const head = modeSeg + '<div class="bl-head"><div class="bl-cmd"><span class="note">Commander</span><b>' + cmds.map(c => cardLink(c)).join(' + ') + '</b> <span>' + pipsHTML(P.CI) + '</span> ' + (live ? '<span class="note">(change it on Start)</span>' : '<button type="button" class="link" data-bl="cmd-change">Change</button>') + '</div>' +
-      '<div class="bl-br"><span class="note">Targets from</span><div class="seg" role="group" aria-label="Bracket for the targets">' + [1, 2, 3, 4, 5].map(b => '<button type="button" data-blbr="' + b + '" aria-pressed="' + (+B.bracket === b) + '" title="Reference decks of Bracket ' + b + '">B' + b + '</button>').join('') + '</div></div>' +
+      '<div class="bl-br"><span class="note">Format</span>' + fmtSegHTML() + '</div><div class="bl-br"><span class="note">Targets from</span><div class="seg" role="group" aria-label="Bracket for the targets">' + [1, 2, 3, 4, 5].map(b => '<button type="button" data-blbr="' + b + '" aria-pressed="' + (+B.bracket === b) + '" title="Reference decks of Bracket ' + b + '">B' + b + '</button>').join('') + '</div></div>' +
       (n ? '<div class="seg" role="group" aria-label="Cards to offer"><button type="button" data-blall="0" aria-pressed="' + !B.all + '">My collection</button><button type="button" data-blall="1" aria-pressed="' + B.all + '">All cards</button></div>' : '') + '</div>' +
       blThemesHTML(P);
     $('view').innerHTML = head + '<div class="bl-grid"><section class="bl-pick" aria-label="Cards to pick"><div id="blCats" class="bl-cats">' + blCatsHTML(P) + '</div>' + blFiltersHTML() + '<div id="blList">' + blListHTML(P) + '</div></section>' +
@@ -1771,10 +1826,11 @@
     let list = q.length >= 2 ? idx.filter(c => Engine.nameKey(c.n).includes(q)) : n ? idx.filter(c => o.set.has(c.n)) : idx;
     if (n) list = list.filter(c => o.set.has(c.n)).concat(list.filter(c => !o.set.has(c.n)));
     const ownCmd = n ? idx.filter(c => o.set.has(c.n)).length : 0;
-    const pick = '<div class="tile"><div class="tile-h"><h3>Pick a commander</h3><span class="hint">' + (n ? ownCmd + ' in your collection' : 'any legal commander') + '</span></div>' +
+    const pick = '<div class="tile"><div class="tile-h"><h3>Pick a commander</h3><span class="hint">' + (n ? ownCmd + ' in your collection' : 'any legal ' + Engine.formatName() + ' commander') + '</span></div>' +
+      '<div class="bl-br" style="margin-bottom:8px"><span class="note">Format</span>' + fmtSegHTML() + '</div>' +
       '<label class="f">Search commanders<input type="search" id="blCq" value="' + esc(B.cq || '') + '" placeholder="Start typing a name" autocomplete="off"></label>' +
       '<div class="bl-cmdlist" id="blCmdList">' + blCmdListHTML(list, o) + '</div>' +
-      '<p class="note" style="margin:0">Only cards inside the commander\'s colour identity and legal in Commander are offered. ' + (n ? 'Your commanders are listed first.' : '') + '</p></div>';
+      '<p class="note" style="margin:0">Only cards inside the commander\'s colour identity and legal in ' + Engine.formatName() + ' are offered' + (isPDH() ? ' (commons; the commander an uncommon creature)' : '') + '. ' + (n ? 'Your commanders are listed first.' : '') + '</p></div>';
     let bd = '';
     if (n) {
       const cards = [...o.set].map(x => Engine.lookup(App.bulk, x)).filter(c => c && c.leg === 'legal'), tags = Object.keys(Engine.TAGS).map(Builder.themeTag).filter(Boolean), D = Builder.breakdown(cards, tags);
@@ -1785,7 +1841,7 @@
       const Ty = Analysis.TYPE_CATS.map(([k, l]) => [l, D.types[k]]).concat([['Lands', D.roles.lands]]);
       const Ci = Object.entries(D.ci).sort((a, b) => b[1] - a[1]), rest = Ci.splice(10).reduce((t, x) => t + x[1], 0);
       const mx = a => Math.max(1, ...a.map(x => x[1]));
-      bd = '<div class="tile"><div class="tile-h"><h3>Your collection by role</h3><span class="hint">' + cards.length.toLocaleString() + ' Commander-legal cards</span></div>' + rows(R, mx(R)) +
+      bd = '<div class="tile"><div class="tile-h"><h3>Your collection by role</h3><span class="hint">' + cards.length.toLocaleString() + ' ' + Engine.formatName() + '-legal cards</span></div>' + rows(R, mx(R)) +
         '<p class="note" style="margin:0">A card counts in every role it fills, with the same rules as Deck › Counts.</p></div>' +
         '<div class="tile"><div class="tile-h"><h3>By synergy theme</h3></div>' + rows(Th, mx(Th)) + '</div>' +
         '<div class="tile"><div class="tile-h"><h3>By card type</h3></div>' + rows(Ty, mx(Ty)) + '</div>' +
@@ -2032,7 +2088,7 @@
       '<div class="note">' + esc(c.tl) + (c.pt ? ' · ' + esc(c.pt) : '') + '</div>' +
       (c.ot ? '<div class="cp-ot">' + manaHTML(c.ot).replace(/\n/g, '<br>') + '</div>' : '') +
       (ownSet() && !Engine.isBasic(c) ? '<div class="cp-m">' + (ownSet().has(c.n) ? '<span class="ownmk"></span> In your collection' : 'Not in your collection') + '</div>' : '') +
-      '<div class="cp-m">' + (p != null ? fmtP(p) : 'no price') + (c.rank ? ' · EDHREC #' + c.rank.toLocaleString() : '') + (c.leg !== 'legal' ? ' · <span class="pup">' + esc(c.leg.replace('_', ' ')) + ' in Commander</span>' : '') + '</div>' +
+      '<div class="cp-m">' + (p != null ? fmtP(p) : 'no price') + (c.rank ? ' · EDHREC #' + c.rank.toLocaleString() : '') + (c.leg !== 'legal' && !(isCmd && Engine.commanderEligibility(c).ok) ? ' · <span class="pup">' + esc(isPDH() ? Engine.illegalWhy(c) : c.leg.replace('_', ' ') + ' in Commander') + '</span>' : '') + '</div>' +
       (chips ? '<div>' + chips + '</div>' : '') +
       (isCmd ? '<div class="cp-why"><b>Commander</b></div>' : e ? '<div class="cp-why"><b>Why it is in the deck:</b> ' + esc(e.why || Engine.SLOT_LABEL[e.slot] || e.slot || '') + (e.locked ? ' (locked)' : '') + '</div>' : '') +
       (e && !isCmd ? (i => '<div class="row cp-acts"><button type="button" class="small" data-act="lock" data-i="' + i + '" aria-pressed="' + !!e.locked + '">' + (e.locked ? 'Unlock' : 'Lock') + '</button>' + (Engine.isBasic(c) ? '' : '<button type="button" class="small" data-act="swap" data-i="' + i + '">Swap</button><button type="button" class="small" data-act="remove" data-i="' + i + '">Remove</button>') + '</div>')(R.deck.indexOf(e)) : '') +
@@ -2331,8 +2387,9 @@
     App.restoring = true;
     try {
       App.S = deepAssign(uiDefaults(), JSON.parse(JSON.stringify(chain.settings))); writeForm(App.S); persistSettings();
+      const before = App.R;
       await runGenerate(chain.env);
-      const R = App.R; if (!R) return false;
+      const R = App.R; if (!R || R === before) return false; // not rebuilt: the edits are not replayed onto the old deck
       for (const op of ops) {
         const cut = op.cut && R.deck.find(x => x.c.n === op.cut), add = op.add && Engine.lookup(App.bulk, op.add);
         if (op.op === 'swap' && cut && add) await R.swapOne(cut, add);
