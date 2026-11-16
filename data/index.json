@@ -7,9 +7,9 @@
    "sha256": "e7e7de1d76655a6e52b245fc0d1ad8468ca5c9277bb264f13ce6fbe14fb0dd48"
   },
   {
-   "name": "oracle-cards-20261108220201.jsonl.gz",
-   "size": 7163701,
-   "sha256": "5bf05e637381f834ded5401d2e8864b8f29a134abb1877147d2536c3335a78bd"
+   "name": "oracle-cards-20261115220206.jsonl.gz",
+   "size": 7164113,
+   "sha256": "df770c6284f2c502515974cad55688572e4d1587c8c8f55934e47cb8f71f44f6"
   },
   {
    "name": "rarity.json",
@@ -19,7 +19,7 @@
  ],
  "spellbook": {
   "manifest": "spellbook/manifest.json",
-  "variants": 119486,
-  "timestamp": "2026-11-10T12:11:49.479638+00:00"
+  "variants": 121768,
+  "timestamp": "2026-11-16T08:13:29.510437+00:00"
  }
 }
