@@ -120,7 +120,7 @@ const Deep = (function () {
     const names = ctx.cmds.map(c => c.n).concat(ctx.deck.map(e => e.c.n));
     const S = ctx.settings || {}, lim = Object.assign(E.bracketDefaults(+S.bracket || 3), S.bl || {});
     const lim2 = lim.combo2 <= 0; // two-card infinite combos barred in this bracket
-    const al = (await prov.almost(names, n => inPool.has(n), 2)).filter(x => x.v.r === 0 && !(lim2 && x.v.inf && x.v.c.length <= 2));
+    const al = (await prov.almost(names, n => inPool.has(n), 2, ctx.cmds.map(c => c.n))).filter(x => x.v.r === 0 && !(lim2 && x.v.inf && x.v.c.length <= 2));
     const rankOf = x => -(x.v.pop || 0);
     const single = [], pairs = [], s1 = new Set(), s2 = new Set();
     for (const x of al.slice().sort((a, b) => rankOf(a) - rankOf(b))) {

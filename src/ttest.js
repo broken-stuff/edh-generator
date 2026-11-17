@@ -43,3 +43,21 @@ assert(bare.length / top.length <= 0.2, 'EDHREC top 500: ' + bare.length + ' of 
   const wrong = [...shared.values()].filter(l => l.length > 1 && l.some(c => c.leg === 'legal') && E.lookup(db, l[0].n).leg !== 'legal').map(l => l[0].n);
   assert(E.lookup(db, 'Pick Your Poison').leg === 'legal' && !wrong.length, 'shared names look up the legal card' + (wrong.length ? '; wrong: ' + wrong.slice(0, 10).join(', ') : ''));
 }
+// regressions from the once-over audit: bracket markers, tutor and draw tags, split and MDFC costs, import edge cases
+{
+  const An = require('./analysis.js'), fl = (n, f) => !!E.analyze(E.lookup(db, n)).flags[f], role = (n, r) => !!E.analyze(E.lookup(db, n)).roles[r];
+  assert(['Jokulhaups', 'Global Ruin', 'Winter Orb', 'Static Orb', 'Blood Moon', 'Cataclysm', 'Armageddon'].every(n => fl(n, 'mld')) && !fl('Elspeth Tirel', 'mld') && !fl('Cataclysmic Gearhulk', 'mld'), 'mld: land destruction, Orbs and Blood Moon flagged; "except lands" and nonland choices not');
+  assert(['Beseech the Queen', 'Finale of Devastation', 'Demonic Tutor'].every(n => fl(n, 'tutor')) && !['Cultivate', 'Scapeshift', 'Path to Exile', 'Farseek'].some(n => fl(n, 'tutor')), 'tutor: card tutors flagged, land searches not');
+  assert(['Fact or Fiction', 'Dig Through Time', 'Necropotence', 'Ad Nauseam'].every(n => role(n, 'draw')) && !role('Impulse', 'draw'), 'draw: card selection that keeps 2+ cards and life-for-cards engines');
+  const P = t => An.pickCommanders(An.parseDecklist(t), db), cn = K => K.cmds.map(c => c.n).join(' + ');
+  assert(cn(P("Commander\n1 Atraxa, Praetors' Voice\n\nDeck\n1x Sol Ring [Commander Staples]\n1 Arcane Signet #commander-staple")) === "Atraxa, Praetors' Voice", 'import: a "Commander …" category or tag does not make a commander');
+  assert(cn(P("Commander\n1 Atraxa, Praetors' Voice\n1 Sol Ring\n30 Forest")) === "Atraxa, Praetors' Voice", 'import: a Commander header without a blank line keeps the rest in the deck');
+  assert(cn(P("Commander: Atraxa, Praetors' Voice\n1 Sol Ring")) === "Atraxa, Praetors' Voice", 'import: "Commander: Name" on one line');
+  const csv = An.parseDecklist('sep=,\nQuantity,Card Name,Tags\n1,Burning Wish,Wishes\n2,Sol Ring,\n1,Opt,Maybeboard');
+  assert(csv.main.map(x => x.name).join('|') === 'Burning Wish|Sol Ring' && csv.skipped === 1, 'import: CSV with "Card Name" and sep= line, whole-word board tags, skipped cards counted');
+  assert(An.parseDecklist('Quantity,Name of card\n1,Sol Ring').error, 'import: a CSV with no name column says so');
+  const v = E.spellbookVariants({ cards: ["Thassa's Oracle", 'Demonic Consultation'], features: ['Win the game'], templates: [] }, [[1, [0, 1], [0], [], 'UB', 0, '', 1, 0]], db);
+  assert(v.length === 1 && v[0].inf, "combos: a two-card win (Thassa's Oracle + Demonic Consultation) counts as a two-card infinite for the brackets");
+  const isl = { c: E.lookup(db, 'Island'), qty: 36 }, X1 = An.run(db, [isl, { c: E.lookup(db, 'Sea Gate Restoration'), qty: 4 }, { c: E.lookup(db, 'Fire // Ice'), qty: 1 }], [E.lookup(db, 'Talrand, Sky Summoner')], { games: 500 });
+  assert(X1.nLands === 40 && Math.abs(X1.avgMV - 2) < 1e-9, 'analysis: an MDFC land counts as a land; a split card costs its cheaper half');
+}

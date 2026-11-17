@@ -5,6 +5,21 @@ const Analysis = (function () {
   const M = (typeof Mech !== 'undefined') ? Mech : (typeof require === 'function' ? require('./mech.js') : null);
   const mechWhy = t => t.replace(/^needs /, 'uses ').replace(/\./g, ' ');
   const A = c => E.analyze(c);
+  // a modal double-faced card with a land back (Sea Gate Restoration, Malakir Rebirth) is played as a land in most games
+  const landish = c => A(c).isLand || /\/\/ Land\b/.test(c.tl);
+  // the cost a card is cast for: a split card (Fire // Ice, Commit // Memory) is cast as either half, so its cheaper half,
+  // not the sum Scryfall gives as its mana value; other cards use their front face and mana value
+  const mvOf = mc => (mc.match(/\{[^}]+\}/g) || []).reduce((s, t) => /^\{\d+\}$/.test(t) ? s + +t.slice(1, -1) : /^\{X\}$/i.test(t) ? s : s + 1, 0);
+  const CC = new WeakMap();
+  function castCost(c) {
+    let r = CC.get(c); if (r) return r;
+    const parts = (c.mc || '').split(' // ');
+    r = { mc: parts[0], mv: c.cmc || 0 };
+    if (parts.length === 2 && parts[0] && parts[1] && mvOf(parts[0]) + mvOf(parts[1]) === Math.round(c.cmc || 0)) {
+      const [m0, m1] = parts.map(mvOf); r = m1 < m0 ? { mc: parts[1], mv: m1 } : { mc: parts[0], mv: m0 };
+    }
+    CC.set(c, r); return r;
+  }
   const PQ = (typeof Plan !== 'undefined') ? Plan : (typeof require === 'function' ? require('./plan.js') : null);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const ratio = (have, target) => target > 0 ? clamp(have / target, 0, 1) : 1;
@@ -78,8 +93,8 @@ const Analysis = (function () {
   function manaModel(c) {
     let m = MM.get(c); if (m) return m;
     const a = A(c), low = c.low;
-    m = { land: a.isLand, tapped: false, rampPerm: 0, dork: false, rampLand: 0, extraDrop: 0, perm: isPerm(c), burst: 0, cond: null, pitch: null };
-    if (a.isLand) {
+    m = { land: landish(c), tapped: false, rampPerm: 0, dork: false, rampLand: 0, extraDrop: 0, perm: isPerm(c), burst: 0, cond: null, pitch: null };
+    if (m.land) {
       m.tapped = /(?:~|this land) enters (?:the battlefield )?tapped/.test(low) && !/unless|you may pay|if you control|if you don't/.test(low);
     } else {
       if (m.perm && a.roles.ramp) {
@@ -121,7 +136,7 @@ const Analysis = (function () {
   /* ---------- probability: hypergeometric ---------- */
   const lf = [0]; for (let i = 1; i <= 200; i++) lf[i] = lf[i - 1] + Math.log(i);
   const lC = (n, k) => k < 0 || k > n ? -Infinity : lf[n] - lf[k] - lf[n - k];
-  const hyp = (N, K, n, k) => Math.exp(lC(K, k) + lC(N - K, n - k) - lC(N, n));
+  const hyp = (N, K, n, k) => k < 0 || k > K || k > n || n > N || n - k > N - K ? 0 : Math.exp(lC(K, k) + lC(N - K, n - k) - lC(N, n));
   const atLeast = (N, K, n, k) => { let p = 0; for (let i = k; i <= Math.min(n, K); i++) p += hyp(N, K, n, i); return p; };
   // P(at least k of the K colour sources among n cards | at least t of the L lands among them), K ⊆ L: Karsten's definition of
   // castable on curve (the chance of the colour, given you hit your land drops). Exact over the three groups.
@@ -146,8 +161,8 @@ const Analysis = (function () {
   // deck: [{ c, qty }] → { N, L, landSrc, cast } for the colour check (commanders included as cards)
   function colourCheck(deck, cmds, CI) {
     const landSrc = { W: 0, U: 0, B: 0, R: 0, G: 0 }; let N = 0, L = 0;
-    for (const e of deck) { const q = e.qty || 1; N += q; if (!A(e.c).isLand) continue; L += q; for (const x of colourSources(e.c, CI)) if (CI.includes(x)) landSrc[x] += q; }
-    const cards = cmds.map(c => ({ c, cmd: true })).concat(deck.filter(e => !A(e.c).isLand).map(e => ({ c: e.c })));
+    for (const e of deck) { const q = e.qty || 1; N += q; if (!landish(e.c)) continue; L += q; for (const x of colourSources(e.c, CI)) if (CI.includes(x)) landSrc[x] += q; }
+    const cards = cmds.map(c => ({ c, cmd: true })).concat(deck.filter(e => !landish(e.c)).map(e => ({ c: e.c })));
     return { N, L, landSrc, cast: castCheck(cards, N, L, landSrc) };
   }
   // cards: [{ c, cmd? }]; landSrc: colour → lands producing it; returns one row per card and colour, worst first
@@ -155,7 +170,7 @@ const Analysis = (function () {
     const rows = [];
     for (const { c, cmd } of cards) {
       // X spells are judged as cast with X = 2
-      const mc = (c.mc || '').split(' // ')[0], t = Math.max(1, Math.round(c.cmc || 0) + (/\{X\}/.test(mc) ? 2 : 0)), n = Math.min(N, 7 + t - 1);
+      const { mc, mv } = castCost(c), t = Math.max(1, Math.round(mv) + (/\{X\}/.test(mc) ? 2 : 0)), n = Math.min(N, 7 + t - 1);
       for (const X of 'WUBRG') {
         const k = (mc.match(new RegExp('\\{' + X + '\\}', 'g')) || []).length; if (!k) continue;
         const K = Math.min(L, landSrc[X] || 0);
@@ -207,10 +222,10 @@ const Analysis = (function () {
   const SMC = new WeakMap();
   function simModel(c, CI) {
     let byCI = SMC.get(c); if (!byCI) SMC.set(c, byCI = {}); if (byCI[CI]) return byCI[CI];
-    const a = A(c), m = manaModel(c), mc = (c.mc || '').split(' // ')[0], ciMask = [...CI].reduce((s, x) => s | (BIT[x] || 0), 0);
+    const a = A(c), m = manaModel(c), mc = castCost(c).mc, ciMask = [...CI].reduce((s, x) => s | (BIT[x] || 0), 0);
     const maskOf = cols => cols.reduce((s, x) => s | (BIT[x] || 0), 0) & ciMask;
     const pips = []; for (const x of 'WUBRG') { const k = (mc.match(new RegExp('\\{' + x + '\\}', 'g')) || []).length; for (let i = 0; i < k; i++) pips.push(BIT[x]); }
-    const s = { land: m.land, tapped: m.tapped, cmc: Math.round(c.cmc || 0) + (/\{X\}/.test(mc) ? 2 : 0), pips, rampPerm: m.rampPerm, dork: m.dork, rampLand: m.rampLand, extraDrop: m.extraDrop };
+    const s = { land: m.land, tapped: m.tapped, cmc: Math.round(castCost(c).mv) + (/\{X\}/.test(mc) ? 2 : 0), pips, rampPerm: m.rampPerm, dork: m.dork, rampLand: m.rampLand, extraDrop: m.extraDrop };
     s.ramp = !m.land && (m.rampPerm || m.rampLand || m.extraDrop) ? 1 : 0;
     s.burst = m.burst; s.cond = m.cond; s.pitch = m.pitch;
     s.legend = /\bLegendary\b/.test(c.ft) && /\b(?:Creature|Planeswalker)\b/.test(c.ft);
@@ -294,7 +309,8 @@ const Analysis = (function () {
     sopt = sopt || {};
     const CI = sopt.CI != null ? sopt.CI : 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
     // the library holds indices into cards0; models and name keys are looked up once
-    const cards0 = []; for (const e of cards) for (let i = 0; i < e.qty; i++) cards0.push(e.c);
+    // in name order, so the same list gives the same games whatever order it was pasted or swapped in
+    const cards0 = []; for (const e of cards.slice().sort((a, b) => a.c.n < b.c.n ? -1 : a.c.n > b.c.n ? 1 : 0)) for (let i = 0; i < e.qty; i++) cards0.push(e.c);
     const mods = cards0.map(c => simModel(c, CI)), keys = cards0.map(c => E.nameKey(c.n)), lib0 = cards0.map((_, i) => i);
     const N = lib0.length, rng = mulberry32(seed >>> 0), M = k => mods[k], ciMask = [...CI].reduce((s, x) => s | (BIT[x] || 0), 0);
     const T = 12, TR = 10, KILL = 120;
@@ -535,12 +551,12 @@ const Analysis = (function () {
     const targets = Object.assign({}, BENCH, S.targets || {}, { avgMV: +((S.mana && S.mana.avgMV) || BENCH.avgMV) });
     const CI = 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
     const all = deck.map(e => ({ c: e.c, qty: e.qty || 1, locked: !!e.locked }));
-    const nonland = all.filter(e => !A(e.c).isLand), lands = all.filter(e => A(e.c).isLand);
+    const nonland = all.filter(e => !landish(e.c)), lands = all.filter(e => landish(e.c));
     const qty = arr => arr.reduce((s, e) => s + e.qty, 0);
     const count = pred => all.filter(e => pred(e.c)).reduce((s, e) => s + e.qty, 0);
     const names = pred => all.filter(e => pred(e.c)).map(e => e.c.n);
     const nLands = qty(lands), nNon = qty(nonland);
-    const avgMV = nNon ? nonland.reduce((s, e) => s + e.c.cmc * e.qty, 0) / nNon : 0;
+    const avgMV = nNon ? nonland.reduce((s, e) => s + castCost(e.c).mv * e.qty, 0) / nNon : 0;
     const role = r => count(c => A(c).roles[r]);
     const flag = f => count(c => A(c).flags[f]);
 
@@ -664,7 +680,10 @@ const Analysis = (function () {
       breaks.push('Bracket ' + b + ' exceeded by ' + over.map(k => k + ' ' + (k === 'combo2' ? twoInf : cnt[k]) + '>' + L[k]).join(', '));
     }
     const cedhSignals = [cnt.fast >= 4 ? 'fast mana ' + cnt.fast : '', cnt.tutor >= 6 ? 'tutors ' + cnt.tutor : '', twoInf >= 1 ? '2-card infinites ' + twoInf : '', avgMV <= 2.3 ? 'avg MV ' + avgMV.toFixed(2) : ''].filter(Boolean);
-    const bracket = { estimate: est === 1 ? '1–2' : String(est), turns: E.BRACKETS[est === 1 ? 2 : est].turns, counts: cnt, twoInf, reasons: breaks, cedhSignals, note: est <= 2 ? 'Brackets 1 and 2 share card limits except extra turns; they differ by intent and expected game length, which card data cannot measure.' : (est === 4 && twoInf > 0 && cnt.gc <= 3 && cnt.mld === 0 && cnt.xturn <= 2) ? 'Only 2-card infinites exceed Bracket 3. Bracket 3 forbids early-game 2-card infinites only; if these assemble late, the list fits Bracket 3.' : (est === 4 && cedhSignals.length >= 3 ? 'Several cEDH indicators present; could be Bracket 5 depending on intent.' : '') };
+    // the cards behind each marker, so the page can say which cards set the bracket
+    const flagNames = f => names(c => A(c).flags[f]);
+    const markerCards = { gc: cmds.filter(c => c.gc).map(c => c.n).concat(flagNames('gc')), mld: flagNames('mld'), xturn: flagNames('xturn'), combo2: combos ? combos.filter(v => v.inf && v.c.length <= 2).map(v => v.c.join(' + ')) : [] };
+    const bracket = { estimate: est === 1 ? '1–2' : String(est), turns: E.BRACKETS[est === 1 ? 2 : est].turns, counts: cnt, cards: markerCards, twoInf, reasons: breaks, cedhSignals, note: est <= 2 ? 'Brackets 1 and 2 share card limits except extra turns; they differ by intent and expected game length, which card data cannot measure.' : (est === 4 && twoInf > 0 && cnt.gc <= 3 && cnt.mld === 0 && cnt.xturn <= 2) ? 'Only 2-card infinites exceed Bracket 3. Bracket 3 forbids early-game 2-card infinites only; if these assemble late, the list fits Bracket 3.' : (est === 4 && cedhSignals.length >= 3 ? 'Several cEDH indicators present; could be Bracket 5 depending on intent.' : '') };
 
     /* axes */
     const P = (t, k) => t + ' · avg ' + POP[k];
@@ -862,7 +881,10 @@ const Analysis = (function () {
     const cur = (S.budget && S.budget.cur) || 'usd';
     const lim = Object.assign(E.bracketDefaults(S.bracket || 3), S.bl || {});
     const denied = new Set(opts.deny || []), owned = opts.owned instanceof Set ? opts.owned : null; // owned: adds only from this collection
-    const pool = db ? db.all.filter(c => c.leg === 'legal' && !E.isBasic(c) && !inDeck.has(c.n) && !denied.has(c.n) && !(owned && !owned.has(c.n)) && [...c.ci].every(x => CI.includes(x)) && !(pcap != null && (c.p[cur] == null || c.p[cur] > pcap)) && !(c.gc && cnt.gc >= lim.gc) && !(A(c).flags.tutor && cnt.tutor >= lim.tutor) && !(A(c).flags.mld && lim.mld <= 0) && !(A(c).flags.xturn && cnt.xturn >= lim.xturn)) : [];
+    // the Start page's exclude list and Reserved List filter apply to suggestions too
+    const excl = new Set(); if (db && S.exclude) for (const it of E.parseList(S.exclude)) { const c = E.lookup(db, it.name); if (c) excl.add(c.n); }
+    const noRL = S.filters && S.filters.reserved === 'exclude';
+    const pool = db ? db.all.filter(c => c.leg === 'legal' && !E.isBasic(c) && !inDeck.has(c.n) && !denied.has(c.n) && !excl.has(c.n) && !(noRL && c.rl) && !(owned && !owned.has(c.n)) && [...c.ci].every(x => CI.includes(x)) && !(pcap != null && (c.p[cur] == null || c.p[cur] > pcap)) && !(c.gc && cnt.gc >= lim.gc) && !(A(c).flags.tutor && cnt.tutor >= lim.tutor) && !(A(c).flags.mld && lim.mld <= 0) && !(A(c).flags.xturn && cnt.xturn >= lim.xturn)) : [];
     // cards outside the deck: mechanics links estimated from the deck profile (exact pairs for the commanders),
     // scaled by this deck's ratio of exact mechanics links to profile weight
     const mRatio = (() => { if (!M) return 0; let a = 0, b = 0; for (const x of perCard) { a += x.mlinks; b += M.links(x.c, mprof, null, true).w; } return b > 0 ? a / b : 0; })();
@@ -1012,10 +1034,13 @@ const Analysis = (function () {
     const nBasic = P.deck.filter(e => E.isBasic(e.c) && !e.locked).reduce((s, e) => s + e.qty, 0);
     const seen = new Set(), adds = [], lands = [];
     const take = (arr, list) => { for (const c of list) if (!seen.has(c)) { seen.add(c); arr.push(c); } };
-    if (cuts.length) {
-      for (const r of Object.keys(P.targets)) take(adds, P.pick(c => priced(c) && !A(c).isLand && A(c).roles[r], 5));
-      for (const k of Object.keys(P.upg)) take(adds, P.pick(c => priced(c) && !A(c).isLand && P.upg[k][0](c), 4));
-      take(adds, P.pick(c => priced(c) && !A(c).isLand, 12));
+    // the same candidate lists at the budget and at each smaller preset ($20, $5), so a bigger budget always measures every
+    // card a smaller one would (with one list, pricier cards pushed good cheap swaps out and $50 found less than $20)
+    if (cuts.length) for (const cap of [budget].concat([20, 5].filter(x => x < budget))) {
+      const ok = c => priced(c) && P.price(c) <= cap && !A(c).isLand;
+      for (const r of Object.keys(P.targets)) take(adds, P.pick(c => ok(c) && A(c).roles[r], 5));
+      for (const k of Object.keys(P.upg)) take(adds, P.pick(c => ok(c) && P.upg[k][0](c), 4));
+      take(adds, P.pick(ok, 12));
     }
     if (P.multi && basic) take(lands, P.pool.filter(c => A(c).isLand && priced(c) && P.landOn(c) >= 2 && P.landValue(c) - P.landValue(basic.c) >= 1.5).sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9)).slice(0, 12)); // most played first: the simulation rates most duals alike, and pain or filter costs aren't modelled
     const total = adds.length + lands.length + Math.max(0, cuts.length - 1) + 1; let done = 0;
@@ -1146,9 +1171,12 @@ const Analysis = (function () {
   // Quantities, not lines, are counted: "26 Forest" is 26 cards.
   const SKIP_SEC = /^(maybe ?board|considering|tokens?|acquire ?board|wish ?list|wants?)$/i, SB_SEC = /^(sideboard|side|companion)$/i;
   function parseDecklist(text) {
-    const lines = String(text || '').replace(/^﻿/, '').split(/\r?\n/);
+    let lines = String(text || '').replace(/^﻿/, '').split(/\r?\n/);
+    const first = lines.findIndex(l => l.trim() && !/^"?sep=.?"?$/i.test(l.trim()));
+    if (first > 0 && /,/.test(lines[first]) && /\bname\b/i.test(lines[first])) lines = lines.slice(first);
     if (lines.length && /,/.test(lines[0]) && /\bname\b/i.test(lines[0])) return parseCSVDeck(lines);
-    const items = []; let section = 'main', blk = 0, explicit = false;
+    const items = []; let section = 'main', blk = 0, explicit = false, skipped = 0;
+    const lineQty = l => { const m = l.match(/^(\d+)\s*x?\s/i); return m ? +m[1] : 1; };
     const hasCmd = () => items.some(x => x.sec === 'cmd');
     for (const raw of lines) {
       let line = raw.replace(/\t/g, ' ').trim();
@@ -1159,36 +1187,42 @@ const Analysis = (function () {
       if (SB_SEC.test(head)) { section = 'sb'; continue; }
       if (SKIP_SEC.test(head)) { section = 'skip'; continue; }
       if (/^(?:\/\/|#)/.test(line) || /^[A-Za-z][\w '&/,-]*\s*\(\d+\)\s*:?$/.test(line)) { if (section === 'cmd' && hasCmd()) section = 'main'; continue; } // comment or category header such as "Creatures (30)"
+      if (!items.length && /^(about|name\s.+)$/i.test(line)) continue; // Arena's "About" / "Name My Deck" preamble
+      const inl = line.match(/^commanders?\s*:\s*(\S.*)$/i); // "Commander: Atraxa, Praetors' Voice" on one line
+      if (inl) { const it = E.parseLine(inl[1]); if (it) { items.push(Object.assign(it, { sec: 'cmd', blk })); explicit = true; } continue; }
       let sec = section;
       const sb = line.match(/^SB:\s*(.+)$/i); if (sb) { line = sb[1]; sec = 'sb'; }
       const tags = (line.match(/\[[^\]]*\]/g) || []).join(' ');
-      const cmdTag = /\[commander/i.test(tags) || /\*CMDR\*/i.test(line) || /(?:^|\s)#!?commander\b/i.test(line);
-      if (!cmdTag && /\{nodeck\}|\[(?:maybe ?board|considering|sideboard)/i.test(tags)) continue; // Archidekt cards kept out of the deck
-      if (sec === 'skip' && !cmdTag) continue;
+      const cmdTag = /\[commanders?(?:\{[^}]*\})*[\],]/i.test(tags) || /\*CMDR\*/i.test(line) || /(?:^|\s)#!?commanders?(?![\w-])/i.test(line);
+      if (!cmdTag && /\{nodeck\}|\[(?:maybe ?board|considering|sideboard)/i.test(tags)) { skipped += lineQty(line); continue; } // Archidekt cards kept out of the deck
+      if (sec === 'skip' && !cmdTag) { skipped += lineQty(line); continue; }
       const it = E.parseLine(line); if (!it) continue;
       if (cmdTag) { sec = 'cmd'; explicit = true; }
       items.push(Object.assign(it, { sec, blk }));
     }
-    return split(items, explicit);
+    return split(items, explicit, skipped);
   }
   function parseCSVDeck(lines) {
-    const h = E.splitCSV(lines[0]).map(x => x.toLowerCase().trim()), name = h.indexOf('name');
+    const h = E.splitCSV(lines[0]).map(x => x.toLowerCase().trim()), name = h.findIndex(x => /^(card ?)?name$/.test(x));
+    if (name < 0) return Object.assign(split([], false, 0), { error: 'The CSV has no Name or Card Name column.' });
     const qty = h.findIndex(x => x === 'count' || x === 'quantity' || x === 'qty' || x === 'amount');
     const sect = h.map((x, i) => /^(board|section|category|categories|tags?|type|deck)$/.test(x) ? i : -1).filter(i => i >= 0);
-    const items = []; let explicit = false;
+    const items = []; let explicit = false, skipped = 0;
+    const tagIs = (tag, re) => tag.split(/[,;|]/).some(t => re.test(t.trim()));
     for (const line of lines.slice(1)) {
       if (!line.trim()) continue;
       const f = E.splitCSV(line), n = (f[name] || '').trim(); if (!n) continue;
-      const tag = sect.map(i => f[i] || '').join(' ');
-      if (!/commander/i.test(tag) && /maybe|considering|sideboard|wish/i.test(tag)) continue;
-      const cmd = /commander/i.test(tag); if (cmd) explicit = true;
-      items.push({ qty: qty >= 0 ? Math.max(1, parseInt(f[qty], 10) || 1) : 1, name: n, sec: cmd ? 'cmd' : 'main', blk: 0 });
+      const tag = sect.map(i => f[i] || '').join(','), q = qty >= 0 ? Math.max(1, parseInt(f[qty], 10) || 1) : 1;
+      const cmd = tagIs(tag, /^commanders?$/i);
+      if (!cmd && tagIs(tag, /^(maybe ?board|considering|sideboard|side|wish ?list|wishlist)$/i)) { skipped += q; continue; }
+      if (cmd) explicit = true;
+      items.push({ qty: q, name: n, sec: cmd ? 'cmd' : 'main', blk: 0 });
     }
-    return split(items, explicit);
+    return split(items, explicit, skipped);
   }
-  function split(items, explicit) {
+  function split(items, explicit, skipped) {
     const of = s => items.filter(x => x.sec === s).map(x => ({ qty: x.qty, name: x.name, blk: x.blk }));
-    return { cmd: of('cmd'), main: of('main'), sb: of('sb'), explicit };
+    return { cmd: of('cmd'), main: of('main'), sb: of('sb'), explicit, skipped: skipped || 0 };
   }
   // Commanders for a parsed list. A "Commander" section or tag wins. Without one, in order: the last block after a blank line
   // (Moxfield and MTGO put it there), the sideboard (MTGO), a first block of its own, then the first or last card of a 100-card list.
@@ -1198,13 +1232,14 @@ const Analysis = (function () {
     const look = it => E.lookup(db, it.name);
     const ok = arr => { const cs = arr.map(look); if (!cs.length || cs.length > 2 || cs.some(c => !c || !E.commanderEligibility(c).ok) || arr.some(x => x.qty !== 1)) return null; if (cs.length === 2 && (cs[0] === cs[1] || !E.pairCheck(cs[0], cs[1]).ok)) return null; return cs; };
     const qty = arr => arr.reduce((s, x) => s + x.qty, 0);
+    if (P.cmd.length > 2) for (const k of [2, 1]) { const cs = ok(P.cmd.slice(0, k)); if (cs) return { cmds: cs, how: 'section', main: P.cmd.slice(k).concat(P.main), missing: [] }; }
     if (P.cmd.length) return { cmds: P.cmd.map(look).filter(Boolean).filter((c, i, a) => a.indexOf(c) === i), how: 'section', main: P.main, missing: P.cmd.filter(x => !look(x)).map(x => x.name) };
     const main = P.main, blks = [...new Set(main.map(x => x.blk))];
     const tries = [];
     if (blks.length > 1) { const last = main.filter(x => x.blk === blks[blks.length - 1]); tries.push(['last block', last]); }
     if (P.sb.length) tries.push(['sideboard', P.sb]);
     if (blks.length > 1) tries.push(['first block', main.filter(x => x.blk === blks[0])]);
-    if (main.length && qty(main) === 100) tries.push(['first card', [main[0]]], ['last card', [main[main.length - 1]]]);
+    if (main.length && qty(main) === 100) tries.push(['first cards', main.slice(0, 2)], ['first card', [main[0]]], ['last card', [main[main.length - 1]]]);
     for (const [how, arr] of tries) {
       const cs = ok(arr); if (!cs) continue;
       if (how !== 'sideboard' && qty(main) - arr.length < 60) continue; // a real deck around it, not a short list of legends

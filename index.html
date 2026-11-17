@@ -4,6 +4,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 22 22%22%3E%3Ccircle cx=%2211%22 cy=%2211%22 r=%2210%22 fill=%22none%22 stroke=%22%23888%22 stroke-width=%221.5%22/%3E%3Ccircle cx=%2211%22 cy=%225%22 r=%222%22 fill=%22%23f8e7b9%22/%3E%3Ccircle cx=%2216.7%22 cy=%229.1%22 r=%222%22 fill=%22%23b3ceea%22/%3E%3Ccircle cx=%2214.5%22 cy=%2215.9%22 r=%222%22 fill=%22%23a69f9d%22/%3E%3Ccircle cx=%227.5%22 cy=%2215.9%22 r=%222%22 fill=%22%23eb9f82%22/%3E%3Ccircle cx=%225.3%22 cy=%229.1%22 r=%222%22 fill=%22%23c4d3ca%22/%3E%3C/svg%3E">
 <script>window.EDH_SITE = 1;</script>
+<meta name="theme-color" content="#121418">
+<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/icon-180.png">
+<script>if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));</script>
 <title>broken-stuff EDH generator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="Commander (EDH) 100-card deck generator driven by Scryfall data.">
@@ -233,7 +236,7 @@ tr.alt td{background:var(--card-2)}
 .an-win{margin:-4px 0 12px}
 .an-go{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.an-go p{margin:0}
 .an-adv{margin:14px 0 0}
-.an-jump{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+.verdict{margin:12px 0 0;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:var(--card);box-shadow:var(--shadow)}.verdict p{margin:0 0 6px;line-height:1.45}.verdict p:last-child{margin:0}.verdict .note{display:block;margin-top:2px}
 .an-top.wrap{flex-wrap:wrap}
 .an-imp{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .own-bar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:8px 0}
@@ -968,7 +971,7 @@ const Engine = (function () {
      the Commander legality), so every pool, suggestion and check that reads c.leg follows the format. ---------- */
   const FORMATS = { '': 'Commander', pdh: 'Pauper Commander' };
   const PDH_BANNED = new Set(['Mystic Remora', 'Rhystic Study']); // pdhhomebase.com/rules; cards banned in Commander (ante, Conspiracy, removed cards) count as banned too
-  const PDH_CMD_TYPES = /\b(?:Creature|Vehicle|Spacecraft)\b/;
+  const PDH_CMD_TYPES = /\b(?:Creature|Vehicle|Spacecraft|Background)\b/; // an uncommon Background can join an uncommon "Choose a Background" commander
   let FMT = '';
   // rar: data/rarity.json (tools/scryfall-rarity.js), every paper and MTGO printing's rarity
   function addRarity(db, j) {
@@ -1021,11 +1024,13 @@ const Engine = (function () {
   /* ---------- list parsing (decklists, collections) ---------- */
   function parseList(text) {
     const out = [];
-    const lines = String(text || '').split(/\r?\n/);
+    let lines = String(text || '').replace(/^\ufeff/, '').split(/\r?\n/);
     let csvName = -1, csvQty = -1;
+    const first = lines.findIndex(l => l.trim() && !/^"?sep=.?"?$/i.test(l.trim())); // skip Excel's "sep=," and blank lines
+    if (first > 0) lines = lines.slice(first);
     if (lines.length && /,/.test(lines[0]) && /\bname\b/i.test(lines[0])) {
       const h = splitCSV(lines[0]).map(x => x.toLowerCase().trim());
-      csvName = h.indexOf('name'); csvQty = h.findIndex(x => x === 'count' || x === 'quantity' || x === 'qty');
+      csvName = h.findIndex(x => /^(card ?)?name$/.test(x)); csvQty = h.findIndex(x => x === 'count' || x === 'quantity' || x === 'qty');
       if (csvName >= 0) lines.shift();
     }
     for (let line of lines) {
@@ -1065,7 +1070,9 @@ const Engine = (function () {
       rx('draw-n', '"draw N card(s)"', /\bdraws? (?:a|an|one|two|three|four|five|six|seven|x|\d+|that many|cards equal)(?: additional)? cards?\b|\bdraws? cards equal/),
       rx('draw-impulse', 'exile top card(s), you may play/cast them', /exile the top [^.]*?cards? of your library[^.]*\.[^.]*you may (?:play|cast)/),
       rx('draw-clue', 'investigate / creates Clues', /\binvestigates?\b|creates?[^.]{0,20}\bclue/),
-      rx('draw-top', 'play lands or cast spells from the top of your library', /you may (?:play|cast) [^.]{0,40}from the top of your library/)
+      rx('draw-top', 'play lands or cast spells from the top of your library', /you may (?:play|cast) [^.]{0,40}from the top of your library/),
+      rx('draw-select', 'look at or reveal the top cards and put two or more into your hand (Fact or Fiction, Dig Through Time)', /(?:look at|reveal) the top (?:three|four|five|six|seven|eight|nine|ten|x|\d+) cards of your library[^.]*\.(?:[^.]*\.)?[^.]*\bput (?:two|three|four|one pile|any number|all|those cards|x)\b[^.]*into (?:your|their owner's) hand/),
+      rx('draw-repeat', 'pay life for cards or repeat a reveal (Necropotence, Ad Nauseam)', /pay \d+ life: exile the top card of your library|put that card into your hand[^]*repeat this process/)
     ],
     removal: [
       rx('rm-destroy', '"destroy/exile target <permanent>" (not "you control", not cards in graveyards)', /\b(?:destroy|exile) (?:up to (?:one|two|three|x) )?(?:another )?target (?:(?:nonland|noncreature|nonartifact|tapped|attacking|blocking|nontoken|legendary|artifact or|creature or|enchantment or|artifact,) )*(?:creature|artifact|enchantment|planeswalker|permanent|land|battle)s?(?!s? (?:you control|card))/),
@@ -1116,9 +1123,9 @@ const Engine = (function () {
   const STAX_RE = /(?:spells?|abilities)[^.]{0,40}cost \{\d\} more|(?:each player|each opponent|your opponents|players|that player)[^.]{0,40}can't (?:cast|search|untap|activate|draw|attack|play|gain)|(?:don't|doesn't) untap during (?:their|its) controllers?'? untap steps?|(?:permanents|creatures|artifacts|lands|nonland permanents) (?:your opponents control )?enter(?: the battlefield)? tapped/;
   const FLAGS = {
     gc: { label: 'Game Changer', desc: 'Scryfall field game_changer = true', test: c => c.gc },
-    tutor: { label: 'Tutor', desc: '"search your library for" a card that is not a land / basic type', test: c => { const re = /search your library for ([^.]*)/g; let m; while ((m = re.exec(c.low))) { if (!/\bland\b|\blands\b|plains|island|swamp|mountain|forest/.test(m[1])) return true; } return c.kw.includes('transmute'); } },
+    tutor: { label: 'Tutor', desc: '"search your library for" a card that is not a land / basic type', test: c => { const re = /search (?:your|their) library(?: and\/or graveyard)? for ([^.]*)/g; let m; while ((m = re.exec(c.low))) { if (!/^(?:up to )?(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|x|that many|any number of)? ?(?:basic |snow |nonbasic )?(?:land|lands|plains|island|swamp|mountain|forest|desert|gate)\b|^(?:a|an|up to two|two) (?:basic )?(?:plains|island|swamp|mountain|forest)/.test(m[1])) return true; } return c.kw.includes('transmute'); } },
     xturn: { label: 'Extra turn', desc: '"take an extra turn"', test: c => /takes? (?:an|one|two|x|that many)? ?extra turns?/.test(c.low) },
-    mld: { label: 'Mass land denial', desc: 'destroy/exile/return all lands, sacrifice multiple lands, or lands don\'t untap', test: c => /(?:destroy|exile|return) all (?:nonbasic )?lands\b|(?:destroy|exile) all permanents\b|each player sacrifices [^.]{0,20}lands\b|sacrifices? all lands|lands (?:don't|do not) untap|lands? (?:your opponents control |players control )?(?:don't|can't) untap/.test(c.low) },
+    mld: { label: 'Mass land denial', desc: 'destroy/exile/return all lands, sacrifice multiple lands, lands don\'t untap (Winter Orb, Static Orb), or nonbasic lands turned basic (Blood Moon)', test: c => /(?:destroy|exile|return) all (?:nonbasic )?lands\b|(?:destroy|exile) all permanents\b|each player sacrifices [^.]{0,20}lands\b|sacrifices? all lands|lands (?:don't|do not) untap|lands? (?:your opponents control |players control )?(?:don't|can't) untap|(?:destroy|exile) all (?![^.]*except)[^.]*\blands\b|chooses? [^.]*\blands?\b[^.]*then sacrifices the rest|untap more than (?:one|two|three) (?:lands?|permanents)\b|nonbasic lands are (?:mountains|islands|swamps|plains|forests)/.test(c.low) },
     fast: { label: 'Fast mana', desc: '≤1 MV mana artifact, or instant/sorcery adding more mana than its MV', test: c => { if (/\bLand\b/.test(c.ft)) return false; if (/\bArtifact\b/.test(c.ft) && c.cmc <= 1 && /\badd \{|\badd (?:one|two|three) mana|\badd [^.]{0,30}mana of any/.test(c.low) && !/^\{\d+\}, \{t\}: add (?:one mana|\{[wubrgc]\}\.)/m.test(c.low)) return true; if (/\b(?:Instant|Sorcery)\b/.test(c.ft)) { const m = c.low.match(/\badd ((?:\{[wubrgc]\})+)/); if (m && (m[1].match(/\{/g) || []).length > c.cmc) return true; } return false; } },
     stax: { label: 'Stax', desc: 'taxes/restricts opponents: "cost {N} more", "can\'t …", "don\'t untap", "enter tapped"', test: c => STAX_RE.test(c.low) },
     hate: { label: 'Hate-bear', desc: 'creature with MV ≤ 3 that matches the stax rule', test: c => /\bCreature\b/.test(c.ft) && c.cmc <= 3 && STAX_RE.test(c.low) }
@@ -1390,7 +1397,8 @@ const Engine = (function () {
       const c = [], cmd = [];
       for (const k of cards) { const n = canon[k < 0 ? -k - 1 : k]; c.push(n); if (k < 0) cmd.push(n); }
       const p = feats.map(k => tables.features[k]), t = tmpl.map(k => tables.templates[k]);
-      out[i] = { id, c, cmd, p, t, r: t.length, inf: p.some(x => /infinite/i.test(x)), bt: bt || '', mv, ci: ci || '', pop, ex: !!(flags & 1) };
+      // inf: an infinite or an instant win, so a two-card win (Thassa's Oracle + Demonic Consultation) counts for the brackets like a two-card infinite
+      out[i] = { id, c, cmd, p, t, r: t.length, inf: p.some(x => /infinite|win the game|loses? the game/i.test(x)), bt: bt || '', mv, ci: ci || '', pop, ex: !!(flags & 1) };
     }
     return out;
   }
@@ -1416,10 +1424,11 @@ const Engine = (function () {
         for (const v of list) if (v.r === 0 && cmdOk(v, cmds) && v.c.every(n => n === cardName || has(n))) out.push(v);
         return out;
       },
-      async almost(names, poolNames, maxMissing) {
-        const has = asHas(names), pool = asHas(poolNames), seen = new Set(), out = [], mm = maxMissing || 2;
+      async almost(names, poolNames, maxMissing, cmdNames) {
+        const has = asHas(names), pool = asHas(poolNames), seen = new Set(), out = [], mm = maxMissing || 2, cmds = cmdNames ? new Set(cmdNames) : null;
         for (const n of names) for (const v of by.get(n) || NO_VARIANTS) {
           if (seen.has(v.id) || v.r !== 0 || v.c.length > 4) continue; seen.add(v.id);
+          if (cmds && !cmdOk(v, cmds)) continue; // needs a different card as the commander
           const missing = v.c.filter(x => !has(x));
           if (missing.length >= 1 && missing.length <= mm && missing.every(pool)) out.push({ v, missing });
         }
@@ -1814,7 +1823,7 @@ const Engine = (function () {
     if (comboPolicy === 'prefer' && combos && combos.almost) {
       try {
         const poolNames = pool.filter(c => !st.names.has(c.n)).map(c => c.n);
-        const al = (await combos.almost(deckNames(), poolNames)).filter(x => !(x.v.inf && x.v.c.length <= 2 && lim.combo2 <= 0));
+        const al = (await combos.almost(deckNames(), poolNames, 2, cmds.map(c => c.n))).filter(x => !(x.v.inf && x.v.c.length <= 2 && lim.combo2 <= 0));
         al.sort((a, b) => a.missing.length - b.missing.length || (a.v.id < b.v.id ? -1 : 1));
         let added = 0;
         for (const x of al) {
@@ -2867,6 +2876,21 @@ const Analysis = (function () {
   const M = (typeof Mech !== 'undefined') ? Mech : (typeof require === 'function' ? require('./mech.js') : null);
   const mechWhy = t => t.replace(/^needs /, 'uses ').replace(/\./g, ' ');
   const A = c => E.analyze(c);
+  // a modal double-faced card with a land back (Sea Gate Restoration, Malakir Rebirth) is played as a land in most games
+  const landish = c => A(c).isLand || /\/\/ Land\b/.test(c.tl);
+  // the cost a card is cast for: a split card (Fire // Ice, Commit // Memory) is cast as either half, so its cheaper half,
+  // not the sum Scryfall gives as its mana value; other cards use their front face and mana value
+  const mvOf = mc => (mc.match(/\{[^}]+\}/g) || []).reduce((s, t) => /^\{\d+\}$/.test(t) ? s + +t.slice(1, -1) : /^\{X\}$/i.test(t) ? s : s + 1, 0);
+  const CC = new WeakMap();
+  function castCost(c) {
+    let r = CC.get(c); if (r) return r;
+    const parts = (c.mc || '').split(' // ');
+    r = { mc: parts[0], mv: c.cmc || 0 };
+    if (parts.length === 2 && parts[0] && parts[1] && mvOf(parts[0]) + mvOf(parts[1]) === Math.round(c.cmc || 0)) {
+      const [m0, m1] = parts.map(mvOf); r = m1 < m0 ? { mc: parts[1], mv: m1 } : { mc: parts[0], mv: m0 };
+    }
+    CC.set(c, r); return r;
+  }
   const PQ = (typeof Plan !== 'undefined') ? Plan : (typeof require === 'function' ? require('./plan.js') : null);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const ratio = (have, target) => target > 0 ? clamp(have / target, 0, 1) : 1;
@@ -2940,8 +2964,8 @@ const Analysis = (function () {
   function manaModel(c) {
     let m = MM.get(c); if (m) return m;
     const a = A(c), low = c.low;
-    m = { land: a.isLand, tapped: false, rampPerm: 0, dork: false, rampLand: 0, extraDrop: 0, perm: isPerm(c), burst: 0, cond: null, pitch: null };
-    if (a.isLand) {
+    m = { land: landish(c), tapped: false, rampPerm: 0, dork: false, rampLand: 0, extraDrop: 0, perm: isPerm(c), burst: 0, cond: null, pitch: null };
+    if (m.land) {
       m.tapped = /(?:~|this land) enters (?:the battlefield )?tapped/.test(low) && !/unless|you may pay|if you control|if you don't/.test(low);
     } else {
       if (m.perm && a.roles.ramp) {
@@ -2983,7 +3007,7 @@ const Analysis = (function () {
   /* ---------- probability: hypergeometric ---------- */
   const lf = [0]; for (let i = 1; i <= 200; i++) lf[i] = lf[i - 1] + Math.log(i);
   const lC = (n, k) => k < 0 || k > n ? -Infinity : lf[n] - lf[k] - lf[n - k];
-  const hyp = (N, K, n, k) => Math.exp(lC(K, k) + lC(N - K, n - k) - lC(N, n));
+  const hyp = (N, K, n, k) => k < 0 || k > K || k > n || n > N || n - k > N - K ? 0 : Math.exp(lC(K, k) + lC(N - K, n - k) - lC(N, n));
   const atLeast = (N, K, n, k) => { let p = 0; for (let i = k; i <= Math.min(n, K); i++) p += hyp(N, K, n, i); return p; };
   // P(at least k of the K colour sources among n cards | at least t of the L lands among them), K ⊆ L: Karsten's definition of
   // castable on curve (the chance of the colour, given you hit your land drops). Exact over the three groups.
@@ -3008,8 +3032,8 @@ const Analysis = (function () {
   // deck: [{ c, qty }] → { N, L, landSrc, cast } for the colour check (commanders included as cards)
   function colourCheck(deck, cmds, CI) {
     const landSrc = { W: 0, U: 0, B: 0, R: 0, G: 0 }; let N = 0, L = 0;
-    for (const e of deck) { const q = e.qty || 1; N += q; if (!A(e.c).isLand) continue; L += q; for (const x of colourSources(e.c, CI)) if (CI.includes(x)) landSrc[x] += q; }
-    const cards = cmds.map(c => ({ c, cmd: true })).concat(deck.filter(e => !A(e.c).isLand).map(e => ({ c: e.c })));
+    for (const e of deck) { const q = e.qty || 1; N += q; if (!landish(e.c)) continue; L += q; for (const x of colourSources(e.c, CI)) if (CI.includes(x)) landSrc[x] += q; }
+    const cards = cmds.map(c => ({ c, cmd: true })).concat(deck.filter(e => !landish(e.c)).map(e => ({ c: e.c })));
     return { N, L, landSrc, cast: castCheck(cards, N, L, landSrc) };
   }
   // cards: [{ c, cmd? }]; landSrc: colour → lands producing it; returns one row per card and colour, worst first
@@ -3017,7 +3041,7 @@ const Analysis = (function () {
     const rows = [];
     for (const { c, cmd } of cards) {
       // X spells are judged as cast with X = 2
-      const mc = (c.mc || '').split(' // ')[0], t = Math.max(1, Math.round(c.cmc || 0) + (/\{X\}/.test(mc) ? 2 : 0)), n = Math.min(N, 7 + t - 1);
+      const { mc, mv } = castCost(c), t = Math.max(1, Math.round(mv) + (/\{X\}/.test(mc) ? 2 : 0)), n = Math.min(N, 7 + t - 1);
       for (const X of 'WUBRG') {
         const k = (mc.match(new RegExp('\\{' + X + '\\}', 'g')) || []).length; if (!k) continue;
         const K = Math.min(L, landSrc[X] || 0);
@@ -3069,10 +3093,10 @@ const Analysis = (function () {
   const SMC = new WeakMap();
   function simModel(c, CI) {
     let byCI = SMC.get(c); if (!byCI) SMC.set(c, byCI = {}); if (byCI[CI]) return byCI[CI];
-    const a = A(c), m = manaModel(c), mc = (c.mc || '').split(' // ')[0], ciMask = [...CI].reduce((s, x) => s | (BIT[x] || 0), 0);
+    const a = A(c), m = manaModel(c), mc = castCost(c).mc, ciMask = [...CI].reduce((s, x) => s | (BIT[x] || 0), 0);
     const maskOf = cols => cols.reduce((s, x) => s | (BIT[x] || 0), 0) & ciMask;
     const pips = []; for (const x of 'WUBRG') { const k = (mc.match(new RegExp('\\{' + x + '\\}', 'g')) || []).length; for (let i = 0; i < k; i++) pips.push(BIT[x]); }
-    const s = { land: m.land, tapped: m.tapped, cmc: Math.round(c.cmc || 0) + (/\{X\}/.test(mc) ? 2 : 0), pips, rampPerm: m.rampPerm, dork: m.dork, rampLand: m.rampLand, extraDrop: m.extraDrop };
+    const s = { land: m.land, tapped: m.tapped, cmc: Math.round(castCost(c).mv) + (/\{X\}/.test(mc) ? 2 : 0), pips, rampPerm: m.rampPerm, dork: m.dork, rampLand: m.rampLand, extraDrop: m.extraDrop };
     s.ramp = !m.land && (m.rampPerm || m.rampLand || m.extraDrop) ? 1 : 0;
     s.burst = m.burst; s.cond = m.cond; s.pitch = m.pitch;
     s.legend = /\bLegendary\b/.test(c.ft) && /\b(?:Creature|Planeswalker)\b/.test(c.ft);
@@ -3156,7 +3180,8 @@ const Analysis = (function () {
     sopt = sopt || {};
     const CI = sopt.CI != null ? sopt.CI : 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
     // the library holds indices into cards0; models and name keys are looked up once
-    const cards0 = []; for (const e of cards) for (let i = 0; i < e.qty; i++) cards0.push(e.c);
+    // in name order, so the same list gives the same games whatever order it was pasted or swapped in
+    const cards0 = []; for (const e of cards.slice().sort((a, b) => a.c.n < b.c.n ? -1 : a.c.n > b.c.n ? 1 : 0)) for (let i = 0; i < e.qty; i++) cards0.push(e.c);
     const mods = cards0.map(c => simModel(c, CI)), keys = cards0.map(c => E.nameKey(c.n)), lib0 = cards0.map((_, i) => i);
     const N = lib0.length, rng = mulberry32(seed >>> 0), M = k => mods[k], ciMask = [...CI].reduce((s, x) => s | (BIT[x] || 0), 0);
     const T = 12, TR = 10, KILL = 120;
@@ -3397,12 +3422,12 @@ const Analysis = (function () {
     const targets = Object.assign({}, BENCH, S.targets || {}, { avgMV: +((S.mana && S.mana.avgMV) || BENCH.avgMV) });
     const CI = 'WUBRG'.split('').filter(x => cmds.some(c => c.ci.includes(x))).join('');
     const all = deck.map(e => ({ c: e.c, qty: e.qty || 1, locked: !!e.locked }));
-    const nonland = all.filter(e => !A(e.c).isLand), lands = all.filter(e => A(e.c).isLand);
+    const nonland = all.filter(e => !landish(e.c)), lands = all.filter(e => landish(e.c));
     const qty = arr => arr.reduce((s, e) => s + e.qty, 0);
     const count = pred => all.filter(e => pred(e.c)).reduce((s, e) => s + e.qty, 0);
     const names = pred => all.filter(e => pred(e.c)).map(e => e.c.n);
     const nLands = qty(lands), nNon = qty(nonland);
-    const avgMV = nNon ? nonland.reduce((s, e) => s + e.c.cmc * e.qty, 0) / nNon : 0;
+    const avgMV = nNon ? nonland.reduce((s, e) => s + castCost(e.c).mv * e.qty, 0) / nNon : 0;
     const role = r => count(c => A(c).roles[r]);
     const flag = f => count(c => A(c).flags[f]);
 
@@ -3526,7 +3551,10 @@ const Analysis = (function () {
       breaks.push('Bracket ' + b + ' exceeded by ' + over.map(k => k + ' ' + (k === 'combo2' ? twoInf : cnt[k]) + '>' + L[k]).join(', '));
     }
     const cedhSignals = [cnt.fast >= 4 ? 'fast mana ' + cnt.fast : '', cnt.tutor >= 6 ? 'tutors ' + cnt.tutor : '', twoInf >= 1 ? '2-card infinites ' + twoInf : '', avgMV <= 2.3 ? 'avg MV ' + avgMV.toFixed(2) : ''].filter(Boolean);
-    const bracket = { estimate: est === 1 ? '1–2' : String(est), turns: E.BRACKETS[est === 1 ? 2 : est].turns, counts: cnt, twoInf, reasons: breaks, cedhSignals, note: est <= 2 ? 'Brackets 1 and 2 share card limits except extra turns; they differ by intent and expected game length, which card data cannot measure.' : (est === 4 && twoInf > 0 && cnt.gc <= 3 && cnt.mld === 0 && cnt.xturn <= 2) ? 'Only 2-card infinites exceed Bracket 3. Bracket 3 forbids early-game 2-card infinites only; if these assemble late, the list fits Bracket 3.' : (est === 4 && cedhSignals.length >= 3 ? 'Several cEDH indicators present; could be Bracket 5 depending on intent.' : '') };
+    // the cards behind each marker, so the page can say which cards set the bracket
+    const flagNames = f => names(c => A(c).flags[f]);
+    const markerCards = { gc: cmds.filter(c => c.gc).map(c => c.n).concat(flagNames('gc')), mld: flagNames('mld'), xturn: flagNames('xturn'), combo2: combos ? combos.filter(v => v.inf && v.c.length <= 2).map(v => v.c.join(' + ')) : [] };
+    const bracket = { estimate: est === 1 ? '1–2' : String(est), turns: E.BRACKETS[est === 1 ? 2 : est].turns, counts: cnt, cards: markerCards, twoInf, reasons: breaks, cedhSignals, note: est <= 2 ? 'Brackets 1 and 2 share card limits except extra turns; they differ by intent and expected game length, which card data cannot measure.' : (est === 4 && twoInf > 0 && cnt.gc <= 3 && cnt.mld === 0 && cnt.xturn <= 2) ? 'Only 2-card infinites exceed Bracket 3. Bracket 3 forbids early-game 2-card infinites only; if these assemble late, the list fits Bracket 3.' : (est === 4 && cedhSignals.length >= 3 ? 'Several cEDH indicators present; could be Bracket 5 depending on intent.' : '') };
 
     /* axes */
     const P = (t, k) => t + ' · avg ' + POP[k];
@@ -3724,7 +3752,10 @@ const Analysis = (function () {
     const cur = (S.budget && S.budget.cur) || 'usd';
     const lim = Object.assign(E.bracketDefaults(S.bracket || 3), S.bl || {});
     const denied = new Set(opts.deny || []), owned = opts.owned instanceof Set ? opts.owned : null; // owned: adds only from this collection
-    const pool = db ? db.all.filter(c => c.leg === 'legal' && !E.isBasic(c) && !inDeck.has(c.n) && !denied.has(c.n) && !(owned && !owned.has(c.n)) && [...c.ci].every(x => CI.includes(x)) && !(pcap != null && (c.p[cur] == null || c.p[cur] > pcap)) && !(c.gc && cnt.gc >= lim.gc) && !(A(c).flags.tutor && cnt.tutor >= lim.tutor) && !(A(c).flags.mld && lim.mld <= 0) && !(A(c).flags.xturn && cnt.xturn >= lim.xturn)) : [];
+    // the Start page's exclude list and Reserved List filter apply to suggestions too
+    const excl = new Set(); if (db && S.exclude) for (const it of E.parseList(S.exclude)) { const c = E.lookup(db, it.name); if (c) excl.add(c.n); }
+    const noRL = S.filters && S.filters.reserved === 'exclude';
+    const pool = db ? db.all.filter(c => c.leg === 'legal' && !E.isBasic(c) && !inDeck.has(c.n) && !denied.has(c.n) && !excl.has(c.n) && !(noRL && c.rl) && !(owned && !owned.has(c.n)) && [...c.ci].every(x => CI.includes(x)) && !(pcap != null && (c.p[cur] == null || c.p[cur] > pcap)) && !(c.gc && cnt.gc >= lim.gc) && !(A(c).flags.tutor && cnt.tutor >= lim.tutor) && !(A(c).flags.mld && lim.mld <= 0) && !(A(c).flags.xturn && cnt.xturn >= lim.xturn)) : [];
     // cards outside the deck: mechanics links estimated from the deck profile (exact pairs for the commanders),
     // scaled by this deck's ratio of exact mechanics links to profile weight
     const mRatio = (() => { if (!M) return 0; let a = 0, b = 0; for (const x of perCard) { a += x.mlinks; b += M.links(x.c, mprof, null, true).w; } return b > 0 ? a / b : 0; })();
@@ -3874,10 +3905,13 @@ const Analysis = (function () {
     const nBasic = P.deck.filter(e => E.isBasic(e.c) && !e.locked).reduce((s, e) => s + e.qty, 0);
     const seen = new Set(), adds = [], lands = [];
     const take = (arr, list) => { for (const c of list) if (!seen.has(c)) { seen.add(c); arr.push(c); } };
-    if (cuts.length) {
-      for (const r of Object.keys(P.targets)) take(adds, P.pick(c => priced(c) && !A(c).isLand && A(c).roles[r], 5));
-      for (const k of Object.keys(P.upg)) take(adds, P.pick(c => priced(c) && !A(c).isLand && P.upg[k][0](c), 4));
-      take(adds, P.pick(c => priced(c) && !A(c).isLand, 12));
+    // the same candidate lists at the budget and at each smaller preset ($20, $5), so a bigger budget always measures every
+    // card a smaller one would (with one list, pricier cards pushed good cheap swaps out and $50 found less than $20)
+    if (cuts.length) for (const cap of [budget].concat([20, 5].filter(x => x < budget))) {
+      const ok = c => priced(c) && P.price(c) <= cap && !A(c).isLand;
+      for (const r of Object.keys(P.targets)) take(adds, P.pick(c => ok(c) && A(c).roles[r], 5));
+      for (const k of Object.keys(P.upg)) take(adds, P.pick(c => ok(c) && P.upg[k][0](c), 4));
+      take(adds, P.pick(ok, 12));
     }
     if (P.multi && basic) take(lands, P.pool.filter(c => A(c).isLand && priced(c) && P.landOn(c) >= 2 && P.landValue(c) - P.landValue(basic.c) >= 1.5).sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9)).slice(0, 12)); // most played first: the simulation rates most duals alike, and pain or filter costs aren't modelled
     const total = adds.length + lands.length + Math.max(0, cuts.length - 1) + 1; let done = 0;
@@ -4008,9 +4042,12 @@ const Analysis = (function () {
   // Quantities, not lines, are counted: "26 Forest" is 26 cards.
   const SKIP_SEC = /^(maybe ?board|considering|tokens?|acquire ?board|wish ?list|wants?)$/i, SB_SEC = /^(sideboard|side|companion)$/i;
   function parseDecklist(text) {
-    const lines = String(text || '').replace(/^﻿/, '').split(/\r?\n/);
+    let lines = String(text || '').replace(/^﻿/, '').split(/\r?\n/);
+    const first = lines.findIndex(l => l.trim() && !/^"?sep=.?"?$/i.test(l.trim()));
+    if (first > 0 && /,/.test(lines[first]) && /\bname\b/i.test(lines[first])) lines = lines.slice(first);
     if (lines.length && /,/.test(lines[0]) && /\bname\b/i.test(lines[0])) return parseCSVDeck(lines);
-    const items = []; let section = 'main', blk = 0, explicit = false;
+    const items = []; let section = 'main', blk = 0, explicit = false, skipped = 0;
+    const lineQty = l => { const m = l.match(/^(\d+)\s*x?\s/i); return m ? +m[1] : 1; };
     const hasCmd = () => items.some(x => x.sec === 'cmd');
     for (const raw of lines) {
       let line = raw.replace(/\t/g, ' ').trim();
@@ -4021,36 +4058,42 @@ const Analysis = (function () {
       if (SB_SEC.test(head)) { section = 'sb'; continue; }
       if (SKIP_SEC.test(head)) { section = 'skip'; continue; }
       if (/^(?:\/\/|#)/.test(line) || /^[A-Za-z][\w '&/,-]*\s*\(\d+\)\s*:?$/.test(line)) { if (section === 'cmd' && hasCmd()) section = 'main'; continue; } // comment or category header such as "Creatures (30)"
+      if (!items.length && /^(about|name\s.+)$/i.test(line)) continue; // Arena's "About" / "Name My Deck" preamble
+      const inl = line.match(/^commanders?\s*:\s*(\S.*)$/i); // "Commander: Atraxa, Praetors' Voice" on one line
+      if (inl) { const it = E.parseLine(inl[1]); if (it) { items.push(Object.assign(it, { sec: 'cmd', blk })); explicit = true; } continue; }
       let sec = section;
       const sb = line.match(/^SB:\s*(.+)$/i); if (sb) { line = sb[1]; sec = 'sb'; }
       const tags = (line.match(/\[[^\]]*\]/g) || []).join(' ');
-      const cmdTag = /\[commander/i.test(tags) || /\*CMDR\*/i.test(line) || /(?:^|\s)#!?commander\b/i.test(line);
-      if (!cmdTag && /\{nodeck\}|\[(?:maybe ?board|considering|sideboard)/i.test(tags)) continue; // Archidekt cards kept out of the deck
-      if (sec === 'skip' && !cmdTag) continue;
+      const cmdTag = /\[commanders?(?:\{[^}]*\})*[\],]/i.test(tags) || /\*CMDR\*/i.test(line) || /(?:^|\s)#!?commanders?(?![\w-])/i.test(line);
+      if (!cmdTag && /\{nodeck\}|\[(?:maybe ?board|considering|sideboard)/i.test(tags)) { skipped += lineQty(line); continue; } // Archidekt cards kept out of the deck
+      if (sec === 'skip' && !cmdTag) { skipped += lineQty(line); continue; }
       const it = E.parseLine(line); if (!it) continue;
       if (cmdTag) { sec = 'cmd'; explicit = true; }
       items.push(Object.assign(it, { sec, blk }));
     }
-    return split(items, explicit);
+    return split(items, explicit, skipped);
   }
   function parseCSVDeck(lines) {
-    const h = E.splitCSV(lines[0]).map(x => x.toLowerCase().trim()), name = h.indexOf('name');
+    const h = E.splitCSV(lines[0]).map(x => x.toLowerCase().trim()), name = h.findIndex(x => /^(card ?)?name$/.test(x));
+    if (name < 0) return Object.assign(split([], false, 0), { error: 'The CSV has no Name or Card Name column.' });
     const qty = h.findIndex(x => x === 'count' || x === 'quantity' || x === 'qty' || x === 'amount');
     const sect = h.map((x, i) => /^(board|section|category|categories|tags?|type|deck)$/.test(x) ? i : -1).filter(i => i >= 0);
-    const items = []; let explicit = false;
+    const items = []; let explicit = false, skipped = 0;
+    const tagIs = (tag, re) => tag.split(/[,;|]/).some(t => re.test(t.trim()));
     for (const line of lines.slice(1)) {
       if (!line.trim()) continue;
       const f = E.splitCSV(line), n = (f[name] || '').trim(); if (!n) continue;
-      const tag = sect.map(i => f[i] || '').join(' ');
-      if (!/commander/i.test(tag) && /maybe|considering|sideboard|wish/i.test(tag)) continue;
-      const cmd = /commander/i.test(tag); if (cmd) explicit = true;
-      items.push({ qty: qty >= 0 ? Math.max(1, parseInt(f[qty], 10) || 1) : 1, name: n, sec: cmd ? 'cmd' : 'main', blk: 0 });
+      const tag = sect.map(i => f[i] || '').join(','), q = qty >= 0 ? Math.max(1, parseInt(f[qty], 10) || 1) : 1;
+      const cmd = tagIs(tag, /^commanders?$/i);
+      if (!cmd && tagIs(tag, /^(maybe ?board|considering|sideboard|side|wish ?list|wishlist)$/i)) { skipped += q; continue; }
+      if (cmd) explicit = true;
+      items.push({ qty: q, name: n, sec: cmd ? 'cmd' : 'main', blk: 0 });
     }
-    return split(items, explicit);
+    return split(items, explicit, skipped);
   }
-  function split(items, explicit) {
+  function split(items, explicit, skipped) {
     const of = s => items.filter(x => x.sec === s).map(x => ({ qty: x.qty, name: x.name, blk: x.blk }));
-    return { cmd: of('cmd'), main: of('main'), sb: of('sb'), explicit };
+    return { cmd: of('cmd'), main: of('main'), sb: of('sb'), explicit, skipped: skipped || 0 };
   }
   // Commanders for a parsed list. A "Commander" section or tag wins. Without one, in order: the last block after a blank line
   // (Moxfield and MTGO put it there), the sideboard (MTGO), a first block of its own, then the first or last card of a 100-card list.
@@ -4060,13 +4103,14 @@ const Analysis = (function () {
     const look = it => E.lookup(db, it.name);
     const ok = arr => { const cs = arr.map(look); if (!cs.length || cs.length > 2 || cs.some(c => !c || !E.commanderEligibility(c).ok) || arr.some(x => x.qty !== 1)) return null; if (cs.length === 2 && (cs[0] === cs[1] || !E.pairCheck(cs[0], cs[1]).ok)) return null; return cs; };
     const qty = arr => arr.reduce((s, x) => s + x.qty, 0);
+    if (P.cmd.length > 2) for (const k of [2, 1]) { const cs = ok(P.cmd.slice(0, k)); if (cs) return { cmds: cs, how: 'section', main: P.cmd.slice(k).concat(P.main), missing: [] }; }
     if (P.cmd.length) return { cmds: P.cmd.map(look).filter(Boolean).filter((c, i, a) => a.indexOf(c) === i), how: 'section', main: P.main, missing: P.cmd.filter(x => !look(x)).map(x => x.name) };
     const main = P.main, blks = [...new Set(main.map(x => x.blk))];
     const tries = [];
     if (blks.length > 1) { const last = main.filter(x => x.blk === blks[blks.length - 1]); tries.push(['last block', last]); }
     if (P.sb.length) tries.push(['sideboard', P.sb]);
     if (blks.length > 1) tries.push(['first block', main.filter(x => x.blk === blks[0])]);
-    if (main.length && qty(main) === 100) tries.push(['first card', [main[0]]], ['last card', [main[main.length - 1]]]);
+    if (main.length && qty(main) === 100) tries.push(['first cards', main.slice(0, 2)], ['first card', [main[0]]], ['last card', [main[main.length - 1]]]);
     for (const [how, arr] of tries) {
       const cs = ok(arr); if (!cs) continue;
       if (how !== 'sideboard' && qty(main) - arr.length < 60) continue; // a real deck around it, not a short list of legends
@@ -4203,7 +4247,7 @@ const Deep = (function () {
     const names = ctx.cmds.map(c => c.n).concat(ctx.deck.map(e => e.c.n));
     const S = ctx.settings || {}, lim = Object.assign(E.bracketDefaults(+S.bracket || 3), S.bl || {});
     const lim2 = lim.combo2 <= 0; // two-card infinite combos barred in this bracket
-    const al = (await prov.almost(names, n => inPool.has(n), 2)).filter(x => x.v.r === 0 && !(lim2 && x.v.inf && x.v.c.length <= 2));
+    const al = (await prov.almost(names, n => inPool.has(n), 2, ctx.cmds.map(c => c.n))).filter(x => x.v.r === 0 && !(lim2 && x.v.inf && x.v.c.length <= 2));
     const rankOf = x => -(x.v.pop || 0);
     const single = [], pairs = [], s1 = new Set(), s2 = new Set();
     for (const x of al.slice().sort((a, b) => rankOf(a) - rankOf(b))) {
@@ -4437,7 +4481,7 @@ const Builder = (function () {
      Basic lands are always in it. Sorted by EDHREC rank. ---------- */
   function pool(db, CI, owned, cmds) {
     const skip = new Set((cmds || []).map(c => c.n));
-    return db.all.filter(c => c.leg === 'legal' && !skip.has(c.n) && subsetCI(c.ci, CI) && (!owned || owned.has(c.n) || E.isBasic(c)))
+    return db.all.filter(c => c.leg === 'legal' && !skip.has(c.n) && !/\bStickers\b/.test(c.tl) && subsetCI(c.ci, CI) && (!owned || owned.has(c.n) || E.isBasic(c)))
       .sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9) || (a.n < b.n ? -1 : 1));
   }
   // commander-eligible cards in a list
@@ -4481,8 +4525,10 @@ const Builder = (function () {
     if (!cols.length) { out.C = need; return out; }
     const p = { W: 0, U: 0, B: 0, R: 0, G: 0 };
     for (const c of cmds.concat(entries.map(e => e.c))) { const q = E.pips(c.mc); for (const x in p) p[x] += q[x]; }
+    // one extra pip per colour, so a colour the spells barely use (a WUBRG commander with a mono-white cost) still gets basics
+    for (const x of cols) p[x] += 1;
     const tot = cols.reduce((s, x) => s + p[x], 0);
-    const share = cols.map(x => ({ x, v: tot ? p[x] / tot * need : need / cols.length }));
+    const share = cols.map(x => ({ x, v: p[x] / tot * need }));
     for (const s of share) out[s.x] = Math.floor(s.v);
     let left = need - share.reduce((s, x) => s + out[x.x], 0);
     for (const s of share.slice().sort((a, b) => (b.v - Math.floor(b.v)) - (a.v - Math.floor(a.v)))) { if (!left) break; out[s.x]++; left--; }
@@ -4657,10 +4703,10 @@ if (typeof module !== 'undefined') module.exports = Builder;
   async function loadRarity() {
     if (!App.bulk || App.bulk.pdhSrc === 'rarity' || App.bulk.pdhSrc === 'printings' || !window.EDH_SITE || !/^https?:$/.test(location.protocol)) return;
     try {
-      const r = await fetch('data/rarity.json', { cache: 'no-cache' }); if (!r.ok) return;
-      const j = await r.json(); if (!(j && j.format === 'edhgen-rarity/1')) return;
-      Engine.addRarity(App.bulk, j); App.cmdIndex = null; syncFormat(true);
-    } catch (e) { }
+      const r = await fetch('data/rarity.json', { cache: 'no-cache' }); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json(); if (!(j && j.format === 'edhgen-rarity/1')) throw new Error('unknown format');
+      Engine.addRarity(App.bulk, j); App.rarityErr = ''; App.cmdIndex = null; syncFormat(true);
+    } catch (e) { App.rarityErr = e.message; fmtNote(); }
   }
   /* ---------- format: Commander or Pauper Commander. Engine.setFormat sets each card's legality for the format, so
      every pool, suggestion and rule check follows it. ---------- */
@@ -4669,7 +4715,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
   function syncFormat(force) {
     if (!App.bulk) return;
     const before = App.bulk.fmtKey; Engine.setFormat(App.bulk, App.S.format);
-    if (force || before !== App.bulk.fmtKey) { App.cmdIndex = null; App.BC = null; if (App.R && App.R.stats && App.tab !== 'setup' && !App.busy) renderView(); }
+    if (force || before !== App.bulk.fmtKey) { App.cmdIndex = null; App.BC = null; if (App.B && App.B.picks && !blLive() && blPrune()) blSave(); if (App.R && App.R.stats && App.tab !== 'setup' && !App.busy) renderView(); }
     fmtNote();
   }
   function fmtNote() {
@@ -4678,7 +4724,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     el.textContent = !isPDH() ? '' : !App.bulk ? 'Pauper Commander: the 99 must be commons, the commander an uncommon creature. Card data not loaded yet.' :
       src === 'rarity' || src === 'printings' ? 'Pauper Commander: the 99 must have a common printing (paper or MTGO), the commander an uncommon creature, Vehicle or Spacecraft. Mystic Remora and Rhystic Study are banned.' :
       src === 'scryfall' ? 'Pauper Commander legality from Scryfall\'s paupercommander field. A common creature with an uncommon printing is not offered as commander without the rarity file.' :
-      'Rarity data (data/rarity.json) is not loaded, so legality comes from one printing per card: some legal commons and commanders are missing.';
+      'Pauper Commander needs the rarity file (data/rarity.json), which did not load' + (App.rarityErr ? ' (' + App.rarityErr + ')' : '') + '. Reload the page to try again; until then no card counts as legal.';
   }
   // switching format with a deck loaded runs its chain again: an imported list is kept and checked against the new
   // format, a generated deck is rebuilt for it (with its locks and edits)
@@ -4868,7 +4914,12 @@ if (typeof module !== 'undefined') module.exports = Builder;
     return '<span class="mcost">' + esc(mc).replace(/\{([^}]+)\}/g, (m, s) => { const cols = s.split('/').filter(x => 'WUBRG'.includes(x)); const cls = cols.length === 1 ? cols[0] : ''; return '<span class="ms ' + cls + '">' + s.replace('/', '') + '</span>'; }) + '</span>';
   }
   const fmtP = (v) => Engine.fmt(v, App.R ? App.R.settings.budget.cur : App.S.budget.cur);
-  function setStatus(t) { $('status').textContent = t || ''; syncActions(); }
+  // routine confirmations clear themselves after a few seconds; progress, errors and anything that needs reading stay
+  const STATUS_FADE = /^(Loaded|Generated in|Analysis done|Comparison done|Settings loaded|Token applied|Defaults restored|Tests finished|Undid|Swapped|Added|Applied|Filled|Restored|Checked the imported|Rebuilt the deck)/;
+  function setStatus(t) {
+    $('status').textContent = t || ''; syncActions();
+    clearTimeout(App.statusT); if (t && STATUS_FADE.test(t)) App.statusT = setTimeout(() => { if ($('status').textContent === t) setStatus(''); }, 6000);
+  }
   function syncActions() { const has = App.R && App.R.stats, locks = has && (App.R.deck.some(e => e.locked && !e.inc && !e.imp) || (App.R.bans || []).length > 0); $('regenBtn').classList.toggle('hidden', !locks); const ops = has && App.chain ? App.chain.ops : []; $('undoBtn').classList.toggle('hidden', !ops.length); $('undoBtn').disabled = !!App.busy; if (ops.length) $('undoBtn').title = 'Undo ' + opLabel(ops[ops.length - 1]) + ' (U or Ctrl+Z)'; document.querySelector('.actions').classList.toggle('hidden', !locks && !ops.length && !$('status').textContent && App.tab !== 'tests'); }
   function setProg(f) { const p = $('genProg'); if (f == null) { p.classList.add('hidden'); return; } p.classList.remove('hidden'); p.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; }
   function showMsgs(errors, warnings, extraHTML) {
@@ -4980,7 +5031,8 @@ if (typeof module !== 'undefined') module.exports = Builder;
   function analysisInput(forcePaste) {
     if (forcePaste || App.anSource === 'paste') {
       if (!App.bulk) return { error: 'Load the Scryfall bulk file first.' };
-      const P = Analysis.parseDecklist(App.anText || ''), K = Analysis.pickCommanders(P, App.bulk);
+      const P = Analysis.parseDecklist(App.anText || ''); if (P.error) return { error: P.error };
+      const K = Analysis.pickCommanders(P, App.bulk);
       const unknown = K.missing.slice(), cmds = K.cmds.slice(), deck = [];
       if (!cmds.length) for (const n of App.S.commanders.map(s => (s || '').trim()).filter(Boolean)) { const c = Engine.lookup(App.bulk, n); if (c) cmds.push(c); else unknown.push(n); }
       for (const it of K.main) { const c = Engine.lookup(App.bulk, it.name); if (!c) { unknown.push(it.name); continue; } if (cmds.includes(c)) continue; const ex = deck.find(e => e.c === c); if (ex) ex.qty += it.qty; else deck.push({ c, qty: it.qty }); }
@@ -5006,7 +5058,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
         if (!combos || App.anSource === 'paste') combos = await cp.find(names, inp.cmds.map(c => c.n));
         const CI = 'WUBRG'.split('').filter(x => inp.cmds.some(c => c.ci.includes(x))).join('');
         const own = ownOpt(), poolNames = App.bulk.all.filter(c => c.leg === 'legal' && [...c.ci].every(x => CI.includes(x)) && (!own || own.has(c.n) || Engine.isBasic(c))).map(c => c.n);
-        almost = (await cp.almost(names, poolNames)).filter(x => x.missing.length === 1).slice(0, 8).map(x => ({ cards: x.v.c, missing: x.missing, produces: x.v.p }));
+        almost = (await cp.almost(names, poolNames, 2, inp.cmds.map(c => c.n))).filter(x => x.missing.length === 1).sort((a, b) => (b.v.pop || 0) - (a.v.pop || 0)).slice(0, 8).map(x => ({ cards: x.v.c, missing: x.missing, produces: x.v.p }));
       } catch (e) { }
     }
     if (seq !== anSeq) return [];
@@ -5031,7 +5083,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     setStatus('Analysis done in ' + ((performance.now() - t0) / 1000).toFixed(2) + ' s (' + X.sim.games.toLocaleString() + ' simulated games).');
     X.impact = []; X.impactDone = !X.plans.length;
     X.held = !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
-    renderAnView();
+    renderScorebar(); renderAnView();
     if (!X.plans.length || X.held) { if (!X.held && App.DEEP) { deepMerge(X); renderSwaps(); } return; }
     return scoreSwaps(X);
   }
@@ -5042,7 +5094,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     const names = inp.cmds.map(c => c.n).concat(inp.deck.map(e => e.c.n));
     const combosFor = (cut, add) => {
       let out = (combos || []).filter(v => !v.c.some(n => Engine.nameKey(n) === Engine.nameKey(cut.n)));
-      if (cp && cp.completes) { const rest = names.filter(n => n !== cut.n); const seen = new Set(out.map(v => v.id)); for (const v of cp.completes(add.n, rest)) if (!seen.has(v.id)) { out.push(v); seen.add(v.id); } }
+      if (cp && cp.completes) { const rest = names.filter(n => n !== cut.n); const seen = new Set(out.map(v => v.id)); for (const v of cp.completes(add.n, rest, inp.cmds.map(c => c.n))) if (!seen.has(v.id)) { out.push(v); seen.add(v.id); } }
       return combos == null && !cp ? null : out;
     };
     const prep = Analysis.impactPrep(App.bulk, inp.deck, inp.cmds, { settings: App.S, combos, combosFor, impactGames: 5000 });
@@ -5362,16 +5414,38 @@ if (typeof module !== 'undefined') module.exports = Builder;
     const C = countsHTML(R, App.anSource === 'paste' || X.inp.asIs ? X.power.minBracket : null);
     return '<div class="an-card wide" id="anCounts"><div class="an-top wrap"><h3>Counts against real decks</h3>' + C.seg + '</div>' + C.html + '</div>';
   }
+  // the top of Analysis in plain words: how strong, which bracket and which cards set it, the one thing to fix first, and the next step
+  function verdictHTML(X) {
+    const P = X.power, W = P.win, b = X.bracket, C = b.cards || {}, minB = P.minBracket;
+    const list = (a, n) => a.slice(0, n).map(esc).join(', ') + (a.length > n ? ' and ' + (a.length - n) + ' more' : '');
+    const set = App.anSource !== 'paste' && App.R && App.R.settings ? +App.R.settings.bracket : null;
+    const marks = [
+      C.gc && C.gc.length ? C.gc.length + ' Game Changer' + (C.gc.length === 1 ? '' : 's') + ' (' + list(C.gc, 4) + ')' : '',
+      C.combo2 && C.combo2.length ? C.combo2.length + ' two-card infinite combo' + (C.combo2.length === 1 ? '' : 's') + ' (' + list(C.combo2, 2) + ')' : '',
+      C.mld && C.mld.length ? 'mass land denial (' + list(C.mld, 3) + ')' : '',
+      C.xturn && C.xturn.length ? 'extra turns (' + list(C.xturn, 3) + ')' : ''
+    ].filter(Boolean);
+    const fast = P.minBracketWhy.some(w => /win turn/.test(w));
+    const why = marks.length ? 'Counted: ' + marks.join('; ') + (fast ? '; wins by turn ' + W.typical : '') + '.' : fast ? 'No bracket-limited cards, but it wins by turn ' + W.typical + ', faster than lower brackets expect.' : 'No Game Changers, two-card infinites, mass land denial or extra turns.';
+    const top = rankedRecs(X).filter(r => r.sev === 'high' || r.sev === 'med')[0];
+    const fix = top ? esc(top.text.replace(/\s*[^.]*:$/, '') || top.text) : 'Nothing serious. Every role count and color source is in range.';
+    const hi = set && minB > set;
+    const imp = App.anSource !== 'paste' && App.impMsg && App.chain && App.chain.env && App.chain.env.imported ? '<p class="note">' + esc(App.impMsg) + '</p>' : '';
+    return '<div class="verdict" id="anVerdict">' + imp +
+      '<p><b>Power ' + P.pl.toFixed(1) + ' of 10</b> (' + esc(P.label) + '), wins around <b>turn ' + W.typical + '</b>. Plays like <b>Bracket ' + minB + '</b>' + (hi ? ', above the Bracket ' + set + ' you chose' : '') + '. <span class="note">' + why + '</span></p>' +
+      '<p><b>Fix first:</b> ' + fix + '</p>' +
+      (X.deckSize + X.cmds.length !== 100 ? '<p><span class="st fail">' + (X.deckSize + X.cmds.length) + ' cards, not 100</span>' + (App.anSource !== 'paste' ? fillBtnHTML() : '') + '</p>' : '') + '</div>';
+  }
   // the end of Analysis: hand-off to Improve, where the swaps are measured
   function anNextHTML(X) {
     if (App.anSource === 'paste') return '';
     const o = ownedCards(), mine = ownOnly() && o && o.set.size, own = ownSumHTML();
-    const what = X.plans.length ? X.plans.length + ' candidate swap' + (X.plans.length === 1 ? '' : 's') + ' for the problems above' : 'No obvious swaps; deep search and budget upgrades look further';
+    const what = X.plans.length ? X.plans.length + ' candidate swap' + (X.plans.length === 1 ? '' : 's') + ' for the problems below' : 'No obvious swaps; deep search and budget upgrades look further';
     return '<div class="next-tile" id="anNext"><div><p><b>Next: Improve.</b> ' + what + ', measured with simulated games, from ' + (mine ? 'your collection (' + o.set.size.toLocaleString() + ' cards)' : 'all cards') + '.</p>' + (own ? '<p>' + own + '</p>' : '') + '</div><div class="row"><button type="button" class="small" data-blopen="1">Edit in Builder</button><button type="button" class="primary" data-go="changes">Improve this deck ›</button></div></div>';
   }
   function renderAnalysis() {
     const X = App.AN;
-    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">' + (App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'This deck') + '</button>' + (App.anSource === 'paste' ? '<button type="button" data-an="src-paste" aria-pressed="true">Pasted list</button>' : '') + '<button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
+    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">' + (App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'This deck') + '</button>' + (App.anSource === 'paste' ? '<button type="button" data-an="src-paste" aria-pressed="true">Pasted list</button>' : '') + '<button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div>' + (App.anAdv || App.anSource === 'paste' || App.anSource === 'compare' || !App.AN ? '<label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button>' : '') + '</div>' +
       (App.anSource === 'paste' || App.anSource === 'compare' ? '<label class="f" style="margin-top:8px">' + (App.anSource === 'compare' ? 'List to compare against the generated deck. ' : '') + 'Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="anText" rows="8" spellcheck="false">' + esc(App.anText || '') + '</textarea></label>' : '');
     if (!X && !App.R && App.anSource !== 'compare') { $('view').innerHTML = '<div class="next-tile"><p><b>No deck yet.</b> Build one or import your list on Start, and its analysis opens here.</p><button type="button" class="primary" data-go="setup">Start ›</button></div>'; return; }
     if (!X && App.anRun) { $('view').innerHTML = src + '<p class="note" style="margin-top:10px">Analyzing…</p>'; return; }
@@ -5462,7 +5536,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     const sub = SUBS.some(x => x[0] === App.anSub) ? App.anSub : 'turns';
     // the two profiles at full size: the five power vectors (as ScryCheck draws them) and the eight fundamentals
     const radars = '<div class="an-grid top an-radar"><div class="an-card"><h3>Power vectors</h3>' + radarSVG(P.vectors) + '</div><div class="an-card"><h3>Fundamentals</h3>' + radarSVG(X.axes) + '</div></div>';
-    const overview = radars + recs + anCountsHTML(X) + anNextHTML(X);
+    const overview = verdictHTML(X) + anNextHTML(X) + recs + anCountsHTML(X) + radars;
     const adv = '<div class="an-adv"><button type="button" class="small" data-an="adv" aria-expanded="' + !!App.anAdv + '">' + (App.anAdv ? 'Hide detail' : 'Show detail: turn by turn, power, fundamentals, mana, synergy' + (stats ? ', deck stats' : '') + ', method') + '</button></div>';
     const nav = App.anAdv ? '<div class="subtabs" role="tablist" aria-label="Analysis detail">' + SUBS.map(([k, l]) => '<button type="button" role="tab" data-ansub="' + k + '" aria-selected="' + (k === sub) + '">' + l + '</button>').join('') + '</div>' : '';
     const body = !App.anAdv ? '' : {
@@ -5474,8 +5548,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
       synergy: synergy,
       method: method.replace('<details class="an-method">', '<details class="an-method" open>')
     }[sub];
-    const jump = '<div class="an-jump" role="group" aria-label="Go to">' + (App.anSource === 'paste' ? '' : '<button type="button" class="small primary" data-go="changes">Improve ›</button>') + [['anProblems', 'Problems'], ['anCounts', 'Counts'], ['anDetail', 'Detail']].map(([id, l]) => '<button type="button" class="small" data-jump="' + id + '">' + l + '</button>').join('') + '</div>';
-    $('view').innerHTML = src + jump + (X.stale ? '<p class="note">The deck changed; re-analyzing. The figures below are for the previous list.</p>' : '') + head + overview + '<div id="anDetail">' + adv + nav + body + '</div>';
+    $('view').innerHTML = src + (X.stale ? '<p class="note">The deck changed; re-analyzing. The figures below are for the previous list.</p>' : '') + overview + '<div id="anDetail">' + adv + nav + (App.anAdv ? head : '') + body + '</div>';
   }
 
   /* ---------- views ---------- */
@@ -6104,10 +6177,11 @@ if (typeof module !== 'undefined') module.exports = Builder;
   function quickStats() {
     const R = App.R; if (!R || !R.stats || !App.bulk) return null;
     const key = deckKey(R);
-    if (App.QS && App.QS.key === key) return App.QS;
-    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label !== 'Pasted list' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    const full = App.AN && !App.AN.error && !App.AN.compare && !App.AN.stale && App.AN.inp && App.AN.label !== 'Pasted list' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    // the quick estimate (no combos, fewer games) gives way to the full analysis once it exists, so the header and Analysis agree
+    if (App.QS && App.QS.key === key && (App.QS.full || !full)) return App.QS;
     const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, games: 4000 });
-    App.QS = { key, pl: X.power.pl, plLabel: X.power.label, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, winBest: X.power.win.best, winCont: X.power.win.contested, winSrc: X.power.win.source, winRange: X.power.win.range, arch: X.power.primary, score: R.deckScore ? R.deckScore() : null, games: X.sim.games, axes: X.axes.map(a => ({ label: a.label, score: a.score })) };
+    App.QS = { key, full: !!full, pl: X.power.pl, plLabel: X.power.label, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, winBest: X.power.win.best, winCont: X.power.win.contested, winSrc: X.power.win.source, winRange: X.power.win.range, arch: X.power.primary, score: R.deckScore ? R.deckScore() : null, games: X.sim.games, axes: X.axes.map(a => ({ label: a.label, score: a.score })) };
     return App.QS;
   }
   const KI = {
@@ -6224,7 +6298,10 @@ if (typeof module !== 'undefined') module.exports = Builder;
     const say = t => { App.impNote = t; if ($('impNote')) $('impNote').textContent = t; };
     if (!App.bulk) { say('Load the card data first (Start, Card data).'); return; }
     const P = Analysis.parseDecklist(App.impText || '');
+    if (P.error) { say(P.error); return; }
     const K = Analysis.pickCommanders(P, App.bulk), unknown = K.missing.slice(), cmds = K.cmds;
+    // sideboard, maybeboard and wishlist cards are not part of the deck; say how many were left out
+    const sbN = (K.how === 'sideboard' ? 0 : P.sb.reduce((s, x) => s + x.qty, 0)) + (P.skipped || 0);
     if (!cmds.length && App.impPick) { const c = Engine.lookup(App.bulk, App.impPick); if (c) { cmds.push(c); K.how = 'pick'; } }
     if (!cmds.length) {
       const cand = (K.candidates || []).slice(0, 12);
@@ -6250,8 +6327,8 @@ if (typeof module !== 'undefined') module.exports = Builder;
     const kept = built.deck.reduce((s, e) => s + e.qty, 0), total = kept + built.commanders.length;
     const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' with ' + cmds.map(c => c.n).join(' + ') + (K.how !== 'section' && K.how !== 'pick' ? ' (read as the commander from the ' + K.how + ')' : '') + ' (' + total + ' total).' +
       (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
-      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes at the bottom).' : '') + (total < 100 ? ' ' + (100 - total) + ' short of 100: Fill to 100 on Analysis adds them.' : total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
-    say(msg); setStatus(msg);
+      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes at the bottom).' : '') + (sbN ? ' ' + sbN + ' sideboard or maybeboard card' + (sbN === 1 ? '' : 's') + ' left out.' : '') + (total < 100 ? ' ' + (100 - total) + ' short of 100: Fill to 100 on Analysis adds them.' : total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
+    say(msg); setStatus(msg); App.impMsg = msg; // shown on Analysis too, since the analysis status replaces it
     App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
     runAnalysis();
   }
@@ -6289,6 +6366,14 @@ if (typeof module !== 'undefined') module.exports = Builder;
     const cats = new Map(cards.map(c => [c, Builder.cardCats(c, tags)]));
     App.BC = { key, db: App.bulk, R: live, cmds, CI, tags, cards, cats, owned: !!owned };
     return App.BC;
+  }
+  // after a commander or format change, drop draft picks the new deck can't hold: the commander itself, cards outside its colours, cards not legal in the format
+  function blPrune() {
+    const B = blState(), cmds = blCmds(); if (!cmds.length || !App.bulk) return 0;
+    const CI = blCI(cmds), cn = new Set(cmds.map(c => c.n)); let n = 0;
+    for (const name of Object.keys(B.picks)) { const c = Engine.lookup(App.bulk, name); if (!c || cn.has(c.n) || c.leg !== 'legal' || ![...c.ci].every(x => CI.includes(x))) { n += B.picks[name]; delete B.picks[name]; } }
+    if (n) App.blNote = 'Removed ' + n + ' picked card' + (n === 1 ? '' : 's') + ' the new commander or format can\'t use.';
+    return n;
   }
   function blEntries() {
     if (blLive()) return App.R.deck;
@@ -6475,7 +6560,7 @@ if (typeof module !== 'undefined') module.exports = Builder;
     if (d.blth != null) { const cur = blThemes(blCmds()); B.themes = cur.includes(d.blth) ? cur.filter(x => x !== d.blth) : cur.concat(d.blth); if (B.cat === d.blth) B.cat = 'all'; App.blThOpen = true; blSave(); return renderBuilder(); }
     if (d.blbr != null) { B.bracket = +d.blbr; blSave(); return renderBuilder(); }
     if (d.blall != null) { B.all = d.blall === '1'; B.n = 60; blSave(); return renderBuilder(); }
-    if (d.blcmd != null) { B.cmds = [d.blcmd, '']; B.themes = null; B.cat = 'all'; B.cq = ''; blSave(); window.scrollTo({ top: 0 }); return renderBuilder(); }
+    if (d.blcmd != null) { B.cmds = [d.blcmd, '']; B.themes = null; B.cat = 'all'; B.cq = ''; blPrune(); blSave(); window.scrollTo({ top: 0 }); return renderBuilder(); }
     if (d.blbas != null && blLive()) { const q = blQty(d.blbas); if (+d.d < 0 && !q) return; return blEdit([+d.d > 0 ? { op: 'add', add: d.blbas, qty: 1 } : { op: 'cut', cut: d.blbas, qty: 1 }], (+d.d > 0 ? 'added a ' : 'took out a ') + d.blbas).then(() => blRefresh()); }
     if (d.blbas != null) { const q = Math.max(0, (B.picks[d.blbas] || 0) + +d.d); if (q) B.picks[d.blbas] = q; else delete B.picks[d.blbas]; blSave(); return blRefresh(); }
     const P = blPool();
@@ -6485,10 +6570,10 @@ if (typeof module !== 'undefined') module.exports = Builder;
       case 'more': B.n += 60; return blList();
       case 'th-auto': B.themes = null; App.blThOpen = true; blSave(); return renderBuilder();
       case 'tribe': { const v = ($('blTribe').value || '').trim().toLowerCase(), T = [...Engine.creatureTypes(App.bulk)].find(x => x.toLowerCase() === v || Engine.plural(x) === v); if (!T) { $('blTribe').setCustomValidity('Not a creature type in the card data'); $('blTribe').reportValidity(); return; } const cur = blThemes(blCmds()); if (!cur.includes('tribal:' + T)) B.themes = cur.concat('tribal:' + T); App.blThOpen = true; blSave(); return renderBuilder(); }
-      case 'basics': if (blLive()) { const E = blEntries(), T = Builder.tally(E, P.cmds, B.bracket, P.CI), add = Builder.basicsFor(E.filter(e => !Engine.isBasic(e.c)), P.cmds, P.CI, blTarget(T, 'lands')), ops = [];
+      case 'basics': if (blLive()) { const E = blEntries(), T = Builder.tally(E, P.cmds, B.bracket, P.CI), add = Builder.basicsFor(E.filter(e => !Object.values(Engine.BASIC_NAMES).includes(e.c.n)), P.cmds, P.CI, blTarget(T, 'lands')), ops = [];
         for (const x of 'WUBRGC') { const nm = Engine.BASIC_NAMES[x], d = (add[x] || 0) - blQty(nm); if (d > 0) ops.push({ op: 'add', add: nm, qty: d }); else if (d < 0) ops.push({ op: 'cut', cut: nm, qty: -d }); }
         if (!ops.length) return; return blEdit(ops, 'basic lands set to ' + blTarget(T, 'lands') + ' lands').then(() => blRefresh()); }
-      { const T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI), noBas = blEntries().filter(e => !Engine.isBasic(e.c)); for (const x of 'WUBRGC') delete B.picks[Engine.BASIC_NAMES[x]]; const add = Builder.basicsFor(noBas, P.cmds, P.CI, blTarget(T, 'lands')); for (const [x, q] of Object.entries(add)) if (q) B.picks[Engine.BASIC_NAMES[x]] = q; blSave(); return blRefresh(); }
+      { const T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI), noBas = blEntries().filter(e => !Object.values(Engine.BASIC_NAMES).includes(e.c.n)); for (const x of 'WUBRGC') delete B.picks[Engine.BASIC_NAMES[x]]; const add = Builder.basicsFor(noBas, P.cmds, P.CI, blTarget(T, 'lands')); for (const [x, q] of Object.entries(add)) if (q) B.picks[Engine.BASIC_NAMES[x]] = q; blSave(); return blRefresh(); }
       case 'analyze': t.disabled = true; return blAnalyze();
       case 'copy': return copyText(Builder.exportList(P.cmds, blEntries()), null, $('blNote'));
       case 'clear': if (!confirm('Remove every picked card?')) return; B.picks = {}; blSave(); return renderBuilder();
@@ -7031,7 +7116,6 @@ if (typeof module !== 'undefined') module.exports = Builder;
       }
       else if (pr) pr.dataset.print === 'proxies' ? printProxies() : printPrimer();
     });
-    $('view').addEventListener('click', e => { const b = e.target.closest('button[data-jump]'), t = b && $(b.dataset.jump); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     // collection: the list (Collection page), how it is used (Start tile, Collection page) and the Improve header switch
     const saveOwn = t => {
       App.ownDraft = null;

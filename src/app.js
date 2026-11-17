@@ -159,10 +159,10 @@
   async function loadRarity() {
     if (!App.bulk || App.bulk.pdhSrc === 'rarity' || App.bulk.pdhSrc === 'printings' || !window.EDH_SITE || !/^https?:$/.test(location.protocol)) return;
     try {
-      const r = await fetch('data/rarity.json', { cache: 'no-cache' }); if (!r.ok) return;
-      const j = await r.json(); if (!(j && j.format === 'edhgen-rarity/1')) return;
-      Engine.addRarity(App.bulk, j); App.cmdIndex = null; syncFormat(true);
-    } catch (e) { }
+      const r = await fetch('data/rarity.json', { cache: 'no-cache' }); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json(); if (!(j && j.format === 'edhgen-rarity/1')) throw new Error('unknown format');
+      Engine.addRarity(App.bulk, j); App.rarityErr = ''; App.cmdIndex = null; syncFormat(true);
+    } catch (e) { App.rarityErr = e.message; fmtNote(); }
   }
   /* ---------- format: Commander or Pauper Commander. Engine.setFormat sets each card's legality for the format, so
      every pool, suggestion and rule check follows it. ---------- */
@@ -171,7 +171,7 @@
   function syncFormat(force) {
     if (!App.bulk) return;
     const before = App.bulk.fmtKey; Engine.setFormat(App.bulk, App.S.format);
-    if (force || before !== App.bulk.fmtKey) { App.cmdIndex = null; App.BC = null; if (App.R && App.R.stats && App.tab !== 'setup' && !App.busy) renderView(); }
+    if (force || before !== App.bulk.fmtKey) { App.cmdIndex = null; App.BC = null; if (App.B && App.B.picks && !blLive() && blPrune()) blSave(); if (App.R && App.R.stats && App.tab !== 'setup' && !App.busy) renderView(); }
     fmtNote();
   }
   function fmtNote() {
@@ -180,7 +180,7 @@
     el.textContent = !isPDH() ? '' : !App.bulk ? 'Pauper Commander: the 99 must be commons, the commander an uncommon creature. Card data not loaded yet.' :
       src === 'rarity' || src === 'printings' ? 'Pauper Commander: the 99 must have a common printing (paper or MTGO), the commander an uncommon creature, Vehicle or Spacecraft. Mystic Remora and Rhystic Study are banned.' :
       src === 'scryfall' ? 'Pauper Commander legality from Scryfall\'s paupercommander field. A common creature with an uncommon printing is not offered as commander without the rarity file.' :
-      'Rarity data (data/rarity.json) is not loaded, so legality comes from one printing per card: some legal commons and commanders are missing.';
+      'Pauper Commander needs the rarity file (data/rarity.json), which did not load' + (App.rarityErr ? ' (' + App.rarityErr + ')' : '') + '. Reload the page to try again; until then no card counts as legal.';
   }
   // switching format with a deck loaded runs its chain again: an imported list is kept and checked against the new
   // format, a generated deck is rebuilt for it (with its locks and edits)
@@ -370,7 +370,12 @@
     return '<span class="mcost">' + esc(mc).replace(/\{([^}]+)\}/g, (m, s) => { const cols = s.split('/').filter(x => 'WUBRG'.includes(x)); const cls = cols.length === 1 ? cols[0] : ''; return '<span class="ms ' + cls + '">' + s.replace('/', '') + '</span>'; }) + '</span>';
   }
   const fmtP = (v) => Engine.fmt(v, App.R ? App.R.settings.budget.cur : App.S.budget.cur);
-  function setStatus(t) { $('status').textContent = t || ''; syncActions(); }
+  // routine confirmations clear themselves after a few seconds; progress, errors and anything that needs reading stay
+  const STATUS_FADE = /^(Loaded|Generated in|Analysis done|Comparison done|Settings loaded|Token applied|Defaults restored|Tests finished|Undid|Swapped|Added|Applied|Filled|Restored|Checked the imported|Rebuilt the deck)/;
+  function setStatus(t) {
+    $('status').textContent = t || ''; syncActions();
+    clearTimeout(App.statusT); if (t && STATUS_FADE.test(t)) App.statusT = setTimeout(() => { if ($('status').textContent === t) setStatus(''); }, 6000);
+  }
   function syncActions() { const has = App.R && App.R.stats, locks = has && (App.R.deck.some(e => e.locked && !e.inc && !e.imp) || (App.R.bans || []).length > 0); $('regenBtn').classList.toggle('hidden', !locks); const ops = has && App.chain ? App.chain.ops : []; $('undoBtn').classList.toggle('hidden', !ops.length); $('undoBtn').disabled = !!App.busy; if (ops.length) $('undoBtn').title = 'Undo ' + opLabel(ops[ops.length - 1]) + ' (U or Ctrl+Z)'; document.querySelector('.actions').classList.toggle('hidden', !locks && !ops.length && !$('status').textContent && App.tab !== 'tests'); }
   function setProg(f) { const p = $('genProg'); if (f == null) { p.classList.add('hidden'); return; } p.classList.remove('hidden'); p.firstElementChild.style.width = (f * 100).toFixed(0) + '%'; }
   function showMsgs(errors, warnings, extraHTML) {
@@ -482,7 +487,8 @@
   function analysisInput(forcePaste) {
     if (forcePaste || App.anSource === 'paste') {
       if (!App.bulk) return { error: 'Load the Scryfall bulk file first.' };
-      const P = Analysis.parseDecklist(App.anText || ''), K = Analysis.pickCommanders(P, App.bulk);
+      const P = Analysis.parseDecklist(App.anText || ''); if (P.error) return { error: P.error };
+      const K = Analysis.pickCommanders(P, App.bulk);
       const unknown = K.missing.slice(), cmds = K.cmds.slice(), deck = [];
       if (!cmds.length) for (const n of App.S.commanders.map(s => (s || '').trim()).filter(Boolean)) { const c = Engine.lookup(App.bulk, n); if (c) cmds.push(c); else unknown.push(n); }
       for (const it of K.main) { const c = Engine.lookup(App.bulk, it.name); if (!c) { unknown.push(it.name); continue; } if (cmds.includes(c)) continue; const ex = deck.find(e => e.c === c); if (ex) ex.qty += it.qty; else deck.push({ c, qty: it.qty }); }
@@ -508,7 +514,7 @@
         if (!combos || App.anSource === 'paste') combos = await cp.find(names, inp.cmds.map(c => c.n));
         const CI = 'WUBRG'.split('').filter(x => inp.cmds.some(c => c.ci.includes(x))).join('');
         const own = ownOpt(), poolNames = App.bulk.all.filter(c => c.leg === 'legal' && [...c.ci].every(x => CI.includes(x)) && (!own || own.has(c.n) || Engine.isBasic(c))).map(c => c.n);
-        almost = (await cp.almost(names, poolNames)).filter(x => x.missing.length === 1).slice(0, 8).map(x => ({ cards: x.v.c, missing: x.missing, produces: x.v.p }));
+        almost = (await cp.almost(names, poolNames, 2, inp.cmds.map(c => c.n))).filter(x => x.missing.length === 1).sort((a, b) => (b.v.pop || 0) - (a.v.pop || 0)).slice(0, 8).map(x => ({ cards: x.v.c, missing: x.missing, produces: x.v.p }));
       } catch (e) { }
     }
     if (seq !== anSeq) return [];
@@ -533,7 +539,7 @@
     setStatus('Analysis done in ' + ((performance.now() - t0) / 1000).toFixed(2) + ' s (' + X.sim.games.toLocaleString() + ' simulated games).');
     X.impact = []; X.impactDone = !X.plans.length;
     X.held = !!inp.asIs && !App.recsShown && X.plans.length > 0; // imported deck: changes are scored only once Improve is opened
-    renderAnView();
+    renderScorebar(); renderAnView();
     if (!X.plans.length || X.held) { if (!X.held && App.DEEP) { deepMerge(X); renderSwaps(); } return; }
     return scoreSwaps(X);
   }
@@ -544,7 +550,7 @@
     const names = inp.cmds.map(c => c.n).concat(inp.deck.map(e => e.c.n));
     const combosFor = (cut, add) => {
       let out = (combos || []).filter(v => !v.c.some(n => Engine.nameKey(n) === Engine.nameKey(cut.n)));
-      if (cp && cp.completes) { const rest = names.filter(n => n !== cut.n); const seen = new Set(out.map(v => v.id)); for (const v of cp.completes(add.n, rest)) if (!seen.has(v.id)) { out.push(v); seen.add(v.id); } }
+      if (cp && cp.completes) { const rest = names.filter(n => n !== cut.n); const seen = new Set(out.map(v => v.id)); for (const v of cp.completes(add.n, rest, inp.cmds.map(c => c.n))) if (!seen.has(v.id)) { out.push(v); seen.add(v.id); } }
       return combos == null && !cp ? null : out;
     };
     const prep = Analysis.impactPrep(App.bulk, inp.deck, inp.cmds, { settings: App.S, combos, combosFor, impactGames: 5000 });
@@ -864,16 +870,38 @@
     const C = countsHTML(R, App.anSource === 'paste' || X.inp.asIs ? X.power.minBracket : null);
     return '<div class="an-card wide" id="anCounts"><div class="an-top wrap"><h3>Counts against real decks</h3>' + C.seg + '</div>' + C.html + '</div>';
   }
+  // the top of Analysis in plain words: how strong, which bracket and which cards set it, the one thing to fix first, and the next step
+  function verdictHTML(X) {
+    const P = X.power, W = P.win, b = X.bracket, C = b.cards || {}, minB = P.minBracket;
+    const list = (a, n) => a.slice(0, n).map(esc).join(', ') + (a.length > n ? ' and ' + (a.length - n) + ' more' : '');
+    const set = App.anSource !== 'paste' && App.R && App.R.settings ? +App.R.settings.bracket : null;
+    const marks = [
+      C.gc && C.gc.length ? C.gc.length + ' Game Changer' + (C.gc.length === 1 ? '' : 's') + ' (' + list(C.gc, 4) + ')' : '',
+      C.combo2 && C.combo2.length ? C.combo2.length + ' two-card infinite combo' + (C.combo2.length === 1 ? '' : 's') + ' (' + list(C.combo2, 2) + ')' : '',
+      C.mld && C.mld.length ? 'mass land denial (' + list(C.mld, 3) + ')' : '',
+      C.xturn && C.xturn.length ? 'extra turns (' + list(C.xturn, 3) + ')' : ''
+    ].filter(Boolean);
+    const fast = P.minBracketWhy.some(w => /win turn/.test(w));
+    const why = marks.length ? 'Counted: ' + marks.join('; ') + (fast ? '; wins by turn ' + W.typical : '') + '.' : fast ? 'No bracket-limited cards, but it wins by turn ' + W.typical + ', faster than lower brackets expect.' : 'No Game Changers, two-card infinites, mass land denial or extra turns.';
+    const top = rankedRecs(X).filter(r => r.sev === 'high' || r.sev === 'med')[0];
+    const fix = top ? esc(top.text.replace(/\s*[^.]*:$/, '') || top.text) : 'Nothing serious. Every role count and color source is in range.';
+    const hi = set && minB > set;
+    const imp = App.anSource !== 'paste' && App.impMsg && App.chain && App.chain.env && App.chain.env.imported ? '<p class="note">' + esc(App.impMsg) + '</p>' : '';
+    return '<div class="verdict" id="anVerdict">' + imp +
+      '<p><b>Power ' + P.pl.toFixed(1) + ' of 10</b> (' + esc(P.label) + '), wins around <b>turn ' + W.typical + '</b>. Plays like <b>Bracket ' + minB + '</b>' + (hi ? ', above the Bracket ' + set + ' you chose' : '') + '. <span class="note">' + why + '</span></p>' +
+      '<p><b>Fix first:</b> ' + fix + '</p>' +
+      (X.deckSize + X.cmds.length !== 100 ? '<p><span class="st fail">' + (X.deckSize + X.cmds.length) + ' cards, not 100</span>' + (App.anSource !== 'paste' ? fillBtnHTML() : '') + '</p>' : '') + '</div>';
+  }
   // the end of Analysis: hand-off to Improve, where the swaps are measured
   function anNextHTML(X) {
     if (App.anSource === 'paste') return '';
     const o = ownedCards(), mine = ownOnly() && o && o.set.size, own = ownSumHTML();
-    const what = X.plans.length ? X.plans.length + ' candidate swap' + (X.plans.length === 1 ? '' : 's') + ' for the problems above' : 'No obvious swaps; deep search and budget upgrades look further';
+    const what = X.plans.length ? X.plans.length + ' candidate swap' + (X.plans.length === 1 ? '' : 's') + ' for the problems below' : 'No obvious swaps; deep search and budget upgrades look further';
     return '<div class="next-tile" id="anNext"><div><p><b>Next: Improve.</b> ' + what + ', measured with simulated games, from ' + (mine ? 'your collection (' + o.set.size.toLocaleString() + ' cards)' : 'all cards') + '.</p>' + (own ? '<p>' + own + '</p>' : '') + '</div><div class="row"><button type="button" class="small" data-blopen="1">Edit in Builder</button><button type="button" class="primary" data-go="changes">Improve this deck ›</button></div></div>';
   }
   function renderAnalysis() {
     const X = App.AN;
-    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">' + (App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'This deck') + '</button>' + (App.anSource === 'paste' ? '<button type="button" data-an="src-paste" aria-pressed="true">Pasted list</button>' : '') + '<button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div><label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button></div>' +
+    const src = '<div class="row an-src"><div class="seg" role="radiogroup" aria-label="Analyze"><button type="button" data-an="src-deck" aria-pressed="' + (App.anSource !== 'paste' && App.anSource !== 'compare') + '">' + (App.chain && App.chain.env && App.chain.env.imported ? 'Imported deck' : 'This deck') + '</button>' + (App.anSource === 'paste' ? '<button type="button" data-an="src-paste" aria-pressed="true">Pasted list</button>' : '') + '<button type="button" data-an="src-compare" aria-pressed="' + (App.anSource === 'compare') + '">Compare</button></div>' + (App.anAdv || App.anSource === 'paste' || App.anSource === 'compare' || !App.AN ? '<label class="f inline">Simulated games <select id="anGames">' + [1500, 10000, 25000, 50000, 100000].map(g => '<option value="' + g + '"' + (g === anGames() ? ' selected' : '') + '>' + g.toLocaleString() + '</option>').join('') + '</select></label><button type="button" class="primary small" data-an="run">Analyze</button>' : '') + '</div>' +
       (App.anSource === 'paste' || App.anSource === 'compare' ? '<label class="f" style="margin-top:8px">' + (App.anSource === 'compare' ? 'List to compare against the generated deck. ' : '') + 'Decklist (Moxfield, Archidekt, MTGO or plain "1 Name"; commander under a "Commander" header or tagged [Commander])<textarea id="anText" rows="8" spellcheck="false">' + esc(App.anText || '') + '</textarea></label>' : '');
     if (!X && !App.R && App.anSource !== 'compare') { $('view').innerHTML = '<div class="next-tile"><p><b>No deck yet.</b> Build one or import your list on Start, and its analysis opens here.</p><button type="button" class="primary" data-go="setup">Start ›</button></div>'; return; }
     if (!X && App.anRun) { $('view').innerHTML = src + '<p class="note" style="margin-top:10px">Analyzing…</p>'; return; }
@@ -964,7 +992,7 @@
     const sub = SUBS.some(x => x[0] === App.anSub) ? App.anSub : 'turns';
     // the two profiles at full size: the five power vectors (as ScryCheck draws them) and the eight fundamentals
     const radars = '<div class="an-grid top an-radar"><div class="an-card"><h3>Power vectors</h3>' + radarSVG(P.vectors) + '</div><div class="an-card"><h3>Fundamentals</h3>' + radarSVG(X.axes) + '</div></div>';
-    const overview = radars + recs + anCountsHTML(X) + anNextHTML(X);
+    const overview = verdictHTML(X) + anNextHTML(X) + recs + anCountsHTML(X) + radars;
     const adv = '<div class="an-adv"><button type="button" class="small" data-an="adv" aria-expanded="' + !!App.anAdv + '">' + (App.anAdv ? 'Hide detail' : 'Show detail: turn by turn, power, fundamentals, mana, synergy' + (stats ? ', deck stats' : '') + ', method') + '</button></div>';
     const nav = App.anAdv ? '<div class="subtabs" role="tablist" aria-label="Analysis detail">' + SUBS.map(([k, l]) => '<button type="button" role="tab" data-ansub="' + k + '" aria-selected="' + (k === sub) + '">' + l + '</button>').join('') + '</div>' : '';
     const body = !App.anAdv ? '' : {
@@ -976,8 +1004,7 @@
       synergy: synergy,
       method: method.replace('<details class="an-method">', '<details class="an-method" open>')
     }[sub];
-    const jump = '<div class="an-jump" role="group" aria-label="Go to">' + (App.anSource === 'paste' ? '' : '<button type="button" class="small primary" data-go="changes">Improve ›</button>') + [['anProblems', 'Problems'], ['anCounts', 'Counts'], ['anDetail', 'Detail']].map(([id, l]) => '<button type="button" class="small" data-jump="' + id + '">' + l + '</button>').join('') + '</div>';
-    $('view').innerHTML = src + jump + (X.stale ? '<p class="note">The deck changed; re-analyzing. The figures below are for the previous list.</p>' : '') + head + overview + '<div id="anDetail">' + adv + nav + body + '</div>';
+    $('view').innerHTML = src + (X.stale ? '<p class="note">The deck changed; re-analyzing. The figures below are for the previous list.</p>' : '') + overview + '<div id="anDetail">' + adv + nav + (App.anAdv ? head : '') + body + '</div>';
   }
 
   /* ---------- views ---------- */
@@ -1606,10 +1633,11 @@
   function quickStats() {
     const R = App.R; if (!R || !R.stats || !App.bulk) return null;
     const key = deckKey(R);
-    if (App.QS && App.QS.key === key) return App.QS;
-    const full = App.AN && !App.AN.error && !App.AN.compare && App.AN.inp && App.AN.label !== 'Pasted list' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    const full = App.AN && !App.AN.error && !App.AN.compare && !App.AN.stale && App.AN.inp && App.AN.label !== 'Pasted list' && deckKey({ commanders: App.AN.cmds, deck: App.AN.inp.deck }) === key ? App.AN : null;
+    // the quick estimate (no combos, fewer games) gives way to the full analysis once it exists, so the header and Analysis agree
+    if (App.QS && App.QS.key === key && (App.QS.full || !full)) return App.QS;
     const X = full || Analysis.run(App.bulk, R.deck, R.commanders, { settings: R.settings, games: 4000 });
-    App.QS = { key, pl: X.power.pl, plLabel: X.power.label, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, winBest: X.power.win.best, winCont: X.power.win.contested, winSrc: X.power.win.source, winRange: X.power.win.range, arch: X.power.primary, score: R.deckScore ? R.deckScore() : null, games: X.sim.games, axes: X.axes.map(a => ({ label: a.label, score: a.score })) };
+    App.QS = { key, full: !!full, pl: X.power.pl, plLabel: X.power.label, fund: X.overall, minB: X.power.minBracket, win: X.power.win.typical, winBest: X.power.win.best, winCont: X.power.win.contested, winSrc: X.power.win.source, winRange: X.power.win.range, arch: X.power.primary, score: R.deckScore ? R.deckScore() : null, games: X.sim.games, axes: X.axes.map(a => ({ label: a.label, score: a.score })) };
     return App.QS;
   }
   const KI = {
@@ -1726,7 +1754,10 @@
     const say = t => { App.impNote = t; if ($('impNote')) $('impNote').textContent = t; };
     if (!App.bulk) { say('Load the card data first (Start, Card data).'); return; }
     const P = Analysis.parseDecklist(App.impText || '');
+    if (P.error) { say(P.error); return; }
     const K = Analysis.pickCommanders(P, App.bulk), unknown = K.missing.slice(), cmds = K.cmds;
+    // sideboard, maybeboard and wishlist cards are not part of the deck; say how many were left out
+    const sbN = (K.how === 'sideboard' ? 0 : P.sb.reduce((s, x) => s + x.qty, 0)) + (P.skipped || 0);
     if (!cmds.length && App.impPick) { const c = Engine.lookup(App.bulk, App.impPick); if (c) { cmds.push(c); K.how = 'pick'; } }
     if (!cmds.length) {
       const cand = (K.candidates || []).slice(0, 12);
@@ -1752,8 +1783,8 @@
     const kept = built.deck.reduce((s, e) => s + e.qty, 0), total = kept + built.commanders.length;
     const msg = 'Imported ' + kept + ' of ' + n + ' card' + (n === 1 ? '' : 's') + ' with ' + cmds.map(c => c.n).join(' + ') + (K.how !== 'section' && K.how !== 'pick' ? ' (read as the commander from the ' + K.how + ')' : '') + ' (' + total + ' total).' +
       (unknown.length ? ' Not in the card data (' + unknown.length + '): ' + unknown.slice(0, 8).join('; ') + (unknown.length > 8 ? ' …' : '') + '.' : '') +
-      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes at the bottom).' : '') + (total < 100 ? ' ' + (100 - total) + ' short of 100: Fill to 100 on Analysis adds them.' : total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
-    say(msg); setStatus(msg);
+      (kept < n ? ' ' + (n - kept) + ' rejected (see Notes at the bottom).' : '') + (sbN ? ' ' + sbN + ' sideboard or maybeboard card' + (sbN === 1 ? '' : 's') + ' left out.' : '') + (total < 100 ? ' ' + (100 - total) + ' short of 100: Fill to 100 on Analysis adds them.' : total !== 100 ? ' Not 100 cards; Rules on Deck lists it.' : '');
+    say(msg); setStatus(msg); App.impMsg = msg; // shown on Analysis too, since the analysis status replaces it
     App.recsShown = false; App.accepted = []; App.acceptNote = ''; App.anSource = 'deck'; App.AN = null; App.tab = 'analysis'; renderView(); window.scrollTo({ top: 0 });
     runAnalysis();
   }
@@ -1791,6 +1822,14 @@
     const cats = new Map(cards.map(c => [c, Builder.cardCats(c, tags)]));
     App.BC = { key, db: App.bulk, R: live, cmds, CI, tags, cards, cats, owned: !!owned };
     return App.BC;
+  }
+  // after a commander or format change, drop draft picks the new deck can't hold: the commander itself, cards outside its colours, cards not legal in the format
+  function blPrune() {
+    const B = blState(), cmds = blCmds(); if (!cmds.length || !App.bulk) return 0;
+    const CI = blCI(cmds), cn = new Set(cmds.map(c => c.n)); let n = 0;
+    for (const name of Object.keys(B.picks)) { const c = Engine.lookup(App.bulk, name); if (!c || cn.has(c.n) || c.leg !== 'legal' || ![...c.ci].every(x => CI.includes(x))) { n += B.picks[name]; delete B.picks[name]; } }
+    if (n) App.blNote = 'Removed ' + n + ' picked card' + (n === 1 ? '' : 's') + ' the new commander or format can\'t use.';
+    return n;
   }
   function blEntries() {
     if (blLive()) return App.R.deck;
@@ -1977,7 +2016,7 @@
     if (d.blth != null) { const cur = blThemes(blCmds()); B.themes = cur.includes(d.blth) ? cur.filter(x => x !== d.blth) : cur.concat(d.blth); if (B.cat === d.blth) B.cat = 'all'; App.blThOpen = true; blSave(); return renderBuilder(); }
     if (d.blbr != null) { B.bracket = +d.blbr; blSave(); return renderBuilder(); }
     if (d.blall != null) { B.all = d.blall === '1'; B.n = 60; blSave(); return renderBuilder(); }
-    if (d.blcmd != null) { B.cmds = [d.blcmd, '']; B.themes = null; B.cat = 'all'; B.cq = ''; blSave(); window.scrollTo({ top: 0 }); return renderBuilder(); }
+    if (d.blcmd != null) { B.cmds = [d.blcmd, '']; B.themes = null; B.cat = 'all'; B.cq = ''; blPrune(); blSave(); window.scrollTo({ top: 0 }); return renderBuilder(); }
     if (d.blbas != null && blLive()) { const q = blQty(d.blbas); if (+d.d < 0 && !q) return; return blEdit([+d.d > 0 ? { op: 'add', add: d.blbas, qty: 1 } : { op: 'cut', cut: d.blbas, qty: 1 }], (+d.d > 0 ? 'added a ' : 'took out a ') + d.blbas).then(() => blRefresh()); }
     if (d.blbas != null) { const q = Math.max(0, (B.picks[d.blbas] || 0) + +d.d); if (q) B.picks[d.blbas] = q; else delete B.picks[d.blbas]; blSave(); return blRefresh(); }
     const P = blPool();
@@ -1987,10 +2026,10 @@
       case 'more': B.n += 60; return blList();
       case 'th-auto': B.themes = null; App.blThOpen = true; blSave(); return renderBuilder();
       case 'tribe': { const v = ($('blTribe').value || '').trim().toLowerCase(), T = [...Engine.creatureTypes(App.bulk)].find(x => x.toLowerCase() === v || Engine.plural(x) === v); if (!T) { $('blTribe').setCustomValidity('Not a creature type in the card data'); $('blTribe').reportValidity(); return; } const cur = blThemes(blCmds()); if (!cur.includes('tribal:' + T)) B.themes = cur.concat('tribal:' + T); App.blThOpen = true; blSave(); return renderBuilder(); }
-      case 'basics': if (blLive()) { const E = blEntries(), T = Builder.tally(E, P.cmds, B.bracket, P.CI), add = Builder.basicsFor(E.filter(e => !Engine.isBasic(e.c)), P.cmds, P.CI, blTarget(T, 'lands')), ops = [];
+      case 'basics': if (blLive()) { const E = blEntries(), T = Builder.tally(E, P.cmds, B.bracket, P.CI), add = Builder.basicsFor(E.filter(e => !Object.values(Engine.BASIC_NAMES).includes(e.c.n)), P.cmds, P.CI, blTarget(T, 'lands')), ops = [];
         for (const x of 'WUBRGC') { const nm = Engine.BASIC_NAMES[x], d = (add[x] || 0) - blQty(nm); if (d > 0) ops.push({ op: 'add', add: nm, qty: d }); else if (d < 0) ops.push({ op: 'cut', cut: nm, qty: -d }); }
         if (!ops.length) return; return blEdit(ops, 'basic lands set to ' + blTarget(T, 'lands') + ' lands').then(() => blRefresh()); }
-      { const T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI), noBas = blEntries().filter(e => !Engine.isBasic(e.c)); for (const x of 'WUBRGC') delete B.picks[Engine.BASIC_NAMES[x]]; const add = Builder.basicsFor(noBas, P.cmds, P.CI, blTarget(T, 'lands')); for (const [x, q] of Object.entries(add)) if (q) B.picks[Engine.BASIC_NAMES[x]] = q; blSave(); return blRefresh(); }
+      { const T = Builder.tally(blEntries(), P.cmds, B.bracket, P.CI), noBas = blEntries().filter(e => !Object.values(Engine.BASIC_NAMES).includes(e.c.n)); for (const x of 'WUBRGC') delete B.picks[Engine.BASIC_NAMES[x]]; const add = Builder.basicsFor(noBas, P.cmds, P.CI, blTarget(T, 'lands')); for (const [x, q] of Object.entries(add)) if (q) B.picks[Engine.BASIC_NAMES[x]] = q; blSave(); return blRefresh(); }
       case 'analyze': t.disabled = true; return blAnalyze();
       case 'copy': return copyText(Builder.exportList(P.cmds, blEntries()), null, $('blNote'));
       case 'clear': if (!confirm('Remove every picked card?')) return; B.picks = {}; blSave(); return renderBuilder();
@@ -2533,7 +2572,6 @@
       }
       else if (pr) pr.dataset.print === 'proxies' ? printProxies() : printPrimer();
     });
-    $('view').addEventListener('click', e => { const b = e.target.closest('button[data-jump]'), t = b && $(b.dataset.jump); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     // collection: the list (Collection page), how it is used (Start tile, Collection page) and the Improve header switch
     const saveOwn = t => {
       App.ownDraft = null;
