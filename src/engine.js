@@ -126,7 +126,7 @@ const Engine = (function () {
      the Commander legality), so every pool, suggestion and check that reads c.leg follows the format. ---------- */
   const FORMATS = { '': 'Commander', pdh: 'Pauper Commander' };
   const PDH_BANNED = new Set(['Mystic Remora', 'Rhystic Study']); // pdhhomebase.com/rules; cards banned in Commander (ante, Conspiracy, removed cards) count as banned too
-  const PDH_CMD_TYPES = /\b(?:Creature|Vehicle|Spacecraft)\b/;
+  const PDH_CMD_TYPES = /\b(?:Creature|Vehicle|Spacecraft|Background)\b/; // an uncommon Background can join an uncommon "Choose a Background" commander
   let FMT = '';
   // rar: data/rarity.json (tools/scryfall-rarity.js), every paper and MTGO printing's rarity
   function addRarity(db, j) {
@@ -179,11 +179,13 @@ const Engine = (function () {
   /* ---------- list parsing (decklists, collections) ---------- */
   function parseList(text) {
     const out = [];
-    const lines = String(text || '').split(/\r?\n/);
+    let lines = String(text || '').replace(/^\ufeff/, '').split(/\r?\n/);
     let csvName = -1, csvQty = -1;
+    const first = lines.findIndex(l => l.trim() && !/^"?sep=.?"?$/i.test(l.trim())); // skip Excel's "sep=," and blank lines
+    if (first > 0) lines = lines.slice(first);
     if (lines.length && /,/.test(lines[0]) && /\bname\b/i.test(lines[0])) {
       const h = splitCSV(lines[0]).map(x => x.toLowerCase().trim());
-      csvName = h.indexOf('name'); csvQty = h.findIndex(x => x === 'count' || x === 'quantity' || x === 'qty');
+      csvName = h.findIndex(x => /^(card ?)?name$/.test(x)); csvQty = h.findIndex(x => x === 'count' || x === 'quantity' || x === 'qty');
       if (csvName >= 0) lines.shift();
     }
     for (let line of lines) {
@@ -223,7 +225,9 @@ const Engine = (function () {
       rx('draw-n', '"draw N card(s)"', /\bdraws? (?:a|an|one|two|three|four|five|six|seven|x|\d+|that many|cards equal)(?: additional)? cards?\b|\bdraws? cards equal/),
       rx('draw-impulse', 'exile top card(s), you may play/cast them', /exile the top [^.]*?cards? of your library[^.]*\.[^.]*you may (?:play|cast)/),
       rx('draw-clue', 'investigate / creates Clues', /\binvestigates?\b|creates?[^.]{0,20}\bclue/),
-      rx('draw-top', 'play lands or cast spells from the top of your library', /you may (?:play|cast) [^.]{0,40}from the top of your library/)
+      rx('draw-top', 'play lands or cast spells from the top of your library', /you may (?:play|cast) [^.]{0,40}from the top of your library/),
+      rx('draw-select', 'look at or reveal the top cards and put two or more into your hand (Fact or Fiction, Dig Through Time)', /(?:look at|reveal) the top (?:three|four|five|six|seven|eight|nine|ten|x|\d+) cards of your library[^.]*\.(?:[^.]*\.)?[^.]*\bput (?:two|three|four|one pile|any number|all|those cards|x)\b[^.]*into (?:your|their owner's) hand/),
+      rx('draw-repeat', 'pay life for cards or repeat a reveal (Necropotence, Ad Nauseam)', /pay \d+ life: exile the top card of your library|put that card into your hand[^]*repeat this process/)
     ],
     removal: [
       rx('rm-destroy', '"destroy/exile target <permanent>" (not "you control", not cards in graveyards)', /\b(?:destroy|exile) (?:up to (?:one|two|three|x) )?(?:another )?target (?:(?:nonland|noncreature|nonartifact|tapped|attacking|blocking|nontoken|legendary|artifact or|creature or|enchantment or|artifact,) )*(?:creature|artifact|enchantment|planeswalker|permanent|land|battle)s?(?!s? (?:you control|card))/),
@@ -274,9 +278,9 @@ const Engine = (function () {
   const STAX_RE = /(?:spells?|abilities)[^.]{0,40}cost \{\d\} more|(?:each player|each opponent|your opponents|players|that player)[^.]{0,40}can't (?:cast|search|untap|activate|draw|attack|play|gain)|(?:don't|doesn't) untap during (?:their|its) controllers?'? untap steps?|(?:permanents|creatures|artifacts|lands|nonland permanents) (?:your opponents control )?enter(?: the battlefield)? tapped/;
   const FLAGS = {
     gc: { label: 'Game Changer', desc: 'Scryfall field game_changer = true', test: c => c.gc },
-    tutor: { label: 'Tutor', desc: '"search your library for" a card that is not a land / basic type', test: c => { const re = /search your library for ([^.]*)/g; let m; while ((m = re.exec(c.low))) { if (!/\bland\b|\blands\b|plains|island|swamp|mountain|forest/.test(m[1])) return true; } return c.kw.includes('transmute'); } },
+    tutor: { label: 'Tutor', desc: '"search your library for" a card that is not a land / basic type', test: c => { const re = /search (?:your|their) library(?: and\/or graveyard)? for ([^.]*)/g; let m; while ((m = re.exec(c.low))) { if (!/^(?:up to )?(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|x|that many|any number of)? ?(?:basic |snow |nonbasic )?(?:land|lands|plains|island|swamp|mountain|forest|desert|gate)\b|^(?:a|an|up to two|two) (?:basic )?(?:plains|island|swamp|mountain|forest)/.test(m[1])) return true; } return c.kw.includes('transmute'); } },
     xturn: { label: 'Extra turn', desc: '"take an extra turn"', test: c => /takes? (?:an|one|two|x|that many)? ?extra turns?/.test(c.low) },
-    mld: { label: 'Mass land denial', desc: 'destroy/exile/return all lands, sacrifice multiple lands, or lands don\'t untap', test: c => /(?:destroy|exile|return) all (?:nonbasic )?lands\b|(?:destroy|exile) all permanents\b|each player sacrifices [^.]{0,20}lands\b|sacrifices? all lands|lands (?:don't|do not) untap|lands? (?:your opponents control |players control )?(?:don't|can't) untap/.test(c.low) },
+    mld: { label: 'Mass land denial', desc: 'destroy/exile/return all lands, sacrifice multiple lands, lands don\'t untap (Winter Orb, Static Orb), or nonbasic lands turned basic (Blood Moon)', test: c => /(?:destroy|exile|return) all (?:nonbasic )?lands\b|(?:destroy|exile) all permanents\b|each player sacrifices [^.]{0,20}lands\b|sacrifices? all lands|lands (?:don't|do not) untap|lands? (?:your opponents control |players control )?(?:don't|can't) untap|(?:destroy|exile) all (?![^.]*except)[^.]*\blands\b|chooses? [^.]*\blands?\b[^.]*then sacrifices the rest|untap more than (?:one|two|three) (?:lands?|permanents)\b|nonbasic lands are (?:mountains|islands|swamps|plains|forests)/.test(c.low) },
     fast: { label: 'Fast mana', desc: '≤1 MV mana artifact, or instant/sorcery adding more mana than its MV', test: c => { if (/\bLand\b/.test(c.ft)) return false; if (/\bArtifact\b/.test(c.ft) && c.cmc <= 1 && /\badd \{|\badd (?:one|two|three) mana|\badd [^.]{0,30}mana of any/.test(c.low) && !/^\{\d+\}, \{t\}: add (?:one mana|\{[wubrgc]\}\.)/m.test(c.low)) return true; if (/\b(?:Instant|Sorcery)\b/.test(c.ft)) { const m = c.low.match(/\badd ((?:\{[wubrgc]\})+)/); if (m && (m[1].match(/\{/g) || []).length > c.cmc) return true; } return false; } },
     stax: { label: 'Stax', desc: 'taxes/restricts opponents: "cost {N} more", "can\'t …", "don\'t untap", "enter tapped"', test: c => STAX_RE.test(c.low) },
     hate: { label: 'Hate-bear', desc: 'creature with MV ≤ 3 that matches the stax rule', test: c => /\bCreature\b/.test(c.ft) && c.cmc <= 3 && STAX_RE.test(c.low) }
@@ -548,7 +552,8 @@ const Engine = (function () {
       const c = [], cmd = [];
       for (const k of cards) { const n = canon[k < 0 ? -k - 1 : k]; c.push(n); if (k < 0) cmd.push(n); }
       const p = feats.map(k => tables.features[k]), t = tmpl.map(k => tables.templates[k]);
-      out[i] = { id, c, cmd, p, t, r: t.length, inf: p.some(x => /infinite/i.test(x)), bt: bt || '', mv, ci: ci || '', pop, ex: !!(flags & 1) };
+      // inf: an infinite or an instant win, so a two-card win (Thassa's Oracle + Demonic Consultation) counts for the brackets like a two-card infinite
+      out[i] = { id, c, cmd, p, t, r: t.length, inf: p.some(x => /infinite|win the game|loses? the game/i.test(x)), bt: bt || '', mv, ci: ci || '', pop, ex: !!(flags & 1) };
     }
     return out;
   }
@@ -574,10 +579,11 @@ const Engine = (function () {
         for (const v of list) if (v.r === 0 && cmdOk(v, cmds) && v.c.every(n => n === cardName || has(n))) out.push(v);
         return out;
       },
-      async almost(names, poolNames, maxMissing) {
-        const has = asHas(names), pool = asHas(poolNames), seen = new Set(), out = [], mm = maxMissing || 2;
+      async almost(names, poolNames, maxMissing, cmdNames) {
+        const has = asHas(names), pool = asHas(poolNames), seen = new Set(), out = [], mm = maxMissing || 2, cmds = cmdNames ? new Set(cmdNames) : null;
         for (const n of names) for (const v of by.get(n) || NO_VARIANTS) {
           if (seen.has(v.id) || v.r !== 0 || v.c.length > 4) continue; seen.add(v.id);
+          if (cmds && !cmdOk(v, cmds)) continue; // needs a different card as the commander
           const missing = v.c.filter(x => !has(x));
           if (missing.length >= 1 && missing.length <= mm && missing.every(pool)) out.push({ v, missing });
         }
@@ -972,7 +978,7 @@ const Engine = (function () {
     if (comboPolicy === 'prefer' && combos && combos.almost) {
       try {
         const poolNames = pool.filter(c => !st.names.has(c.n)).map(c => c.n);
-        const al = (await combos.almost(deckNames(), poolNames)).filter(x => !(x.v.inf && x.v.c.length <= 2 && lim.combo2 <= 0));
+        const al = (await combos.almost(deckNames(), poolNames, 2, cmds.map(c => c.n))).filter(x => !(x.v.inf && x.v.c.length <= 2 && lim.combo2 <= 0));
         al.sort((a, b) => a.missing.length - b.missing.length || (a.v.id < b.v.id ? -1 : 1));
         let added = 0;
         for (const x of al) {

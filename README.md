@@ -65,7 +65,7 @@ Each card is weighed on:
 Analysis, Improve and deep search on a mechanics-only deck use the same quality model in place of EDHREC rank. Standard builds are unchanged.
 
 **Format: Pauper Commander** (on Start in the Commander tile, and at the top of Builder) switches the whole generator to [Pauper Commander (PDH)](https://pdhhomebase.com/rules/) legality:
-- the 99 must have been printed at common, and the commander must be a creature, Vehicle or Spacecraft printed at uncommon (it need not be legendary). Printings count on paper and MTGO, not Arena, as the PDH rules say.
+- the 99 must have been printed at common, and the commander must be a creature, Vehicle or Spacecraft printed at uncommon (it need not be legendary); an uncommon Background can partner a "Choose a Background" commander. Printings count on paper and MTGO, not Arena, as the PDH rules say.
 - Mystic Remora and Rhystic Study are banned, as are cards Scryfall marks banned in `paupercommander` and cards banned in Commander (that list holds the ante, Conspiracy and removed cards PDH also bans).
 - the commander list, generation, Builder, suggested swaps, deep search, By category, By card, Budget upgrades and combo adds offer only legal cards. **Rules** on Deck checks the format.
 - an imported list is kept as pasted: cards that are legal in Commander but not in PDH stay in the deck, fail **Rules** and are listed as a high problem on Analysis, so you can swap them on Improve. Must-include cards that are not legal are left out with a note.
@@ -120,14 +120,16 @@ Build a deck by hand from your collection.
 
 ### Analysis
 
-Scores the current deck, generated or imported, or compares it with another list. The top of the page shows fundamentals, balance, lands against the curve estimate, cards that are hard to cast on curve, the commander turn, the simulated combo turn, and where the win turn comes from. Below that, on the same page:
+Scores the current deck, generated or imported, or compares it with another list. In order, on one page:
+- **The short version:** power level, win turn and the bracket it plays like, with the cards that set the bracket (Game Changers, two-card combos, mass land denial, extra turns) named, and the one problem to fix first. A list that is not 100 cards says so here, with **Fill to 100**. After an import, the import summary (cards kept, rejected, sideboard left out) stays here too.
+- **Next: Improve**, with the number of candidate swaps, where they come from (all cards or your collection) and how much of the deck you own.
 - **Problems**, high and medium first; low and info notes are folded away.
 - **Counts against real decks**, the same table as Deck › Counts.
-- **Next: Improve**, with the number of candidate swaps, where they come from (all cards or your collection) and how much of the deck you own.
+- The power vector and fundamentals radar charts.
 
-Buttons under the source switch jump to each section. **Compare** scores another pasted list against the deck.
+**Compare** scores another pasted list against the deck.
 
-**Show detail** opens turn-by-turn odds and the goldfish simulation (1,500 to 100,000 games), the power level from 1 to 10 with its five vectors and combos, the eight fundamentals, mana base and interaction, synergy themes, deck stats (mana curve, colour pips against sources, roles against targets, price, Game Changers) and the method.
+**Show detail** opens the deck figures (fundamentals, balance, lands against the curve estimate, cards hard to cast on curve, commander and combo turns), the number of simulated games (1,500 to 100,000) with **Analyze**, turn-by-turn odds and the goldfish simulation, the power level from 1 to 10 with its five vectors and combos, the eight fundamentals, mana base and interaction, synergy themes, deck stats (mana curve, colour pips against sources, roles against targets, price, Game Changers) and the method.
 
 ### Improve
 
@@ -253,6 +255,8 @@ node sens.js     # prints a table of how decks respond to bracket, budget and ga
 **Mana in the simulation:** a mana ability yields its output less its activation cost (a Signet nets 1, a {1} filter 0). Lotus Petal, rituals and rocks that don't untap (Mana Vault, Grim Monolith) are one-shot mana, spent only on a turn they make the commander or another spell in hand castable. Mox Opal needs three artifacts, Mox Amber a legendary creature or planeswalker (the commander counts), Chrome Mox exiles a coloured card from hand and Mox Diamond discards a land; without one in hand they are not cast. Springleaf Drum needs a creature on the battlefield. Spend restrictions (such as Delighted Halfling's legendary-only mana) are not modelled. In the power level's Speed vector, fast mana counts by the same model: lasting mana fully, conditional moxen (Mox Opal unless the deck has 15+ artifacts) and one-shot mana less, cards that make no net mana (Lion's Eye Diamond) not at all.
 
 **Table simulation:** besides the goldfish, the analysis plays a quarter as many games against three opponents of your bracket. Each opponent's win turn, spot removal, counterspells and board wipes come from the EDHREC average decks of that bracket; a per-bracket shift makes an average deck of the bracket win 1 game in 4. You hold removal and counters for an opponent about to win (each answer delays them two turns); opponents hold one answer each for your win, which your protection can stop; their removal and wipes hit your creatures and commander (+2 tax). The table win rate is shown under Power. It is not part of the swap score: on the benchmark it halved the removal and protection cards cut by mistake but cut fewer planted cards overall.
+
+**Install and offline:** both pages link `manifest.webmanifest` (icons in `icons/`), so phones can add the generator to the home screen. `sw.js` caches the two pages and the small data files network-first, so a deploy shows on the next load and the site still opens with no connection; the card and combo files already live in the browser's IndexedDB. Bump `CACHE` in `sw.js` only if its cached list changes.
 
 **Publishing:** GitHub Pages, Settings → Pages → Deploy from a branch → `main`, `/ (root)`. Every push to `main` is live.
 

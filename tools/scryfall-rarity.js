@@ -12,7 +12,7 @@
 const fs = require('fs'), zlib = require('zlib'), readline = require('readline');
 
 const SKIP_SETS = new Set(['memorabilia', 'token', 'minigame']); // gold-bordered, tokens, helper cards: not real printings
-const CMD_TYPES = /\b(?:Creature|Vehicle|Spacecraft)\b/;
+const CMD_TYPES = /\b(?:Creature|Vehicle|Spacecraft|Background)\b/; // Backgrounds pair with "Choose a Background" commanders
 
 async function main(inp, out) {
   if (!inp || !out) { console.error('Usage: node tools/scryfall-rarity.js <in> <out.json>'); process.exit(2); }

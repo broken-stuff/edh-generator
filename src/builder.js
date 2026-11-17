@@ -38,7 +38,7 @@ const Builder = (function () {
      Basic lands are always in it. Sorted by EDHREC rank. ---------- */
   function pool(db, CI, owned, cmds) {
     const skip = new Set((cmds || []).map(c => c.n));
-    return db.all.filter(c => c.leg === 'legal' && !skip.has(c.n) && subsetCI(c.ci, CI) && (!owned || owned.has(c.n) || E.isBasic(c)))
+    return db.all.filter(c => c.leg === 'legal' && !skip.has(c.n) && !/\bStickers\b/.test(c.tl) && subsetCI(c.ci, CI) && (!owned || owned.has(c.n) || E.isBasic(c)))
       .sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9) || (a.n < b.n ? -1 : 1));
   }
   // commander-eligible cards in a list
@@ -82,8 +82,10 @@ const Builder = (function () {
     if (!cols.length) { out.C = need; return out; }
     const p = { W: 0, U: 0, B: 0, R: 0, G: 0 };
     for (const c of cmds.concat(entries.map(e => e.c))) { const q = E.pips(c.mc); for (const x in p) p[x] += q[x]; }
+    // one extra pip per colour, so a colour the spells barely use (a WUBRG commander with a mono-white cost) still gets basics
+    for (const x of cols) p[x] += 1;
     const tot = cols.reduce((s, x) => s + p[x], 0);
-    const share = cols.map(x => ({ x, v: tot ? p[x] / tot * need : need / cols.length }));
+    const share = cols.map(x => ({ x, v: p[x] / tot * need }));
     for (const s of share) out[s.x] = Math.floor(s.v);
     let left = need - share.reduce((s, x) => s + out[x.x], 0);
     for (const s of share.slice().sort((a, b) => (b.v - Math.floor(b.v)) - (a.v - Math.floor(a.v)))) { if (!left) break; out[s.x]++; left--; }
