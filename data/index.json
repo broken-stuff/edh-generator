@@ -3,23 +3,23 @@
  "files": [
   {
    "name": "aliases.json",
-   "size": 28644,
-   "sha256": "e7e7de1d76655a6e52b245fc0d1ad8468ca5c9277bb264f13ce6fbe14fb0dd48"
+   "size": 28963,
+   "sha256": "dc2f92120a2b3ef6f6e8773f87ae9211542dc65175499bdb7280798d45fb02d9"
   },
   {
-   "name": "oracle-cards-20261115220206.jsonl.gz",
-   "size": 7164113,
-   "sha256": "df770c6284f2c502515974cad55688572e4d1587c8c8f55934e47cb8f71f44f6"
+   "name": "oracle-cards-20261123100236.jsonl.gz",
+   "size": 7193667,
+   "sha256": "b47b88bd837ceefe5a8246746764f69c34b9482c2b843a3914a11f6c2382b270"
   },
   {
    "name": "rarity.json",
-   "size": 330796,
-   "sha256": "76edc60e5f99f8ad9bc354c92ffe61963d7ec57990cd56710f7d71d2720dd8bd"
+   "size": 330814,
+   "sha256": "35501f20afe1a59e6ec12d14d21f18b12e1a442c79fb8cd1b91d1eeeac937577"
   }
  ],
  "spellbook": {
   "manifest": "spellbook/manifest.json",
-  "variants": 121768,
-  "timestamp": "2026-11-16T08:13:29.510437+00:00"
+  "variants": 123421,
+  "timestamp": "2026-11-23T18:14:42.384038+00:00"
  }
 }
